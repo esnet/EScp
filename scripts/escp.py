@@ -12,6 +12,7 @@ import base64
 import shlex
 import signal
 import select
+import socket
 
 import argparse
 
@@ -28,7 +29,7 @@ import time
 import datetime
 
 import logging
-#logging.basicConfig(filename='/tmp/escp.log', level=logging.DEBUG)
+logging.basicConfig(filename='/tmp/escp.log', level=logging.DEBUG)
 
 config = configparser.ConfigParser()
 config.read(( os.path.join(os.path.dirname(sys.argv[0]), 'escp.conf'),
@@ -36,6 +37,51 @@ config.read(( os.path.join(os.path.dirname(sys.argv[0]), 'escp.conf'),
               'escp.conf' ))
 
 ESCP_VERSION = "NA"
+LICENSE = """
+ESnet Secure Copy (EScp) Copyright (c) 2021, The Regents of the
+University of California, through Lawrence Berkeley National Laboratory
+(subject to receipt of any required approvals from the U.S. Dept. of
+Energy). All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+(1) Redistributions of source code must retain the above copyright notice,
+this list of conditions and the following disclaimer.
+
+(2) Redistributions in binary form must reproduce the above copyright
+notice, this list of conditions and the following disclaimer in the
+documentation and/or other materials provided with the distribution.
+
+(3) Neither the name of the University of California, Lawrence Berkeley
+National Laboratory, U.S. Dept. of Energy nor the names of its contributors
+may be used to endorse or promote products derived from this software
+without specific prior written permission.
+
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
+
+You are under no obligation whatsoever to provide any bug fixes, patches,
+or upgrades to the features, functionality or performance of the source
+code ("Enhancements") to anyone; however, if you choose to make your
+Enhancements available either publicly, or directly to Lawrence Berkeley
+National Laboratory, without imposing a separate written license agreement
+for such Enhancements, then you hereby grant the following license: a
+non-exclusive, royalty-free perpetual license to install, use, modify,
+prepare derivative works, incorporate into other computer software,
+distribute, and sublicense such enhancements or derivative works thereof,
+in binary and source code form.
+"""
 
 try:
   ESCP_VERSION = config["escp"]["VERSION"]
@@ -114,12 +160,6 @@ def handler_ctrlc(signal, frame):
   print("\n\rInterrupt/Ctrl-C, exiting...")
   sys.exit(1)
 
-def file_ok(parser, arg):
-  if not os.path.exists(arg) and ":" not in arg:
-    parser.error("The file %s does not exist!" % arg)
-  else:
-    return arg
-
 def stream_write( stream, data ):
 
   if not data:
@@ -145,13 +185,20 @@ def stream_read( queue, data ):
   if data == None:
     return
 
-  if not isinstance( data, str ):
-    raise ValueError("data must be a string")
+  if not isinstance( data, str ) and not isinstance( data, list ):
+    raise ValueError("data must be a string/list")
 
   res = queue.get()
+
+  if ( isinstance(data, list) ) and res[0] in data:
+    return res[0]
+
   if res[0] != data:
-    print("Abort: '%s'" % " ".join(res[1:]) )
-    raise ValueError("Unexpected data, '%s'!='%s'" % (data, res[0]) )
+    print("Error: '%s'" % " ".join(res[1:]) )
+    sys.exit(1)
+    #raise ValueError("Unexpected data, '%s'!='%s'" % (data, res[0]) )
+
+  return res[0]
 
 
 def mgmt_reader( stream, stat_queue, mgmt_queue, name ):
@@ -170,7 +217,7 @@ def mgmt_reader( stream, stat_queue, mgmt_queue, name ):
       mgmt_queue.put(("ABORT", "Session terminated"));
       return;
 
-    if line in ("OKAY", "REDY"):
+    if line in ("OKAY", "REDY", "FILE", "CHDR"):
       logging.debug("mgmt_reader '%s': %s" % (name, line) )
       mgmt_queue.put((line,))
       continue
@@ -358,7 +405,7 @@ def file_recurse( self, files, path=None ):
   logging.debug("file_recurse: path=%s", path)
 
   for fi in files:
-    if path: 
+    if path:
       fi = os.path.join( path, fi )
     fi_stat = os.stat(fi)
     if stat.S_ISDIR(fi_stat.st_mode):
@@ -405,19 +452,18 @@ def run_transfer( self ):
 class EScp:
   def push_rx( self, option, response=None ):
     stream_write( self.rx_cmd, option )
-    stream_read(  self.rx_mgmt, response )
+    return stream_read(  self.rx_mgmt, response )
 
   def push_tx( self, option, response=None ):
     stream_write( self.tx_cmd, option )
-    stream_read(  self.tx_mgmt, response )
+    return stream_read(  self.tx_mgmt, response )
 
-  def parseArgs(self):
+  def parseArgs(self, args=sys.argv):
     parser = argparse.ArgumentParser(
       description='EScp: Secure Network Transfer',
       fromfile_prefix_chars='@')
 
-    parser.add_argument('files', metavar='FILE',
-                        type=lambda x: file_ok(parser, x), nargs='*',
+    parser.add_argument('files', metavar='FILE', nargs='*',
                         help='[SRC] ... [DST], where DST is HOST:PATH')
 
     parser.add_argument('-p','--port', metavar='PORT', type=int, help="Port for DTN application" )
@@ -441,54 +487,10 @@ class EScp:
     except:
       pass
 
-    args = parser.parse_args()
+    args = parser.parse_args(args=args)
 
     if args.license:
-      print ("""
-ESnet Secure Copy (EScp) Copyright (c) 2021, The Regents of the
-University of California, through Lawrence Berkeley National Laboratory
-(subject to receipt of any required approvals from the U.S. Dept. of
-Energy). All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
-
-(1) Redistributions of source code must retain the above copyright notice,
-this list of conditions and the following disclaimer.
-
-(2) Redistributions in binary form must reproduce the above copyright
-notice, this list of conditions and the following disclaimer in the
-documentation and/or other materials provided with the distribution.
-
-(3) Neither the name of the University of California, Lawrence Berkeley
-National Laboratory, U.S. Dept. of Energy nor the names of its contributors
-may be used to endorse or promote products derived from this software
-without specific prior written permission.
-
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
-LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-POSSIBILITY OF SUCH DAMAGE.
-
-You are under no obligation whatsoever to provide any bug fixes, patches,
-or upgrades to the features, functionality or performance of the source
-code ("Enhancements") to anyone; however, if you choose to make your
-Enhancements available either publicly, or directly to Lawrence Berkeley
-National Laboratory, without imposing a separate written license agreement
-for such Enhancements, then you hereby grant the following license: a
-non-exclusive, royalty-free perpetual license to install, use, modify,
-prepare derivative works, incorporate into other computer software,
-distribute, and sublicense such enhancements or derivative works thereof,
-in binary and source code form.
-""")
+      print (LICENSE)
       sys.exit(0)
 
 
@@ -504,13 +506,36 @@ in binary and source code form.
       print ("DTN:  %s" % s)
       sys.exit(0)
 
+    args.files = args.files[1:]
+
     if not args.files or (len(args.files) < 2):
       print ("both SRC and DST must be specified")
       sys.exit(1)
 
+    for i in args.files[:-1]:
+      if not os.path.exists(i):
+        print("Source file '%s' not found" % i)
+        sys.exit(-1)
+
     self.args = args
 
   def applyArgs(self):
+    ssh_host = False
+    dst_host = "localhost"
+
+    ssh_opts = ""
+    ssh_port = False
+    dtn_port = 2222
+
+    if self.args.port:
+      try:
+        ssh_port, dtn_port = map( int, self.args.port.split("/"))
+      except:
+        ssh_port = int( self.args.port )
+
+    if ssh_port:
+      ssh_opts += "-p %d" % ssh_port
+
     try:
       ssh_host, dst_path = self.args.files[-1].split(":")
       parts = ssh_host.split("@")
@@ -519,8 +544,7 @@ in binary and source code form.
       else:
         dst_host = ssh_host
     except:
-      print("Format of DST not understood, expected [USER@]HOST:PATH")
-      sys.exit(1)
+      dst_path = self.args.files[-1]
 
     if (self.args.path_dst):
       remote_dtn = self.args.path_dst
@@ -558,7 +582,20 @@ in binary and source code form.
     except:
       pass
 
-    args_src += ["--managed", "-c", dst_host ]
+    """
+      This is our host logic:
+        1) ssh_host is always whatever is specified in command line, this is
+           so that the ssh_host you use should match your known_hosts file.
+        2) We then convert the host (or IP) into an IP; This is used for DTN
+        3) DTN receiver will listen on this interface
+        4) DTN sender will connect to listed IP
+    """
+
+    ip_addr = socket.getaddrinfo(dst_host, None)[0][4][0]
+
+
+    args_src += ["--managed", "-c %s/%d" % (ip_addr, dtn_port)]
+    args_dst += ["-c", "%s/%d" % (ip_addr, dtn_port) ]
 
     if self.args.verbose:
       args_src += [ "--verbose", "--logfile", "/tmp/dtn.tx.log" ]
@@ -573,19 +610,20 @@ in binary and source code form.
     sekret = sekret.decode("utf-8")
     sekret = sekret.replace("=", "")
 
-    ssh_args = [ "ssh", ssh_host, remote_dtn ]
+    if ssh_host:
+      ssh_args = [ "ssh", ssh_host, remote_dtn ]
+    else:
+      ssh_args = [ local_dtn, ]
+
     ssh_args += args_dst
 
-    ssh_opts = ""
-    if self.args.port:
-      ssh_opts += f"-p {self.args.port}"
 
     if len(ssh_opts):
       ssh_args.insert(1, ssh_opts)
 
     if (self.args.verbose):
       print("local_dtn: %s, remote_dtn: %s" % (local_dtn, remote_dtn) )
-      print("des_host: %s, dst_path: %s" % ( dst_host, dst_path ))
+      print("dst_host: %s, dst_path: %s" % ( dst_host, dst_path ))
       print("Auth secret = ...%s" % sekret[-4:])
       print("SSH command = '%s'" % " ".join(ssh_args))
       print("Local command = '%s'" % " ".join(args_src))
@@ -609,12 +647,24 @@ in binary and source code form.
           args=(self.rx_cmd, self.rx_stat, self.rx_mgmt, "RX"), daemon=True)
     self.rx_thread.start()
 
-    self.push_rx( None, "REDY" )
+    try:
+      self.push_rx( None, "REDY" )
+    except:
+      print("Error connecting to host: ", self.rx_cmd.stderr.read().decode());
+      sys.exit(0)
+
     self.push_rx( ["HASH"], "OKAY" )
     self.push_rx( ["CKEY", self.sekret], "OKAY" )
 
     #self.push_rx( ["FILE", self.dst_files], "OKAY" )
-    self.push_rx( ['CHDR', self.dst_path], "OKAY" )
+    if self.dst_path:
+      res = self.push_rx( ['CHDR', self.dst_path], ["CHDR","FILE"] )
+      if res == "FILE":
+        if len(self.args.files[:-1]) != 1:
+          self.push_rx( ["EXIT"], "OKAY" );
+          print("target '%s' is not a directory" % self.dst_path)
+          sys.exit(0)
+        self.push_rx( ["FILE", [self.args.files[1]]], "OKAY" )
 
     self.push_rx( ["RECV"], "OKAY" )
 
@@ -649,7 +699,6 @@ in binary and source code form.
     self.m_thread.join()
 
 
-
     #self.push_rx( ["DONE"], "OKAY" )
     #print ("Finished assigning options")
 
@@ -658,11 +707,15 @@ in binary and source code form.
     if doInit:
       self.parseArgs()
       self.applyArgs()
-      self.connect()
-
 
 if __name__ == "__main__":
 
-  escp = EScp()
   signal.signal(signal.SIGINT, handler_ctrlc)
+
+  escp = EScp()
+  try:
+    escp.connect()
+  except Exception as e:
+    print("Error: ", e)
+    sys.exit(1)
 

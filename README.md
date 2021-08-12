@@ -1,26 +1,41 @@
 EScp 0.6
 ========
 
-This is a early *BETA* release of EScp.  It is designed to transfer files
-quickly and efficiently using standard protocols. EScp itself is a python
-script to manage the DTN C based program.   DTN is a tool for performance
-testing and data transfer, which provides a lock-free, 0-copy,  encrypted
-solution to transfering block based data (+ files) over the network.  DTN
-and EScp are shipped together. EScp refers both to the package containing
-DTN + EScp as well as the EScp script.
+This is an early **BETA** release of EScp, an application for high speed
+data transfer. It is created to be a simple high performance transfer
+tool based on papers and presentations by Brian Tierney and Eli Dart
+at ESnet
+  [1](https://www.es.net/assets/Uploads/100G-Tuning-TechEx2016.tierney.pdf)
+  [2](https://www.es.net/assets/pubs_presos/eScience-networks.pdf)
+combined with my research on high speed file transport
+  [3](https://data-over-distance.ornl.gov/documents/s1t3-shiflett.pdf)
+  [4](https://www.nctatechnicalpapers.com/Paper/2016/2016-accelerating-big-data-applications-with-multi-gigabit-per-second-file-transfers/download)
+  [5](https://www.slideshare.net/jstleger/dpdk-summit-2015-aspera-charles-shiflett)
+while working at Aspera (later acquired by IBM).
 
-EScp is *BETA* software, expect bugs, missing features,  and all sorts of
-problems. It is tested against Ubuntu 20.04 on x64 on filesets containing
-~500,000 files and TBs of data without issue,  as such it is thought that
-it generally respects the integrity of your files.  With this release the
-principal goal has been on not subtly introducing file inconsistencies so
-CRC checksumming is force enabled. Command line syntax, APIs,  and on the 
-wire format are all expected to change, with no backwards compatibility.
+The general set of features that may make this application different from
+traditional transfer tools:
+
+  * Multiple TCP/IP streams per transfer ( 1/thread )
+  * Lockless multi threaded application per file transferred
+  * Traditional pthreads based locking to handle assigning workers to files
+  * 0-Copy, shared memory, and page aligned memory layout (when blocksize < L3).
+  * AES-GCM 128 over the wire encryption, optimized for performance
+  * Authentication to remote systems through SSH
+  * Hot spot optimized ( higher level functions use Python, lower level C/ASM )
+  * Swappable I/O Engines ( Currently: URING, SHM, DUMMY, & POSIX )
+  * Block based interface to transfering data
+
+EScp is principally tested on Linux and it has successfully transferred PBs
+of data and millions of files. In this **BETA**, a distributed CRC checksum
+has been hard coded into the transfer work flow such that silent corruption
+of data should be unlikely, although caution is advised.
 
 
-HOW TO USE
-==========
+Usage
+=====
 
+```
 usage: escp.py [-h] [-p PORT] [-q] [-r] [-v] [--args_dst ARG] [--args_src ARG] [--path_dst PATH] [--path_src PATH] [--version] [FILE [FILE ...]]
 
 EScp: Secure Network Transfer
@@ -30,9 +45,8 @@ positional arguments:
 
 optional arguments:
   -h, --help            show this help message and exit
-  -p PORT, --port PORT  Port for DTN application
+  -P PORT, --port PORT  Port for SSH[:DTN]
   -q, --quiet
-  -r, --recursive
   -v, --verbose
   --args_dst ARG        Arguments to DST DTN Executable
   --args_src ARG        Arguments to SRC DTN Executable
@@ -40,60 +54,84 @@ optional arguments:
   --path_src PATH       Path to SRC DTN Executable
   --version
 
-Example: 
+Example:
 
-$ escp file1 file2 host:/remoteDirectory
+# Transfe file1 and file2 to server host using SSH port 22 and DTN port 2000
+escp -P 22:2000 file1 file2 host:/remoteDirectory
+
+Note:
+
+When EScp is transferring a file, the `escp` script will run along with the
+`dtn` sender and receiver. The `dtn` sender and receiver use a separate port
+from the standard SSH connection, and that defaults to port 2222.
+
+Recursive mode is implied by trying to transfer a directory.
+
+```
 
 COMPILING
 =========
 
-Compiling EScp requires CMake 
+Compiling EScp requires modern versions of CMake, Yasm, & Python 3.
 
 ```
+  # apt install cmake yasm
+
   git clone git@github.com:esnet/EScp.git
   mkdir EScp/Build
   cd EScp/build
   cmake ..
   make -j 24
-  
-  # optionally 
-  make install # Will install EScp and dtn binary
+
+  # Make will pull in libnuma, isa-l_crypto, and liburing
+  # to which the application will be statically linked.
+
+  # optionally
+  make install # Install EScp and dtn binary
 ```
 
 TUNING
 ======
 
-The most important parameters are the number of threads,  the block size, and
-enabling or disabling direct mode. If your system is NUMA aware, you may also
-want to enable CPU pinning. See 'dtn' command line help for supported params.
+As EScp is oriented towards high speed file transfer, the application tries
+to expose any knobs that might be needed to optimize a transfer. These knobs
+include things like number of threads, block size, enable direct I/O, NUMA
+pinning, TCP window size, MTU, and so on. See README_dtn.md for more
+information on the knobs and how to optimize your application.
 
-To pass tuning options to dtn when using escp, use --args-src, and --args-dst
-options with a string containing the parameters to pass to DTN. Once you have
-a configuration that works for you, create a file, `/etc/escp.conf`, and pass
-those parameters as default arguments.
+Thus far I have been able to show transfers across the ESnet network
+(continental Unites States) at 100 Gbit/s. Currently transfers are bound
+by the network interface speed (which in turn is bound by the performance
+of the network).
 
-As an example:
+Once you have tuned the `dtn` tool to a point where you are happy, the
+next step is to create an escp.conf configuration. Here is an example:
 
 ```
   [escp]
 
-  dtn_args = -t 4 -b 64k --nodirect
+  dtn_args = -t 4 -b 1M --nodirect
   dtn_path = /home/cshiflett/dtn/b/dtn
 ```
 
 Here is a command line example which performs a network transfer, but reads in
-dummy data instead of reading data from disk.
+dummy data instead of reading data from disk. This is useful for benchmarking
+the performance of your network while not being constrained by the speed of
+your storage subsystem.
 
 ```
-  escp --args_src="--engine=dummy" --args_dst="--engine=dummy" src_file dest: 
+  escp --args_src="--engine=dummy" --args_dst="--engine=dummy" src_file dest:
 ```
 
 DEBUGGING
 =========
 
-  Most bugs can be found by enabling verbose logging and the logic flow until
-  an error is displayed. You can also do things like enable valgrind, as in
-  the example below.
+  Most bugs can be found by enabling verbose logging and following the logic
+  flow. In some cases you may need to increase/reduce the verbosity of the
+  logging, which in some cases involves enabling/disabling C macros in args.h.
+
+  You can also do things like enable memory checking (see valgrind example),
+  stack overflow checkers, profilers, and so on. Here is an example:
 
 ```
   dtn_args = --log-file="/tmp/valgrind.tx.log" /home/cshiflett/dtn/b/dtn -t 4 -b 1M --engine=posix --nodirect
@@ -105,25 +143,61 @@ DEBUGGING
 
 ```
 
-  To enable logging of the EScp script, you must manually edit the script and
-  uncomment the line which enables logging.
+  You can also edit the cmakefile to change how the DTN application is
+  compiled, and either attach a debugger directly or run the DTN application
+  as a standalone tool and attach a debugger to that.
+
+  If you need to debug the Python based EScp script, the first step would be
+  to enable logging within EScp which requires manually editing the EScp script
+  and uncommenting out the logging line. From there you can use standard
+  debug tools like pdb.
+
+  Lastly, you can run the standard cmake unit tests by running the ctest
+  command.
+
 
 SECURITY
 ========
 
-EScp opens a text-channel to communicate with both the sender and receiver. As
-the receiver (typically) resides on a remote host, EScp attempts to SSH into
-the remote host and will then run the DTN application.
+EScp works by establishing an SSH session to a remote host (using system SSH
+binary), and then starting the DTN receiver. Once the receiver has initialized,
+the sender attempts to connect to the receiver using the DTN port, through an
+AES-128 GCM encrypted session using a shared randomly generated secret key
+(shared through the SSH session).
 
-Once the DTN application is running on both hosts, EScp will set configuration
-parameters like, the encryption key (randomly generated), the files to
-transfer, and so on. If successful, The sender will attempt to connect to the
-receiver on the specified port (default=2222) using TCP.
+The on-the-wire format consists of a series of tags with 16 bytes identifying
+what the data is, followed by a payload, followed by a 16 byte HMAC, as shown
+below:
 
-If successful, the transfer will then commence with the entire session
-encrypted using AES128-GCM. The on-the-wire format consists of a series of
-tags with 16 bytes identifying what the data is, followed by a payload,
-followed by a 16 byte HMAC. 
+```
+  /*  ---------+--------+----+----+--------------+----------\
+   *  hdr_type | magic  | sz | IV | Payload      | HMAC     |
+   *    2      |   2    | 4  |  8 | sz - 32      |  16      |
+   *          AAD                 | Encrypted    | Auth tag |
+   *  ---------+------------------+--------------+----------/
+   */
+```
+
+For implementation see network_ family of functions in dtn.c.
+
+
+AUTHOR
+======
+
+EScp is written by Charles Shiflett with the support of [ESnet](es.net). EScp 
+is a side project and is not in any way an official or supported project of
+ESnet.
+
+I'd like to thank my team at ESnet, Anne White, Goran Pejović, Dhivakaran
+Muruganantham, George Robb, Shawn Kwang, and Deb Heller, as well as Brian
+Tierney, Eli Dart, Ezra Kissel, Eric Pouyoul, Jason Zurawski, and Andrew
+Wiedlea, (also at ESnet) for their support, encouragement, and assistance
+in developing EScp.
+
+Lastly, thanks to you, for using this application. EScp was written for you!
+If you are interested in contributing, you are in the unique position of
+being the first external collaborator to be added here.
+
 
 LICENSE
 =======

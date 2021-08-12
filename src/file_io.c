@@ -299,22 +299,17 @@ struct file_stat_type* file_next( struct file_object* fob,
     }
   }
 
-  // At this point file is found, now fetch an fs slot
-  for (i=0; i<THREAD_COUNT*2; i++) {
-    fs = &file_stat[i];
-    if ( !fs->worker_map  && !fs->pending ) {
-      found = true;
-      break;
+  while ( !found ) {
+    for (i=0; i<THREAD_COUNT*2; i++) {
+      fs = &file_stat[i];
+      if ( !fs->worker_map  && !fs->pending ) {
+        found = true;
+        break;
+      }
     }
-  }
 
-  if ( ! found ) {
-    VRFY( pthread_mutex_unlock(&file_next_lock) == 0, "" );
-    NFO( "Receiver should wait for other threads to complete work here."  );
-    NFO( "This isn't programmed, as it is an edge case, but it should be" );
-    NFO( "Please file a BUG report! ");
-    NFO("[%2d] No work found, returning; tc=%d", fob->id, fob->thread_count );
-    return 0;
+    if ( !found ) 
+      pthread_cond_wait( &file_next_cv, &file_next_lock );
   }
 
   memset( fs, 0, sizeof( struct file_stat_type ) );

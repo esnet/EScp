@@ -434,9 +434,11 @@ int64_t network_send (
       hdr.iv = knob->iv_incr;
       hdr.hdr_sz = total + 32;
 
-  /*  hdr_type | magic  | sz | IV | Payload      | HMAC     \
+  /*  ---------+--------+----+----+--------------+----------\
+   *  hdr_type | magic  | sz | IV | Payload      | HMAC     |
    *    2      |   2    | 4  |  8 | sz - 32      |  16      |
-   *          AAD                 | Encrypted    | Auth tag /
+   *          AAD                 | Encrypted    | Auth tag |
+   *  ---------+------------------+--------------+----------/
    */
 
       did_header = true;
@@ -1103,7 +1105,7 @@ void do_management( struct dtn_args* args ) {
 
         DBG("[mgmt] Enable Crypto");
         VRFY( (res=read_newline( STDIN_FILENO, buf, 32 )) > 0, );
-        VRFY( file_b64decode(buf, buf, res) >= 16, "crypto key too short" );
+        VRFY( (res=file_b64decode(buf, buf, res)) >= 16, "crypto key too short, read=%d", res );
         memcpy( args->crypto_key, buf, 16 );
         memcpy( &args->do_crypto, &tru, sizeof(bool) );
         DBG("Enabled Crypto");
@@ -1247,10 +1249,39 @@ void do_management( struct dtn_args* args ) {
       case 'RDHC':
         // CHeDeR
         VRFY( (res=read_newline( STDIN_FILENO, buf, 512)) > 0, );
-        if (chdir(buf)) {
-          MMSG("ABRT\nCouldn't chdir: %s", strerror(errno));
-        } else {
-          MMSG("OKAY");
+
+        {
+          int res;
+          struct stat st;
+          res = stat(buf, &st);
+
+          if (res) {
+            if ( errno == ENOENT ) {
+              // File does not exist, we are clear to overwrite
+              MMSG("FILE");
+              break;
+            }
+            MMSG("ABRT\nCouldn't stat: %s", strerror(errno) );
+          }
+
+          switch (st.st_mode & S_IFMT) {
+            case S_IFDIR:
+              if (chdir(buf)) {
+                MMSG("ABRT\nCouldn't chdir: %s", strerror(errno));
+              } else {
+                MMSG("CHDR");
+              }
+              break;
+            case S_IFREG:
+              MMSG("FILE");
+              break;
+            case S_IFLNK:
+              MMSG("ABRT\nTarget is a symlink. Symlinks are not supported\n");
+              break;
+            default:
+              MMSG("ABRT\nTarget is special device");
+          }
+
         }
         break;
 
@@ -1258,6 +1289,12 @@ void do_management( struct dtn_args* args ) {
       case 'SREV':
         MMSG("0.1");
         return;
+
+      case 'EXIT':
+      case 'TIXE':
+        DBG("[mgmt] Exit is called. Exiting...");
+        MMSG("OKAY");
+        xit(0);
 
       default:
         DBG("[mgmt] Bad data '%s', exiting.", (char*) code);

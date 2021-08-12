@@ -129,8 +129,11 @@ struct sockaddr_storage lookup( char* arg) {
     port = buf;
   }
 
+  while (host[0] == ' ')
+    host++;
+
   VRFY( (res=getaddrinfo(host, port, NULL, &result)) == 0,
-    "Host lookup failed; %s", gai_strerror(res) );
+    "Host lookup failed (host='%s',port=%s); %s", host, port, gai_strerror(res) );
 
   memcpy( &ret, result->ai_addr, result->ai_addrlen );
   freeaddrinfo(result);
@@ -392,7 +395,7 @@ struct dtn_args* args_get ( int argc, char** argv ) {
   DBG("Nodemask is %zX", nodemask );
 
   if (!args.block)
-    args.block = 1 << 19;
+    args.block = 1 << 20;
 
   args.block = args.block & ~((1 << 12)-1);
   args.block = args.block < (1<<12) ? 1 << 12 : args.block;
@@ -427,6 +430,9 @@ struct dtn_args* args_get ( int argc, char** argv ) {
 
   for (i=0; i<args.host_count; i++)
     args.sock_store[i] = lookup(args.host_name[i]);
+
+  if ( !args.thread_count )
+    args.thread_count=4;
 
   DBG("MTU set to %d (12 bytes added for TCP headers)", args.mtu );
   DBG("TCP window sz is %d", args.window );

@@ -130,6 +130,70 @@ def test_connection( engine ):
   if ( res != True ):
     print( "Transfer failed" )
 
-test_connection( "dummy" )
+# test_connection( "dummy" )
 
+s = escp.EScp()
+
+args = ['--args_src=\"--engine=shmem\"', '--args_dst==\"--engine=shmem\"'] + sys.argv 
+s.parseArgs(args=args)
+
+
+s.rx_cmd  = subprocess.Popen( self.receiver_args, stdin=subprocess.PIPE,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE )
+s.rx_mgmt = queue.Queue()
+s.rx_stat = queue.Queue()
+
+s.rx_thread = threading.Thread(target=escp.mgmt_reader,
+      args=(s.rx_cmd, s.rx_stat, s.rx_mgmt, "RX"), daemon=True)
+s.rx_thread.start()
+
+try:
+  s.push_rx( None, "REDY" )
+except:
+  print("Error connecting to host: ", self.rx_cmd.stderr.read().decode());
+  sys.exit(0)
+
+s.push_rx( ["HASH"], "OKAY" )
+s.push_rx( ["CKEY", self.sekret], "OKAY" )
+
+    #self.push_rx( ["FILE", self.dst_files], "OKAY" )
+s.push_rx( ['CHDR', self.dst_path], "OKAY" )
+
+    self.push_rx( ["RECV"], "OKAY" )
+
+    self.tx_cmd = subprocess.Popen( self.sender_args, stdin=subprocess.PIPE,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE )
+
+    self.tx_mgmt = queue.Queue()
+    self.tx_stat = queue.Queue()
+
+    self.tx_thread = threading.Thread(target=mgmt_reader,
+          args=(self.tx_cmd, self.tx_stat, self.tx_mgmt, "TX"), daemon=True)
+    self.tx_thread.start()
+
+    self.push_tx( None, "REDY")
+    self.push_tx( ["HASH"], "OKAY" )
+    self.push_tx( ["CKEY", self.sekret], "OKAY" )
+
+    del self.sekret
+    self.sekret = "Meow! I'm a cat!"
+
+    #self.push_tx( ["FILE", self.src_files], "OKAY" )
+    self.push_tx( ["PERS"], "OKAY" )
+    self.push_tx( ["SEND"], "OKAY" )
+
+    self.m_thread = \
+      threading.Thread(target=run_transfer, args=(self,), daemon=True)
+    self.m_thread.start()
+
+    # time.sleep(0.1)
+    progress_bar( self.rx_stat, self.tx_stat )
+
+    self.m_thread.join()
+
+
+
+
+
+pprint.pprint(args)
 
