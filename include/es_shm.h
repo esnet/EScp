@@ -40,7 +40,7 @@ struct esshm_params {
   int block_sz;
   int QD;
   int file_slots;
-  int offset;
+  int param_sz;
   int debug_level;
   int file_flags;
 
@@ -145,14 +145,7 @@ inline static struct esshm_block* __esshm_fetch(struct esshm_params* ep) {
   for( i=0; i<block_count; i++ ) {
     block = &ep->block[i];
     if (block->state == 2) {
-      if ( block->xsum != 0xDecafC0ffeeULL ) 
-        return NULL;
       block->state=3; 
-      block->xsum = 0x1337BabeULL; 
-      {
-        uint64_t param_sz = (sizeof(struct esshm_params) + 4095) & ~4095;
-        block->op.buf = (uint8_t*)(((uint64_t) ep)+param_sz+(i*ep->block_sz));
-      }
       return block;
     }
   }

@@ -507,7 +507,7 @@ void* rx_worker( void* arg ) {
     NFO("rcvbuf sz mismatch %d (cur) != %d (ask)", rbuf, dtn->window);
   }
 
-  id = __sync_add_and_fetch(&dtn->thread_id, 1);
+  id = __sync_fetch_and_add(&dtn->thread_id, 1);
 
   if (id==1)
     MMSG("SESS\nAccept %d", id);

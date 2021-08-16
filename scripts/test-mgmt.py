@@ -132,14 +132,15 @@ def test_connection( engine ):
 
 # test_connection( "dummy" )
 
-s = escp.EScp()
+s = escp.EScp(doInit=False)
 
-args = ['--args_src=\"--engine=shmem\"', '--args_dst==\"--engine=shmem\"'] + sys.argv 
+args = ['--args_src=\"--engine=shmem\"', '--args_dst=\"--engine=shmem\"'] + sys.argv[1:]
 s.parseArgs(args=args)
+s.applyArgs()
 
 
-s.rx_cmd  = subprocess.Popen( self.receiver_args, stdin=subprocess.PIPE,
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE )
+s.rx_cmd  = subprocess.Popen( s.receiver_args, stdin=subprocess.PIPE,
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE )
 s.rx_mgmt = queue.Queue()
 s.rx_stat = queue.Queue()
 
@@ -150,50 +151,61 @@ s.rx_thread.start()
 try:
   s.push_rx( None, "REDY" )
 except:
-  print("Error connecting to host: ", self.rx_cmd.stderr.read().decode());
+  print("Error connecting to host: ", s.rx_cmd.stderr.read().decode());
   sys.exit(0)
 
 s.push_rx( ["HASH"], "OKAY" )
-s.push_rx( ["CKEY", self.sekret], "OKAY" )
+s.push_rx( ["CKEY", s.sekret], "OKAY" )
 
-    #self.push_rx( ["FILE", self.dst_files], "OKAY" )
-s.push_rx( ['CHDR', self.dst_path], "OKAY" )
-
-    self.push_rx( ["RECV"], "OKAY" )
-
-    self.tx_cmd = subprocess.Popen( self.sender_args, stdin=subprocess.PIPE,
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE )
-
-    self.tx_mgmt = queue.Queue()
-    self.tx_stat = queue.Queue()
-
-    self.tx_thread = threading.Thread(target=mgmt_reader,
-          args=(self.tx_cmd, self.tx_stat, self.tx_mgmt, "TX"), daemon=True)
-    self.tx_thread.start()
-
-    self.push_tx( None, "REDY")
-    self.push_tx( ["HASH"], "OKAY" )
-    self.push_tx( ["CKEY", self.sekret], "OKAY" )
-
-    del self.sekret
-    self.sekret = "Meow! I'm a cat!"
-
-    #self.push_tx( ["FILE", self.src_files], "OKAY" )
-    self.push_tx( ["PERS"], "OKAY" )
-    self.push_tx( ["SEND"], "OKAY" )
-
-    self.m_thread = \
-      threading.Thread(target=run_transfer, args=(self,), daemon=True)
-    self.m_thread.start()
-
-    # time.sleep(0.1)
-    progress_bar( self.rx_stat, self.tx_stat )
-
-    self.m_thread.join()
+s.push_rx( ['CHDR', s.dst_path], ["CHDR","FILE"] )
 
 
+s.push_rx( ["RECV"], "OKAY" )
+
+s.tx_cmd = subprocess.Popen( s.sender_args, stdin=subprocess.PIPE,
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE )
+
+s.tx_mgmt = queue.Queue()
+s.tx_stat = queue.Queue()
+
+s.tx_thread = threading.Thread(target=escp.mgmt_reader,
+      args=(s.tx_cmd, s.tx_stat, s.tx_mgmt, "TX"), daemon=True)
+s.tx_thread.start()
+
+s.push_tx( None, "REDY")
+s.push_tx( ["HASH"], "OKAY" )
+s.push_tx( ["CKEY", s.sekret], "OKAY" )
+
+del s.sekret
+s.sekret = "Meow! I'm a cat!"
+
+#self.push_tx( ["FILE", self.src_files], "OKAY" )
+
+
+s.push_tx( ["PERS"], "OKAY" )
+s.push_tx( ["SEND"], "OKAY" )
+
+res = s.tx_mgmt.get()
+shm_args = [ './dtn-utility', res[1], "/tmp/shm.tx.log" ]
+pprint.pprint(shm_args)
+
+s.tx_shm  = subprocess.Popen( shm_args, stdin=subprocess.PIPE,
+               stdout=subprocess.PIPE, stderr=subprocess.PIPE )
+
+s.m_thread = \
+  threading.Thread(target=escp.run_transfer, args=(s,), daemon=True)
+s.m_thread.start()
+
+pprint.pprint("Receiver")
+
+res = s.rx_mgmt.get()
+pprint.pprint(res)
+
+# time.sleep(0.1)
+#escp.progress_bar( s.rx_stat, s.tx_stat )
+
+s.m_thread.join()
 
 
 
-pprint.pprint(args)
 

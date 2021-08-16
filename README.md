@@ -87,6 +87,7 @@ Compiling EScp requires modern versions of CMake, Yasm, & Python 3.
   # to which the application will be statically linked.
 
   # optionally
+  ctest        # Run test framework
   make install # Install EScp and dtn binary
 ```
 
@@ -130,8 +131,14 @@ DEBUGGING
   flow. In some cases you may need to increase/reduce the verbosity of the
   logging, which in some cases involves enabling/disabling C macros in args.h.
 
+  Logging uses hardcoded files created in /tmp. The logs are:
+
+    `/tmp/escp.log`: Log output from EScp script
+    `/tmp/dtn.rx.log`: DTN Receive logs, located on receiving system
+    `/tmp/dtn.tx.log`: DTN Transmit logs
+
   You can also do things like enable memory checking (see valgrind example),
-  stack overflow checkers, profilers, and so on. Here is an example:
+  profilers, and so on. Here is an example:
 
 ```
   dtn_args = --log-file="/tmp/valgrind.tx.log" /home/cshiflett/dtn/b/dtn -t 4 -b 1M --engine=posix --nodirect
@@ -143,17 +150,11 @@ DEBUGGING
 
 ```
 
-  You can also edit the cmakefile to change how the DTN application is
-  compiled, and either attach a debugger directly or run the DTN application
-  as a standalone tool and attach a debugger to that.
 
-  If you need to debug the Python based EScp script, the first step would be
-  to enable logging within EScp which requires manually editing the EScp script
-  and uncommenting out the logging line. From there you can use standard
-  debug tools like pdb.
-
-  Lastly, you can run the standard cmake unit tests by running the ctest
-  command.
+  Lastly, you can debug the application directly using traditional tools
+  like gdb. If you go this route you probably want to edit the CMakeFile
+  first to enable debugging (or check what the flags currently are), and
+  then go from there.
 
 
 SECURITY
@@ -178,21 +179,21 @@ below:
    */
 ```
 
-For implementation see network_ family of functions in dtn.c.
+For implementation see network_ family of functions in src/dtn.c.
 
 
 AUTHOR
 ======
 
-EScp is written by Charles Shiflett with the support of [ESnet](es.net). EScp 
+EScp is written by Charles Shiflett with the support of [ESnet](es.net). EScp
 is a side project and is not in any way an official or supported project of
 ESnet.
 
-I'd like to thank my team at ESnet, Anne White, Goran Pejović, Dhivakaran
+I'd like to thank my team at ESnet; Anne White, Goran Pejović, Dhivakaran
 Muruganantham, George Robb, Shawn Kwang, and Deb Heller, as well as Brian
-Tierney, Eli Dart, Ezra Kissel, Eric Pouyoul, Jason Zurawski, and Andrew
-Wiedlea, (also at ESnet) for their support, encouragement, and assistance
-in developing EScp.
+Tierney, Eli Dart, Ezra Kissel, Ken Miller, Eric Pouyoul, Jason Zurawski,
+and Andrew Wiedlea, (also at ESnet) for their support, encouragement, and
+assistance in developing EScp.
 
 Lastly, thanks to you, for using this application. EScp was written for you!
 If you are interested in contributing, you are in the unique position of

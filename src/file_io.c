@@ -511,7 +511,7 @@ struct file_object* file_memoryinit( void* arg, int id ) {
 #endif
 #ifdef __ENGINE_URING__
     case FIIO_SHMEM:
-      file_shmeminit( &fob );
+      shmem_init( &fob );
       break;
 #endif
     default:

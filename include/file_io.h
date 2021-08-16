@@ -203,6 +203,8 @@ void file_posixflush( void* arg );
 
 int file_uringinit( struct file_object* fob );
 int file_dummyinit( struct file_object* fob );
+int shmem_init( struct file_object* fob );
+
 void* file_close( struct file_object* fob, struct file_stat_type* fs,
   uint64_t, uint32_t, bool, uint32_t, int );
 int32_t file_hash( void* block, int sz, int seed );

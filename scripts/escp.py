@@ -29,7 +29,6 @@ import time
 import datetime
 
 import logging
-logging.basicConfig(filename='/tmp/escp.log', level=logging.DEBUG)
 
 config = configparser.ConfigParser()
 config.read(( os.path.join(os.path.dirname(sys.argv[0]), 'escp.conf'),
@@ -194,9 +193,10 @@ def stream_read( queue, data ):
     return res[0]
 
   if res[0] != data:
-    print("Error: '%s'" % " ".join(res[1:]) )
+    #raise ValueError("Stream Read Error")
+    print("Stream Read Error: '%s'" % " ".join(res[1:]) )
+    print("actual='%s' != expected='%s'" % (res[0], data) )
     sys.exit(1)
-    #raise ValueError("Unexpected data, '%s'!='%s'" % (data, res[0]) )
 
   return res[0]
 
@@ -226,6 +226,13 @@ def mgmt_reader( stream, stat_queue, mgmt_queue, name ):
       line = stream.stdout.readline().decode("utf-8")
       logging.debug("mgmt_reader '%s': SESS %s" % (name, line) )
       #mgmt_queue.put(("SESS",line))
+      continue
+
+    if line == "SHM":
+      line = stream.stdout.readline().decode("utf-8")
+      line = line.strip("\n")
+      logging.debug("mgmt_reader '%s': SHM %s" % (name, line) )
+      mgmt_queue.put(("SHM",line))
       continue
 
     if line == "STAT":
@@ -458,7 +465,7 @@ class EScp:
     stream_write( self.tx_cmd, option )
     return stream_read(  self.tx_mgmt, response )
 
-  def parseArgs(self, args=sys.argv):
+  def parseArgs(self, args=sys.argv[1:]):
     parser = argparse.ArgumentParser(
       description='EScp: Secure Network Transfer',
       fromfile_prefix_chars='@')
@@ -487,7 +494,7 @@ class EScp:
     except:
       pass
 
-    args = parser.parse_args(args=args)
+    args = parser.parse_args(args)
 
     if args.license:
       print (LICENSE)
@@ -505,8 +512,6 @@ class EScp:
       s = s.stdout.decode("utf-8").strip()
       print ("DTN:  %s" % s)
       sys.exit(0)
-
-    args.files = args.files[1:]
 
     if not args.files or (len(args.files) < 2):
       print ("both SRC and DST must be specified")
@@ -600,7 +605,7 @@ class EScp:
     if self.args.verbose:
       args_src += [ "--verbose", "--logfile", "/tmp/dtn.tx.log" ]
       args_dst += [ "--verbose", "--logfile", "/tmp/dtn.rx.log" ]
-
+      logging.basicConfig(filename='/tmp/escp.log', level=logging.DEBUG)
 
     if (self.args.args_src):
       args_src += shlex.split(self.args.args_src);

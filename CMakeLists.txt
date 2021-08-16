@@ -16,13 +16,13 @@ execute_process(
   OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
-set(CMAKE_C_FLAGS_RELEASE "-g -march=sandybridge -O3 -pthread ")
+set(CMAKE_C_FLAGS_RELEASE "-g -march=sandybridge -O3 -pthread")
 #set(CMAKE_C_FLAGS_RELEASE "-g -march=sandybridge -pthread -rdynamic")
 #set(CMAKE_C_FLAGS_RELEASE "-g -march=native -O3 -pthread")
 #set(CMAKE_C_FLAGS_RELEASE "-g -march=sandybridge -pthread")
 
 #set(CMAKE_C_FLAGS_RELEASE "-g")
-#set(CMAKE_C_FLAGS_DEBUG "-g")
+set(CMAKE_C_FLAGS_DEBUG "-g -march=sandybridge -pthread")
 add_definitions("-Wall -DO_VERSION=\\\"${ver}\\\"")
 
 

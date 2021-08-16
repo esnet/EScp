@@ -7,7 +7,6 @@
 #include <sys/mman.h>
 #include <sys/time.h>
 #include <unistd.h>
-#include <pthread.h>
 #include <fcntl.h>
 #include "args.h"
 #include "file_io.h"
