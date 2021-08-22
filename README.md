@@ -45,7 +45,7 @@ positional arguments:
 
 optional arguments:
   -h, --help            show this help message and exit
-  -P PORT, --port PORT  Port for SSH[:DTN]
+  -P PORT, --port PORT  Port for SSH[/DTN]
   -q, --quiet
   -v, --verbose
   --args_dst ARG        Arguments to DST DTN Executable
@@ -89,6 +89,9 @@ Compiling EScp requires modern versions of CMake, Yasm, & Python 3.
   # optionally
   ctest        # Run test framework
   make install # Install EScp and dtn binary
+  make package # Create DEB/RPM/TGZ packages
+
+
 ```
 
 TUNING
@@ -133,9 +136,9 @@ DEBUGGING
 
   Logging uses hardcoded files created in /tmp. The logs are:
 
-    `/tmp/escp.log`: Log output from EScp script
-    `/tmp/dtn.rx.log`: DTN Receive logs, located on receiving system
-    `/tmp/dtn.tx.log`: DTN Transmit logs
+    /tmp/escp.log: Log output from EScp script
+    /tmp/dtn.rx.log: DTN Receive logs, located on receiving system
+    /tmp/dtn.tx.log: DTN Transmit logs
 
   You can also do things like enable memory checking (see valgrind example),
   profilers, and so on. Here is an example:
@@ -149,7 +152,6 @@ DEBUGGING
   dtn_args = --log-file="/tmp/valgrind.rx.log" /home/cshiflett/dtn/b/dtn --nodirect
 
 ```
-
 
   Lastly, you can debug the application directly using traditional tools
   like gdb. If you go this route you probably want to edit the CMakeFile

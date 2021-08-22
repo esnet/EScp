@@ -473,7 +473,8 @@ class EScp:
     parser.add_argument('files', metavar='FILE', nargs='*',
                         help='[SRC] ... [DST], where DST is HOST:PATH')
 
-    parser.add_argument('-p','--port', metavar='PORT', type=int, help="Port for DTN application" )
+    parser.add_argument('-P','--port', metavar='PORT',
+                        help="Port for SSH[/DTN]" )
     parser.add_argument('-q','--quiet', action='store_const', const=1)
     parser.add_argument('-r','--recursive', action='store_const', const=1)
     parser.add_argument('-v','--verbose', action='store_const', const=1)

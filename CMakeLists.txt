@@ -44,13 +44,21 @@ include(CPack)
 
 
 # Externals
+ExternalProject_Add(nasm_project
+  URL https://www.nasm.us/pub/nasm/releasebuilds/2.15.05/nasm-2.15.05.tar.gz
+  URL_HASH SHA256=9182a118244b058651c576baa9d0366ee05983c4d4ae1d9ddd3236a9f2304997
+  CONFIGURE_COMMAND ./configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/nasm
+  BUILD_COMMAND     make -j 24
+  INSTALL_COMMAND   make install
+  BUILD_BYPRODUCTS  libnuma.a
+  BUILD_IN_SOURCE   1
+)
+add_custom_target(nasm DEPENDS nasm_project)
 
 ExternalProject_Add(libnuma_project
-  URL https://github.com/numactl/numactl/archive/v2.0.13.zip
-  URL_HASH SHA256=a63d1c47f52a1abead1941d07a267fbfb7b70ff636cef0f5583aa1f720e57f3f
+  URL https://github.com/numactl/numactl/archive/v2.0.14.zip
+  URL_HASH SHA256=ca43834936f9f86bb796deacde5948cf5a9f163862a7e2e00981bf85dc56231f
 #  GIT_REPOSITORY    https://github.com/numactl/numactl.git
-#  GIT_TAG           v2.0.13
-#  GIT_TAG           5d9f16722e3df49dc618a9f361bd482559695db7
   CONFIGURE_COMMAND ./autogen.sh && ./configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/libnuma
   BUILD_COMMAND     make -j 24
   INSTALL_COMMAND   make install
@@ -62,11 +70,11 @@ add_library(libnuma STATIC IMPORTED)
 set_property(TARGET libnuma PROPERTY IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/libnuma/lib/libnuma.a)
 add_dependencies(libnuma libnuma_project)
 
-
 ExternalProject_Add(isa-l_crypto_project
   URL https://github.com/intel/isa-l_crypto/archive/v2.23.0.zip
   URL_HASH SHA256=c27c01d68fcfcbae77bfdf19341f7376261824fa127a43409397004e10f3b2ae
-  CONFIGURE_COMMAND ./autogen.sh && ./configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/isal
+  CONFIGURE_COMMAND ./autogen.sh && ./configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/isal PATH=${CMAKE_CURRENT_BINARY_DIR}/nasm/bin:$ENV{PATH}
+  DEPENDS           nasm
   BUILD_COMMAND     make -j 24
   INSTALL_COMMAND   make install
   BUILD_BYPRODUCTS  libisal_crypto.a
