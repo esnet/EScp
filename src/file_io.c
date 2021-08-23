@@ -231,16 +231,10 @@ struct file_stat_type* file_next( struct file_object* fob,
   VRFY( pthread_mutex_lock( &file_next_lock )==0, "pthread_lock" );
 
   if (file_no) {
-
-    if ( file_name &&
-        ( !file_list[(file_no-1) % FILE_LIST_SZ].state ||
-           file_list[(file_no-1) % FILE_LIST_SZ].state == 2 )
-      )
-    {
-      file_add_raw( file_name, file_no );
-    }
-
     curfile = file_nameget(file_no-1);
+    if (file_name)
+      // after potential wait on slot, add filename and update state
+      file_add_raw( file_name, file_no );
   } else
     curfile = file_nameget(file_stat_count);
 
