@@ -12,7 +12,7 @@
 static int cmp_block( const void *x, const void* y ) {
   const struct esshm_block **a, **b;
 
-  a=(const struct esshm_block**) x; 
+  a=(const struct esshm_block**) x;
   b=(const struct esshm_block**) y;
 
   if (a[0]->op.offset > b[0]->op.offset)
@@ -55,13 +55,13 @@ int main(int argc, char** argv) {
 
   while (1) {
     do_wait=0;
-    do { 
+    do {
       // Get a block and then sort it based on offset
 
       while ( (b = esshm_fetch_nowait(ep)) ) {
         if (b) {
           block[block_count++] = b;
-          DBG("fetch nowait block offset=%zX bc=%d", 
+          DBG("fetch nowait block offset=%zX bc=%d",
               b->op.offset, block_count);
         }
         do_wait=0;
@@ -101,6 +101,11 @@ int main(int argc, char** argv) {
 
       if (offset > (16ULL * 1024 * 1024 * 1024 ) ) {
         b->op.sz = 0;
+      }
+
+      {
+        uint8_t* buf = b->op.buf + ( (uint64_t) ep );
+        DBG("-> %08X \n", file_hash(buf, b->op.sz, 0) );
       }
 
       esshm_complete(ep, b);

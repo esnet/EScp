@@ -14,6 +14,7 @@
 
 static struct esshm_params* esshm=0; // shared memory global struct
 static __thread int esshm_QD=0;      // Keep track of per thread QD
+static uint64_t esshm_baseaddr=0;
 
 int shmem_open( const char* filename, int flags, ... ) {
   VRFY( esshm, "esshm must be initialized before operations" );
@@ -56,7 +57,7 @@ void* shmem_fetch( void* arg ) {
   struct uring_op* op = fob->pvdr;
   */
   struct esshm_block* block=NULL;
-  int bn;
+  int bn, found=0, i;
 
 
   if ( esshm_QD >= esshm->QD ) {
@@ -64,14 +65,29 @@ void* shmem_fetch( void* arg ) {
     return 0;
   }
 
-  bn = (esshm_QD * esshm->thread_count) + fob->id;
-  block = &esshm->block[bn];
-  memset( block, 0, sizeof(struct esshm_block) );
+  VRFY( pthread_mutex_lock( &esshm->block_lock ) == 0, );
+
+  while (!found) {
+
+    for (i=0; i< esshm->QD; i++) {
+      bn = (i * esshm->thread_count) + fob->id;
+      block = &esshm->block[bn];
+
+      if ( ! block->state ) {
+        memset( block, 0, sizeof(struct esshm_block) );
+        found=1;
+        break;
+      }
+    }
+
+    if (!found)
+      pthread_cond_wait( &esshm->fetch_cv, &esshm->block_lock );
+
+  }
 
   {
     uint64_t param_sz = (sizeof(struct esshm_params) + 4095) & ~4095 ;
-    block->op.buf = (uint8_t*)
-      (((uint64_t) esshm)+param_sz+(bn*esshm->block_sz));
+    block->op.buf = (uint8_t*) (param_sz+(bn*esshm->block_sz));
   }
 
   block->state=1;
@@ -81,6 +97,7 @@ void* shmem_fetch( void* arg ) {
   XLOG("[%2d] file_shmemfetch: returned bn=%d bs=%X buf=%zX",
     fob->id, bn, esshm->block_sz, (uint64_t) block->op.buf );
 
+  VRFY( pthread_mutex_unlock( &esshm->block_lock ) == 0, );
   return block;
 }
 
@@ -102,7 +119,7 @@ void* shmem_submit( void* arg, int32_t* sz, uint64_t* offset ) {
   if ( esshm_QD <= 0 )
     return 0;
 
-  if ( finished ) 
+  if ( finished )
     return 0;
 
   XLOG("lock: file_shmemsubmit");
@@ -157,7 +174,7 @@ void* shmem_submit( void* arg, int32_t* sz, uint64_t* offset ) {
 
   {
     uint64_t param_sz = (sizeof(struct esshm_params) + 4095) & ~4095 ;
-    ret->op.buf = (uint8_t*)(((uint64_t) esshm)+param_sz+(bn*esshm->block_sz));
+    ret->op.buf = (uint8_t*)(param_sz+(bn*esshm->block_sz));
   }
 
   XLOG("SHMEM submit;  found complete block  sz=%X os=%zX", *sz, *offset);
@@ -192,6 +209,24 @@ void* shmem_cleanup( void* arg ) {
   return 0;
 }
 
+void* shmem_get( void* arg, int32_t key ) {
+  struct posix_op* op = (struct posix_op*) arg;
+
+  switch ( key ) {
+    case FOB_SZ:
+      return (void*) op->sz;
+    case FOB_OFFSET:
+      return (void*) op->offset;
+    case FOB_BUF:
+      return (void*) (op->buf + esshm_baseaddr);
+    case FOB_FD:
+      return (void*) ((uint64_t) op->fd);
+    default:
+      VRFY( 0, "Bad key passed to posixset" );
+  }
+}
+
+
 int shmem_init( struct file_object* fob ) {
   static void* shm_region=0;
 
@@ -225,6 +260,8 @@ int shmem_init( struct file_object* fob ) {
 
     shm_region = mmap(NULL, shm_sz, PROT_READ|PROT_WRITE, MAP_SHARED, res, 0);
     VRFY( shm_region != (void*) -1UL, );
+
+    esshm_baseaddr = (uint64_t) shm_region;
 
     memset(shm_region, 0, shm_sz);
 
@@ -277,7 +314,7 @@ int shmem_init( struct file_object* fob ) {
   fob->flush    = file_posixflush;
   fob->fetch    = shmem_fetch;
   fob->complete = shmem_complete;
-  fob->get      = file_posixget;
+  fob->get      = shmem_get;
   fob->set      = file_posixset;
 
   fob->open     = shmem_open;

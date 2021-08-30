@@ -29,7 +29,6 @@ struct esshm_block {
   struct posix_op op;
   uint8_t  state;
   uint16_t tid;
-  uint64_t xsum;
 } __attribute__ ((aligned(64)));
 
 struct esshm_params {

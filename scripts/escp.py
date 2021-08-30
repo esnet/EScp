@@ -87,18 +87,23 @@ try:
 except:
   pass
 
-logging.info("Starting EScp: %s" % ESCP_VERSION)
-
-def human_readable(number, figs):
+def human_readable(number, figs, bits=False):
   si_prefix = " KMGTPE"
 
   divisor = 10000
   if figs < 4:
     divisor = 1000
 
-  while (number / divisor) > 1:
-    number = number/1024;
-    si_prefix = si_prefix[1:]
+  if not bits:
+    while (number / divisor) > 1:
+      number /= 1024;
+      si_prefix = si_prefix[1:]
+  else:
+    number *= 8
+    while (number > 1000):
+      number /= 1000
+      si_prefix = si_prefix[1:]
+
 
   if number < 1:
     number = 1
@@ -110,7 +115,7 @@ def human_readable(number, figs):
 
   return "%*.*f%s" % (sig_figs, fraction, number, si_prefix[:1])
 
-def show_progress( number, start_time, window, file_name, file_total=False ):
+def show_progress( number, start_time, window, file_name, file_total=False, bits=False ):
   try:
     bites = int(number)
     y,x = window.getmaxyx()
@@ -120,14 +125,14 @@ def show_progress( number, start_time, window, file_name, file_total=False ):
       fi = fi[:x-30] + "..."
     fill = x - len(fi)
 
-    bytes_left = file_total - bites
-
-    if bytes_left < 0:
-      bytes_left = 0;
-
     rate = bites/(time.time() - start_time)
 
     if file_total:
+      bytes_left = file_total - bites
+
+      if bytes_left < 0:
+        bytes_left = 0;
+
       eta = bytes_left/rate
       eta = int(eta)
 
@@ -140,19 +145,23 @@ def show_progress( number, start_time, window, file_name, file_total=False ):
       progress = "%2.0f%% %sB %sB/s %s" % (
         (bites/file_total)*100,
         human_readable(bites, 4),
-        human_readable(rate, 2),
+        human_readable(rate, 2, bits),
         eta )
     else:
 
-      progress = "%sB %sB/s" % (
+      units = "b" if bits else "B"
+
+      progress = "%sB %s%s/s" % (
         human_readable(bites, 4),
-        human_readable(rate, 2),
+        human_readable(rate, 2, bits),
+        units
         )
 
 
     sys.stdout.write("\r%s%*s" % ( fi, fill, progress ) )
   except Exception as e:
     logging.debug("show_progress got an error: %s", e)
+    raise(e)
     pass
 
 def handler_ctrlc(signal, frame):
@@ -290,7 +299,7 @@ def mgmt_reader( stream, stat_queue, mgmt_queue, name ):
     print ("Not recognized  '%s'" % line)
 
 
-def progress_bar( rx_queue, tx_queue ):
+def progress_bar( rx_queue, tx_queue, bits=False ):
   file_count = 0
   file_completed = 0
 
@@ -375,7 +384,7 @@ def progress_bar( rx_queue, tx_queue ):
        if res == "STAT":
          m = str(msg)
          logging.debug("TX got STAT %s" % m);
-         show_progress(msg, start_time, window, file_open)
+         show_progress(msg, start_time, window, file_open, bits=bits)
          continue
 
        logging.debug("TX got Unknown operator '%s' %s" % (res, msg) )
@@ -385,7 +394,7 @@ def progress_bar( rx_queue, tx_queue ):
      except Exception as e:
        exc_type, exc_value, exc_traceback = sys.exc_info()
        traceback.print_tb(exc_traceback, limit=1, file=sys.stdout)
-       raise ValueError("Unexpected exception %s" % type(e))
+       raise(e)
        break
 
      if not got_results:
@@ -476,9 +485,13 @@ class EScp:
     parser.add_argument('-P','--port', metavar='PORT',
                         help="Port for SSH[/DTN]" )
     parser.add_argument('-q','--quiet', action='store_const', const=1)
-    parser.add_argument('-r','--recursive', action='store_const', const=1)
     parser.add_argument('-v','--verbose', action='store_const', const=1)
     parser.add_argument('-l','--license', action='store_const', const=1)
+
+    parser.add_argument('--bits', action='store_const', const=1,
+                         help="Show progress in bits/s")
+    parser.add_argument('--direct', action='store_const', const=1,
+                         help="Enable direct I/O")
 
     parser.add_argument('--args_dst', metavar='ARG', type=str,
                         help="Arguments to DST DTN Executable")
@@ -500,7 +513,6 @@ class EScp:
     if args.license:
       print (LICENSE)
       sys.exit(0)
-
 
     if args.version:
       print ("EScp: %s" % ESCP_VERSION )
@@ -603,10 +615,16 @@ class EScp:
     args_src += ["--managed", "-c %s/%d" % (ip_addr, dtn_port)]
     args_dst += ["-c", "%s/%d" % (ip_addr, dtn_port) ]
 
+    if not self.args.direct:
+      args_src += ["--nodirect",]
+      args_dst += ["--nodirect",]
+
     if self.args.verbose:
       args_src += [ "--verbose", "--logfile", "/tmp/dtn.tx.log" ]
       args_dst += [ "--verbose", "--logfile", "/tmp/dtn.rx.log" ]
       logging.basicConfig(filename='/tmp/escp.log', level=logging.DEBUG)
+
+    logging.info("Starting EScp: %s" % ESCP_VERSION)
 
     if (self.args.args_src):
       args_src += shlex.split(self.args.args_src);
@@ -700,7 +718,7 @@ class EScp:
     self.m_thread.start()
 
     # time.sleep(0.1)
-    progress_bar( self.rx_stat, self.tx_stat )
+    progress_bar( self.rx_stat, self.tx_stat, self.args.bits )
 
     self.m_thread.join()
 
@@ -719,6 +737,7 @@ if __name__ == "__main__":
   signal.signal(signal.SIGINT, handler_ctrlc)
 
   escp = EScp()
+
   try:
     escp.connect()
   except Exception as e:
