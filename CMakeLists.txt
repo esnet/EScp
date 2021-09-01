@@ -71,11 +71,11 @@ set_property(TARGET libnuma PROPERTY IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DI
 add_dependencies(libnuma libnuma_project)
 
 ExternalProject_Add(isa-l_crypto_project
-  URL https://github.com/intel/isa-l_crypto/archive/v2.23.0.zip
-  URL_HASH SHA256=c27c01d68fcfcbae77bfdf19341f7376261824fa127a43409397004e10f3b2ae
+  URL https://github.com/intel/isa-l_crypto/archive/v2.22.0.zip
+  URL_HASH SHA256=e19eb4736a41b595107e8ec1e94022f8cad3b66bd87b4ca90f1aaabefc7a1474
   CONFIGURE_COMMAND ./autogen.sh && ./configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/isal PATH=${CMAKE_CURRENT_BINARY_DIR}/nasm/bin:$ENV{PATH}
   DEPENDS           nasm
-  BUILD_COMMAND     make -j 24
+  BUILD_COMMAND     ${CMAKE_CURRENT_SOURCE_DIR}/scripts/build_isa-l.sh ${CMAKE_CURRENT_BINARY_DIR}
   INSTALL_COMMAND   make install
   BUILD_BYPRODUCTS  libisal_crypto.a
   BUILD_IN_SOURCE   1
