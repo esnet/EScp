@@ -2,19 +2,11 @@ EScp 0.6
 ========
 
 This is an early **BETA** release of EScp, an application for high speed
-data transfer. It is created to be a simple high performance transfer
-tool based on papers and presentations by Brian Tierney and Eli Dart
-at ESnet
-  [1](https://www.es.net/assets/Uploads/100G-Tuning-TechEx2016.tierney.pdf)
-  [2](https://www.es.net/assets/pubs_presos/eScience-networks.pdf)
-combined with my research on high speed file transport
-  [3](https://data-over-distance.ornl.gov/documents/s1t3-shiflett.pdf)
-  [4](https://www.nctatechnicalpapers.com/Paper/2016/2016-accelerating-big-data-applications-with-multi-gigabit-per-second-file-transfers/download)
-  [5](https://www.slideshare.net/jstleger/dpdk-summit-2015-aspera-charles-shiflett)
-while working at Aspera (later acquired by IBM).
+data transfer. It is designed to scale past 100 gbit/s transfer speeds,
+is a toolkit for testing and identifying transfer bottlenecks, and,
+provides a high performance API for block based transfers. Here are some
+features:
 
-The general set of features that may make this application different from
-traditional transfer tools:
 
   * Multiple TCP/IP streams per transfer ( 1/thread )
   * Lockless multi threaded application per file transferred
@@ -48,6 +40,9 @@ optional arguments:
   -P PORT, --port PORT  Port for SSH[/DTN]
   -q, --quiet
   -v, --verbose
+  -l, --license
+  --bits                Show progress in bits/s
+  --direct              Enable direct I/O
   --args_dst ARG        Arguments to DST DTN Executable
   --args_src ARG        Arguments to SRC DTN Executable
   --path_dst PATH       Path to DST DTN Executable
@@ -72,10 +67,9 @@ Recursive mode is implied by trying to transfer a directory.
 COMPILING
 =========
 
-Compiling EScp requires modern versions of CMake, Yasm, & Python 3.
-
+Compiling EScp requires modern versions of CMake & Python 3.
 ```
-  # apt install cmake yasm
+  # apt install cmake
 
   git clone git@github.com:esnet/EScp.git
   mkdir EScp/Build
@@ -83,12 +77,13 @@ Compiling EScp requires modern versions of CMake, Yasm, & Python 3.
   cmake ..
   make -j 24
 
-  # Make will pull in libnuma, isa-l_crypto, and liburing
+  # Make will pull in nasm, libnuma, isa-l_crypto, and liburing dependencies
   # to which the application will be statically linked.
+
+  make install # Install EScp and dtn binary
 
   # optionally
   ctest        # Run test framework
-  make install # Install EScp and dtn binary
   make package # Create DEB/RPM/TGZ packages
 
 

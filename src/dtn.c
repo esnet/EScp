@@ -1285,6 +1285,17 @@ void do_management( struct dtn_args* args ) {
         }
         break;
 
+      case 'EHLO':
+      case 'HELO':
+      case 'OLHE':
+      case 'OLEH':
+        {
+          int foo = 0xa599e2;
+          sprintf(buf, " %s%s !!", (char*) &foo, (char*) &foo);
+          MMSG("%s", buf);
+        }
+        break;
+
       case 'VERS':
       case 'SREV':
         MMSG("0.1");

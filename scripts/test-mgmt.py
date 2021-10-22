@@ -201,6 +201,11 @@ pprint.pprint("Receiver")
 res = s.rx_mgmt.get()
 pprint.pprint(res)
 
+# Need receive personality
+shm_args = [ './dtn-utility', res[1], "/tmp/shm.rx.log" ]
+s.rx_shm  = subprocess.Popen( shm_args, stdin=subprocess.PIPE,
+               stdout=subprocess.PIPE, stderr=subprocess.PIPE )
+
 # time.sleep(0.1)
 #escp.progress_bar( s.rx_stat, s.tx_stat )
 

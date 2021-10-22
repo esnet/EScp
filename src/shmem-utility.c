@@ -37,8 +37,6 @@ int main(int argc, char** argv) {
   struct esshm_block*  block[256];
   struct esshm_block*  b;
 
-  DBG("Start ESSHM client .01");
-
   if ( !argv[1] ) {
     printf("Usage: %s [shm-path] <log_file>\n", argv[0]);
     return 0;
@@ -48,6 +46,8 @@ int main(int argc, char** argv) {
 
   if (argv[2])
     debug = creat( argv[2], 0644 );
+
+  DBG("Start ESSHM client .01");
 
   if (!ep) {
     return 0;
