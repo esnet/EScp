@@ -126,6 +126,12 @@ struct dtn_args {
   uint64_t io_bytes;
   uint64_t session_id;
   uint8_t crypto_key[16];
+
+  bool do_affinity;
+  int cpumask_len;
+  uint8_t cpumask_bytes[32];
+  uint64_t nodemask;
+
   struct file_object *fob;
   struct sockaddr_storage sock_store[THREAD_COUNT];
 
@@ -149,6 +155,6 @@ extern struct statcntrs stat_cntr[THREAD_COUNT];
 struct dtn_args* args_get ( int argc, char** argv );
 char* human_write(uint64_t number, bool is_bytes);
 
-void affinity_set ();
+void affinity_set ( struct dtn_args* args );
 
 #endif

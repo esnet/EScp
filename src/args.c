@@ -26,31 +26,26 @@ uint64_t quiet =0;
 uint64_t managed =0;
 int      dtn_logfile=0;
 
-int cpumask_len;
-uint8_t cpumask_bytes[32];
-uint64_t nodemask=1;
-int Block_sz;
-
 struct statcntrs stat_cntr[THREAD_COUNT] __attribute__ ((aligned(64))) ;
 
 #pragma GCC diagnostic ignored "-Wmultichar"
 char si_prefix[] = " KMGTPE";
 
-void affinity_set () {
+void affinity_set ( struct dtn_args* args ) {
   int i=0;
+
+  if (!args->do_affinity)
+    return;
 
   cpu_set_t set;
   CPU_ZERO(&set);
 
-  for (i=0; i<12; i++) {
-    CPU_SET( i, &set );
+  for (i=0; i<(args->cpumask_len*8); i++) {
+    if (args->cpumask_bytes[i/8] & ( 1 << (i & 0x7) ))
+      CPU_SET( i, &set );
   }
 
-  for (i=24; i<36; i++) {
-    CPU_SET( i, &set );
-  }
-
-  set_mempolicy( MPOL_BIND, &nodemask, 64 );
+  set_mempolicy( MPOL_BIND, &args->nodemask, 64 );
   if ( sched_setaffinity(0, sizeof(set), &set) ) {
     perror("Setting CPU Affinity");
     exit(-1);
@@ -281,11 +276,12 @@ struct dtn_args* args_get ( int argc, char** argv ) {
         break;
       case 'cpum':
       case 'mupc':
+        args.do_affinity = true;
         cpumask_str = optarg;
         break;
       case 'memn':
       case 'nmem':
-        sscanf(optarg, "%zX", &nodemask);
+        sscanf(optarg, "%zX", &args.nodemask);
         break;
       case 'mgmt':
       case 'tmgm':
@@ -342,7 +338,7 @@ struct dtn_args* args_get ( int argc, char** argv ) {
         exit(0);
         break;
       case 'f':
-        VRFY ( file_add( optarg, 0 ) == 0, "adding file" ); 
+        VRFY ( file_add( optarg, 0 ) == 0, "adding file" );
         break;
       case 'b':
         args.block =human_read(optarg);
@@ -376,23 +372,48 @@ struct dtn_args* args_get ( int argc, char** argv ) {
     }
   }
 
-  if (!cpumask_str)
-    cpumask_str="fff";
+  if (args.do_affinity) {
+    int sig[2] = {0,0};
+    int len = strlen(cpumask_str);
 
-  VRFY( strlen(cpumask_str) < 128, "cpumask too long" );
-  for ( i=0; i < strlen(cpumask_str); i += 2 ) {
-    // Translate mask one byte at a time to avoid endian issues
-    sscanf( cpumask_str+i, "%02x", (int*) &cpumask_bytes[i/2] );
-    if ( strlen( cpumask_str+i ) == 1 )
-      // Shift
-      cpumask_bytes[i/2] *= 16;
+    VRFY( strlen(cpumask_str) < 64, "assert (cpumask < 64) failed" );
+
+    if (len > 32)
+      len = 32;
+
+    args.cpumask_len = (len+1) / 2;
+
+    for ( i=len; i>0 ; i-=2 ) {
+      int byte, pos;
+      pos = i - 2;
+      if (pos < 0)
+        sscanf( cpumask_str, "%01x", &byte );
+      else
+        sscanf( cpumask_str+pos, "%02x", &byte );
+
+      args.cpumask_bytes[(i-1)/2] = byte;
+    }
+
+    ((uint64_t*) args.cpumask_bytes)[0] = bswap_64(((uint64_t*) args.cpumask_bytes)[0]);
+    ((uint64_t*) args.cpumask_bytes)[1] = bswap_64(((uint64_t*) args.cpumask_bytes)[1]);
+
+
+    if (args.cpumask_len < 8) {
+      ((uint64_t*) args.cpumask_bytes)[0] >>= (( 8 - args.cpumask_len)*8);
+      sig[0] = len;
+    }
+    else if (args.cpumask_len < 16) {
+      ((uint64_t*) args.cpumask_bytes)[1] >>= (( 16 - args.cpumask_len)*8);
+      sig[0] = 16;
+      sig[1] = len - 16;
+    }
+
+    DBG("cpumask is %*.zX%*.zX (bytes=%d)",
+      sig[0], ((uint64_t*)args.cpumask_bytes)[0],
+      sig[1], ((uint64_t*)args.cpumask_bytes)[1],
+      args.cpumask_len);
+    DBG("Nodemask is %zX", args.nodemask );
   }
-  cpumask_len = strlen(cpumask_str) * 4 ;
-
-  DBG("cpumask is %zX (len=%d)",
-    bswap_64(((uint64_t*) cpumask_bytes)[0]),
-    cpumask_len);
-  DBG("Nodemask is %zX", nodemask );
 
   if (!args.block)
     args.block = 1 << 20;
@@ -439,7 +460,6 @@ struct dtn_args* args_get ( int argc, char** argv ) {
   DBG("engine=%s, QD=%d, BS=%d", args.io_engine_name, args.QD, args.block );
   if (args.thread_count>1)
     DBG("Thread count set to %d", args.thread_count );
-  Block_sz = args.block;
 
   DBG("Logging options are V=%zd M=%zd Q=%zd", verbose_logging, managed, quiet);
 

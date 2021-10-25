@@ -635,7 +635,7 @@ void* file_ioworker( void* arg ) {
   int did_work;
   uint32_t crc=0;
 
-  affinity_set();
+  affinity_set( dtn );
   fob = file_memoryinit( dtn, id );
   dtn->fob = fob;
 

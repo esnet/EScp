@@ -514,7 +514,7 @@ void* rx_worker( void* arg ) {
 
   DBG("[%2d] Accept connection", id);
 
-  affinity_set();
+  affinity_set( dtn );
 
   gettimeofday( &start, NULL );
   memset( &local, 0, sizeof(local) );
@@ -630,11 +630,13 @@ void* rx_worker( void* arg ) {
         fob->set( knob->token, FOB_TRUNCATE,  fi->block_sz + (fi->offset >> 8));
       }
 
+#ifdef O_CRC
       {
         uint8_t* buf = fob->get( knob->token, FOB_BUF );
         crc ^= file_hash( buf, fi->block_sz,
           ((fi->offset>>8)+sess.block_sz-1LL)/sess.block_sz );
       }
+#endif
 
       DBG("[%2d] Do FIHDR_SHORT crc=%08x fn=%d offset=%zx", id, crc, fi->file_no, fi->offset>>8);
 
@@ -741,7 +743,7 @@ void* tx_worker( void* args ) {
   if (protocol == AF_INET6)
     protocol_sz = sizeof(struct sockaddr_in6);
 
-  affinity_set();
+  affinity_set( dtn );
 
   id = __sync_fetch_and_add(&thread_id, 1);
   fob = file_memoryinit( dtn, id );
@@ -925,7 +927,9 @@ void* tx_worker( void* args ) {
       fi.hdr_type = FIHDR_SHORT;
       fi.block_sz = bytes_read;
 
+#ifdef O_CRC
       crc ^= file_hash( buf, bytes_read, (offset+dtn->block-1LL)/dtn->block );
+#endif
 
       VRFY( network_send(knob, &fi, 16, 16+bytes_read, true) > 0, );
       VRFY( network_send(knob, buf, bytes_read, 16+bytes_read, false) > 0, );
