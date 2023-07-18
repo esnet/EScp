@@ -45,10 +45,10 @@ include(CPack)
 
 # Externals
 ExternalProject_Add(nasm_project
-  URL https://www.nasm.us/pub/nasm/releasebuilds/2.15.05/nasm-2.15.05.tar.gz
-  URL_HASH SHA256=9182a118244b058651c576baa9d0366ee05983c4d4ae1d9ddd3236a9f2304997
-  CONFIGURE_COMMAND ./configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/nasm
-  BUILD_COMMAND     make -j 24
+  URL https://github.com/netwide-assembler/nasm/archive/refs/tags/nasm-2.16.01.zip
+  URL_HASH SHA256=aa9340cde57d097062781d236bcccd96089d4ab636d67b843bdfd183511a1854
+  CONFIGURE_COMMAND ./autogen.sh && ./configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/nasm
+  BUILD_COMMAND     make -j 24 && make manpages
   INSTALL_COMMAND   make install
   BUILD_BYPRODUCTS  libnuma.a
   BUILD_IN_SOURCE   1
@@ -56,8 +56,8 @@ ExternalProject_Add(nasm_project
 add_custom_target(nasm DEPENDS nasm_project)
 
 ExternalProject_Add(libnuma_project
-  URL https://github.com/numactl/numactl/archive/v2.0.14.zip
-  URL_HASH SHA256=ca43834936f9f86bb796deacde5948cf5a9f163862a7e2e00981bf85dc56231f
+  URL https://github.com/numactl/numactl/archive/refs/tags/v2.0.16.zip
+  URL_HASH SHA256=49a7cb6c7e0d95754d03a0b70ef7473e8598b6d76aee81b541d9afe742fe24c6
 #  GIT_REPOSITORY    https://github.com/numactl/numactl.git
   CONFIGURE_COMMAND ./autogen.sh && ./configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/libnuma
   BUILD_COMMAND     make -j 24
@@ -71,8 +71,8 @@ set_property(TARGET libnuma PROPERTY IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DI
 add_dependencies(libnuma libnuma_project)
 
 ExternalProject_Add(isa-l_crypto_project
-  URL https://github.com/intel/isa-l_crypto/archive/v2.22.0.zip
-  URL_HASH SHA256=e19eb4736a41b595107e8ec1e94022f8cad3b66bd87b4ca90f1aaabefc7a1474
+  URL https://github.com/intel/isa-l_crypto/archive/refs/tags/v2.24.0.zip
+  URL_HASH SHA256=653c13e46b3923d0f04021604d6c70e445335c9b54fd62bf5303860de7904d89
   CONFIGURE_COMMAND ./autogen.sh && ./configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/isal PATH=${CMAKE_CURRENT_BINARY_DIR}/nasm/bin:$ENV{PATH}
   DEPENDS           nasm
   BUILD_COMMAND     ${CMAKE_CURRENT_SOURCE_DIR}/scripts/build_isa-l.sh ${CMAKE_CURRENT_BINARY_DIR}
@@ -86,8 +86,8 @@ set_property(TARGET isal PROPERTY IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/
 add_dependencies(isal isa-l_crypto_project)
 
 ExternalProject_Add(liburing_project
-  URL https://github.com/axboe/liburing/archive/liburing-0.6.zip
-  URL_HASH SHA256=37b941f2196ee4e1344f533c3cd659a334cb66349c2c0811fd2821461f1ba2b3
+  URL https://github.com/axboe/liburing/archive/refs/tags/liburing-2.3.zip
+  URL_HASH SHA256=439651d535475e20b56d7b0f1e72708f30ee46f4b818d0993359d9372a39df27
   CONFIGURE_COMMAND ./configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/uring
   BUILD_COMMAND     make -j 24
   INSTALL_COMMAND   make install
