@@ -7,31 +7,22 @@
 #include <string.h>
 #include <errno.h>
 #include <netinet/in.h>
+#include <pthread.h>
 
 #include <stdio.h>
 #include <sys/time.h>
 
-// THREAD_COUNT must be a power of 2
-#define THREAD_COUNT 32
-#define THREAD_MASK (THREAD_COUNT-1)
+#include <syslog.h>
 
-#define DEFAULT_PORT 2222
-#ifndef O_VERSION
-#define O_VERSION "NA"
-#endif
-
-#define FILE_LIST_SZ 8192
+#define THREAD_COUNT  32
+#define ESCP_MSG_COUNT 16384
+#define ESCP_MSG_SZ    128
 
 extern uint64_t verbose_logging;
-extern uint64_t quiet;
-extern uint64_t managed;
-extern int      dtn_logfile;
 
-static inline void dtn_log( char* msg ) {
+/*
+static inline void dtn_log2( char* msg ) {
   int len = strlen(msg);
-
-  if (!managed)
-    if (write( STDERR_FILENO, msg, len ));
 
   if (dtn_logfile) {
     char buf[2300];
@@ -45,6 +36,8 @@ static inline void dtn_log( char* msg ) {
   }
   return;
 }
+*/
+
 
 #ifdef EBUG_VERBOSE
 // Debug, Verbose. For all those pesky debug statements that really
@@ -74,56 +67,45 @@ static inline void dtn_log( char* msg ) {
     dtn_log( bu );                                       \
   }
 
-#define MMSG(x, ...) if (managed) {                      \
-    char bu[1024];                                       \
-    int cnt;                                             \
-    cnt = snprintf(bu, 1024, x "\n", ##__VA_ARGS__ );    \
-    if (cnt >= 1)                                        \
-      if (write(1, bu, cnt)) {};                         \
-    dtn_log( bu );                                       \
+#define ERR(x, ...) {                                    \
+    char bu[2200];                                       \
+    snprintf( bu, 2100, "[ERR] " x "\n", ##__VA_ARGS__ );\
+    dtn_error( bu );                                     \
   }
 
 #define VRFY(x, a, ...) if (!(x))  {                       \
   char b[1024];                                            \
-  int eno=1,sz;                                            \
+  int sz;                                                  \
   (void) sz;                                               \
   if (errno) {                                             \
     sz=snprintf(b, 1000, "Err: " a " [%s:%d]: %s\n",       \
       ##__VA_ARGS__, __FILE__, __LINE__, strerror(errno)); \
-      eno = errno;                                         \
   } else {                                                 \
     sz=snprintf(b, 1000, "Err " a " [%s:%d]\n",            \
       ##__VA_ARGS__, __FILE__, __LINE__);                  \
   }                                                        \
-  if (managed) {                                           \
-    MMSG("ABRT\n%s", b);                                   \
-  }                                                        \
-  quiet = false;                                           \
-  dtn_log( b );                                            \
-  if (dtn_logfile) { close(dtn_logfile); dtn_logfile=0; }  \
-  exit(eno);                                               \
+  dtn_error(b);                                            \
+  usleep(100);                                             \
+  if (verbose_logging) abort();                            \
+  exit(-1);                                                \
 }
 
 struct dtn_args {
   bool do_server;
-  bool no_direct;
   bool do_ssh;
   bool do_crypto;
   bool do_hash;
-  bool managed;
   int file_count;
   int host_count;
-  char* host_name[THREAD_COUNT];
   int mtu;
   int block;
   int flags;
   int QD;
-  int disable_io;
-  int persist;
+  int64_t disable_io;
   char* io_engine_name;
   int io_engine;
   unsigned int window;
-  uint64_t io_bytes;
+
   uint64_t session_id;
   uint8_t crypto_key[16];
 
@@ -132,29 +114,71 @@ struct dtn_args {
   uint8_t cpumask_bytes[32];
   uint64_t nodemask;
 
-  struct file_object *fob;
-  struct sockaddr_storage sock_store[THREAD_COUNT];
+  int sock_store_count;
+  struct sockaddr_storage sock_store[THREAD_COUNT] __attribute__ ((aligned(64)));
 
-  char** opt_args;
-  int opt_count;
-
+  struct file_object *fob __attribute__ ((aligned(64)));
   int thread_id __attribute__ ((aligned(64)));
   int thread_count __attribute__ ((aligned(64)));
+  uint16_t active_port __attribute__ ((aligned(64)));
+
+
+  uint64_t debug_claim __attribute__ ((aligned(64)));
+  uint64_t debug_count __attribute__ ((aligned(64)));
+  uint8_t  debug_buf[ESCP_MSG_SZ*ESCP_MSG_COUNT];
+  uint64_t debug_poison;
+
+  uint64_t msg_claim   __attribute__ ((aligned(64)));
+  uint64_t msg_count   __attribute__ ((aligned(64)));
+  uint8_t  msg_buf[ESCP_MSG_SZ*ESCP_MSG_COUNT];
+  uint64_t msg_poison;
+
+  uint64_t bytes_io     __attribute__ ((aligned(64)));
+  uint64_t files_closed __attribute__ ((aligned(64)));
+  uint64_t files_open   __attribute__ ((aligned(64)));
+
 };
+extern struct dtn_args* ESCP_DTN_ARGS;
+extern uint64_t ESCP_DROPPED_MSG;
 
-struct statcntrs {
-  uint64_t total_rx;
-  uint64_t start_time;
-  uint64_t zc;
-  uint64_t reg;
-  uint64_t bytes_zc;
-  uint64_t bytes_read;
-} __attribute__ ((aligned(64))) ;
+static inline void dtn_log( char* msg ) {
+  int log_idx = __sync_fetch_and_add( &ESCP_DTN_ARGS->debug_claim, 1 );
+  log_idx = (log_idx % ESCP_MSG_COUNT) * ESCP_MSG_SZ;
 
-extern struct statcntrs stat_cntr[THREAD_COUNT];
-struct dtn_args* args_get ( int argc, char** argv );
-char* human_write(uint64_t number, bool is_bytes);
+  strncpy ( (char*) &ESCP_DTN_ARGS->debug_buf[log_idx], msg, ESCP_MSG_SZ );
+  (&ESCP_DTN_ARGS->debug_buf[log_idx])[ESCP_MSG_SZ-1]=0;
+  // write( STDERR_FILENO, msg, strnlen(msg, ESCP_MSG_SZ) );
 
+  // XXX: Increment shouldn't occur until (debug_count-1) == debug_claim
+
+  __sync_fetch_and_add( &ESCP_DTN_ARGS->debug_count, 1 );
+  return;
+}
+
+static inline void dtn_error( char* msg ) {
+  int log_idx = __sync_fetch_and_add( &ESCP_DTN_ARGS->msg_claim, 1 );
+  log_idx = (log_idx % ESCP_MSG_COUNT) * ESCP_MSG_SZ;
+
+  openlog("EScp", LOG_NDELAY|LOG_CONS|LOG_PID|LOG_PERROR, LOG_USER);
+  syslog(LOG_CRIT, "%s", msg);
+  closelog();
+
+  strncpy ( (char*) &ESCP_DTN_ARGS->msg_buf[log_idx], msg, ESCP_MSG_SZ );
+  (&ESCP_DTN_ARGS->msg_buf[log_idx])[ESCP_MSG_SZ-1]=0;
+
+  write( STDERR_FILENO, msg, strnlen(msg, ESCP_MSG_SZ) );
+
+  // XXX: Increment shouldn't occur until (debug_count-1) == debug_claim
+
+  __sync_fetch_and_add( &ESCP_DTN_ARGS->msg_count, 1 );
+  return;
+}
+
+
+struct dtn_args* args_new () ;
 void affinity_set ( struct dtn_args* args );
+struct sockaddr_storage dns_lookup( char*, char* );
+char* dtn_log_getnext();
+char* dtn_err_getnext();
 
 #endif

@@ -1,3 +1,8 @@
+** This tool still exists, but this documentation needs to be
+   updated. This is purely a placeholder and most of this may not apply
+   to the current version of DTN.
+
+
 DTN is a Linux tool to transfer files as quickly as possible using
 traditional API's. It is NUMA aware and tries to set reasonable
 defaults for transferring a file quickly.
@@ -82,13 +87,13 @@ zerocopy transfer solution), it is still best to select block sizes which fit
 into cache. The exception is when you need to match RAID array and/or storage
 requirements in which case the block size should be set to a multiple of that
 size. Minimizing block size is especially important when using URING, where a
-small block size and reasonable QD value provide optimum performance. 
+small block size and reasonable QD value provide optimum performance.
 
 An example block size value using URING could be as low as 64k (QD=4),  where
-as when using a large RAID array optimum performance could be using POSIX I/O 
-with a block size of 16M. 
+as when using a large RAID array optimum performance could be using POSIX I/O
+with a block size of 16M.
 
-For network I/O,  TCP Windows should be sized such that window is larger than 
+For network I/O,  TCP Windows should be sized such that window is larger than
 the RTT time between server and client. Typically the DTN default sz of 512MB
 should be sufficient,  however, if experiencing issues the window size should
 be tweaked to check for benefit.  Also useful is to change the TCP congestion
@@ -236,14 +241,14 @@ To Do
   - Add escp functionality, like pipe operator
 
 2) IO Engine
-  * io_uring should register files/buffers for faster access 
+  * io_uring should register files/buffers for faster access
       (waiting on Ubuntu support)
   -- Removing pipe feature as that is supported through SHM extension
 
 
 
-  
-  
+
+
 
 
 

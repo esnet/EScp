@@ -30,8 +30,9 @@ int file_dummyopen( const char* filename, int flags, ... ) {
 
   VRFY( pthread_mutex_lock(&dummy_lock) == 0, );
 
-  fd = ++dummy_fd_head;
-  VRFY( fd < THREAD_COUNT, );
+  fd = ++dummy_fd_head ;
+  VRFY( fd < THREAD_COUNT, "Dummy engine file count exceeded fd>%d",
+             THREAD_COUNT);
 
   memcpy( &dummy_sb[fd], &sb, sizeof(sb) );
 
@@ -41,10 +42,15 @@ int file_dummyopen( const char* filename, int flags, ... ) {
 }
 
 int file_dummystat( int fd, struct stat *sbuf ) {
+  memcpy ( sbuf, &dummy_sb[fd], sizeof (struct stat) );
   return 0;
 }
 
-int file_dummyclose( int fd ) {
+int file_dummytruncate( void*, int64_t ) {
+  return 0;
+}
+
+int file_dummyclose( void* ) {
   VRFY( pthread_mutex_lock(&dummy_lock) == 0, );
   --dummy_fd_head;
   pthread_mutex_unlock(&dummy_lock);
@@ -80,7 +86,7 @@ void* file_dummysubmit( void* arg, int32_t* sz, uint64_t* offset ) {
   }
 
   VRFY( pthread_mutex_lock(&dummy_lock)==0, );
-  file_sz = dummy_sb[fob->fd].st_size;
+  file_sz = dummy_sb[op->fd].st_size;
   pthread_mutex_unlock(&dummy_lock);
 
 
@@ -130,6 +136,7 @@ int file_dummyinit( struct file_object* fob ) {
   fob->open     = file_dummyopen;
   fob->close    = file_dummyclose;
   fob->fstat    = file_dummystat;
+  fob->truncate = file_dummytruncate;
 
   return 0;
 }

@@ -13,14 +13,13 @@
 
 void* file_posixfetch( void* arg ) {
   struct file_object* fob = arg;
-  struct posix_op* op = fob->pvdr;
+  // struct posix_op* op = fob->pvdr;
 
   if ( (fob->head - fob->tail) >= 1 )
     return 0;
 
   fob->head++;
-  op->fd = fob->fd;
-  op->truncate = 0;
+  // op->fd = fob->fd;
 
   return fob->pvdr;
 }
@@ -42,7 +41,6 @@ void* file_posixset( void* arg, int32_t key, uint64_t value ) {
       op->fd  = (int32_t) value;
       break;
     case FOB_TRUNCATE:
-      op->truncate= value;
       break;
     default:
       VRFY( 0, "Bad key passed to posixset" );
@@ -80,10 +78,10 @@ void* file_posixsubmit( void* arg, int32_t* sz, uint64_t* offset ) {
 
   if ( fob->tail < fob->head ) {
 
-    DBG( "[%2d] %s op fd=%d sz=%zd, offset=%zd",
+    DBG( "[%2d] %s op fd=%d sz=%zd, offset=%zd %ld:%ld",
       fob->id, fob->io_flags & O_WRONLY ? "write":"read",
       op->fd, fob->io_flags & O_WRONLY ? op->sz: fob->blk_sz,
-      op->offset );
+      op->offset, fob->tail, fob->head );
 
     if ( fob->io_flags & O_WRONLY )
       *sz = pwrite( op->fd, op->buf, op->sz, op->offset );
@@ -93,26 +91,34 @@ void* file_posixsubmit( void* arg, int32_t* sz, uint64_t* offset ) {
     offset[0] = op->offset;
     fob->tail++;
 
-    if (sz[0] == -1)
+    if (sz[0] == -1) {
       sz[0] = -errno;
+      VRFY(sz[0] < 0, "setting -errno failed");
+    }
     return (void*) op;
   }
 
   return 0;
 }
 
+int file_posixtruncate( void* arg, int64_t sz ) {
+  struct file_object* fob = arg;
+  struct posix_op* op = (struct posix_op*) fob->pvdr;
+
+  DBG( "[%2d] Truncate op fd=%d sz=%ld", fob->id, op->fd, sz );
+
+  return ftruncate( op->fd, sz );
+}
+
+int file_posixclose(void* arg) {
+  struct file_object* fob = arg;
+  struct posix_op* op = (struct posix_op*) fob->pvdr;
+
+  DBG( "[%2d] Close on fd=%d", fob->id, op->fd );
+  return close( op->fd );
+}
+
 void* file_posixcomplete( void* arg, void* arg2 ) {
-  struct posix_op* pop = arg2;
-
-  if ( pop->truncate ) {
-    /*
-    struct file_object* fob = arg;
-    DBG("[%2d] Applying truncate to fd=%d len=%zd",
-      fob->id, pop->fd, pop->truncate);
-    */
-    VRFY( ftruncate( pop->fd, pop->truncate ) == 0, );
-  }
-
   return 0;
 }
 
@@ -137,7 +143,8 @@ int file_posixinit( struct file_object* fob ) {
   fob->set      = file_posixset;
 
   fob->open     = open;
-  fob->close    = close;
+  fob->close    = file_posixclose;
+  fob->truncate = file_posixtruncate;
   fob->fstat    = fstat;
 
   return 0;

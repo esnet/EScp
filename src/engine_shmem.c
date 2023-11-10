@@ -299,7 +299,6 @@ int shmem_init( struct file_object* fob ) {
     }
 
     NFO("[%2d] SHM %s sz=%zd QD=%d tc=%d", fob->id, rand_path+9,  (fob->thread_count*fob->blk_sz*fob->QD) + param_sz, fob->QD, fob->thread_count )
-    MMSG("SHM\n%s", rand_path+9);
 
     VRFY( pthread_cond_broadcast( &file_next_cv ) == 0, );
   }

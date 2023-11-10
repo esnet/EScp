@@ -1,75 +1,70 @@
-EScp 0.6
+EScp 0.7
 ========
 
-This is an early **BETA** release of EScp, an application for high speed
-data transfer. It is designed to scale past 100 gbit/s transfer speeds,
-is a toolkit for testing and identifying transfer bottlenecks, and,
-provides a high performance API for block based transfers. Here are some
-features:
+*This is the development branch of EScp 0.7. Check tags to see if there are any release candidates.*
 
+ESCP 0.7 is the second major relase of EScp; EScp 0.6 was based on Python
+and C. EScp 0.7 is a re-write of the Python component in RUST, which
+improves performance, stability, and eases platform distribution.
+
+EScp is an application for high speed data transfer. It is designed to scale
+past 100 gbit/s while retaining features important to a modern transport
+framework. Some features include:
 
   * Multiple TCP/IP streams per transfer ( 1/thread )
-  * Lockless multi threaded application per file transferred
-  * Traditional pthreads based locking to handle assigning workers to files
-  * 0-Copy, shared memory, and page aligned memory layout (when blocksize < L3).
+  * Lockless multi threaded application
+  * ZeroCopy (When blocksize < L3), shared memory, and page aligned
   * AES-GCM 128 over the wire encryption, optimized for performance
   * Authentication to remote systems through SSH
-  * Hot spot optimized ( higher level functions use Python, lower level C/ASM )
-  * Swappable I/O Engines ( Currently: URING, SHM, DUMMY, & POSIX )
+  * Swappable I/O Engines ( Currently: DUMMY & POSIX )
   * Block based interface to transfering data
+  * Checksums, Direct I/O, API's.
 
-EScp is principally tested on Linux and it has successfully transferred PBs
-of data and millions of files. In this **BETA**, a distributed CRC checksum
-has been hard coded into the transfer work flow such that silent corruption
-of data should be unlikely, although caution is advised.
+EScp is tested on Linux and it has successfully transferred PBs of data
+and millions of files. That being said, this software is under active
+development and YMMV. Please reach out to the EScp with any success or
+failure stories.
 
 
 Usage
 =====
 
 ```
-usage: escp.py [-h] [-p PORT] [-q] [-r] [-v] [--args_dst ARG] [--args_src ARG] [--path_dst PATH] [--path_src PATH] [--version] [FILE [FILE ...]]
+Usage: escp [OPTIONS] <SOURCE>... <DESTINATION>
 
-EScp: Secure Network Transfer
+Arguments:
+  <SOURCE>...    Source Files/Path
+  <DESTINATION>  Destination host:<path/file> [default: ]
 
-positional arguments:
-  FILE                  [SRC] ... [DST], where DST is HOST:PATH
-
-optional arguments:
-  -h, --help            show this help message and exit
-  -P PORT, --port PORT  Port for SSH[/DTN]
-  -q, --quiet
-  -v, --verbose
-  -l, --license
-  --bits                Show progress in bits/s
-  --direct              Enable direct I/O
-  --args_dst ARG        Arguments to DST DTN Executable
-  --args_src ARG        Arguments to SRC DTN Executable
-  --path_dst PATH       Path to DST DTN Executable
-  --path_src PATH       Path to SRC DTN Executable
-  --version
+Options:
+  -P, --port <PORT>          Port [default: 1232]
+  -v, --verbose              Verbose
+  -q, --quiet                Quiet
+  -c, --cipher <CIPHER>      Pass <CIPHER> Cipher to SSH [default: ]
+  -i, --identity <IDENTITY>  Use <IDENTITY> Key for SSH authentication [default: ]
+  -l, --limit <LIMIT>        Limit transfer to <LIMIT> Kbit/s [default: 0]
+  -o, --option <OPTION>      Pass <OPTION> SSH option to SSH [default: ]
+  -p, --preserve             Preserve source attributes at destination
+  -r, --recursive            Copy recursively
+  -L, --license              Display License
+  -h, --help                 Print help
+  -V, --version              Print version
 
 Example:
 
-# Transfe file1 and file2 to server host using SSH port 22 and DTN port 2000
-escp -P 22:2000 file1 file2 host:/remoteDirectory
+# Transfe file1 and file2 to server host using SSH
+escp file1 file2 host:/remoteDirectory
 
-Note:
-
-When EScp is transferring a file, the `escp` script will run along with the
-`dtn` sender and receiver. The `dtn` sender and receiver use a separate port
-from the standard SSH connection, and that defaults to port 2222.
-
-Recursive mode is implied by trying to transfer a directory.
 
 ```
 
 COMPILING
 =========
 
-Compiling EScp requires modern versions of CMake & Python 3.
 ```
-  # apt install cmake
+  # First build C "DTN" library:
+
+  # apt install cmake libtool g++ libnuma-dev nasm
 
   git clone git@github.com:esnet/EScp.git
   mkdir EScp/Build
@@ -77,14 +72,38 @@ Compiling EScp requires modern versions of CMake & Python 3.
   cmake ..
   make -j 24
 
-  # Make will pull in nasm, libnuma, isa-l_crypto, and liburing dependencies
+  # Make will pull in libnuma and isa-l_crypto dependencies
   # to which the application will be statically linked.
 
-  make install # Install EScp and dtn binary
+  # FIXME (currently broken): make package # Create DEB/RPM/TGZ packages
 
-  # optionally
-  ctest        # Run test framework
-  make package # Create DEB/RPM/TGZ packages
+  # Now compile escp/dtn programs
+
+  cd ../rust
+
+  # This needs a relatively new vesion of cargo; If you get compile
+  # errors from system cargo/rust, then grab a new version using:
+
+  curl https://sh.rustup.rs -sSf | sh
+  # Follow prompts then add something like below to .bashrc
+  . "$HOME/.cargo/env"
+
+  cargo build
+  # or
+  # cargo build --release
+
+  # dtn and escp executables at target/{release,debug}/{escp,dtn}
+
+  # Typically escp wants to live in a system path:
+  cargo install --path . --root /usr/local --force
+
+  # DEVELOPMENT TOOLS:
+
+  cargo install bindgen-cli
+  # and flatbuffers-compiler
+  apt  install flatbuffers-compiler
+
+  # + GDB, valgrind,
 
 
 ```
@@ -92,66 +111,31 @@ Compiling EScp requires modern versions of CMake & Python 3.
 TUNING
 ======
 
-As EScp is oriented towards high speed file transfer, the application tries
-to expose any knobs that might be needed to optimize a transfer. These knobs
-include things like number of threads, block size, enable direct I/O, NUMA
-pinning, TCP window size, MTU, and so on. See README_dtn.md for more
-information on the knobs and how to optimize your application.
+Insert TEXT here
 
-Thus far I have been able to show transfers across the ESnet network
-(continental Unites States) at 100 Gbit/s. Currently transfers are bound
-by the network interface speed (which in turn is bound by the performance
-of the network).
-
-Once you have tuned the `dtn` tool to a point where you are happy, the
-next step is to create an escp.conf configuration. Here is an example:
-
-```
-  [escp]
-
-  dtn_args = -t 4 -b 1M --nodirect
-  dtn_path = /home/cshiflett/dtn/b/dtn
-```
-
-Here is a command line example which performs a network transfer, but reads in
-dummy data instead of reading data from disk. This is useful for benchmarking
-the performance of your network while not being constrained by the speed of
-your storage subsystem.
-
-```
-  escp --args_src="--engine=dummy" --args_dst="--engine=dummy" src_file dest:
-```
 
 DEBUGGING
 =========
 
-  Most bugs can be found by enabling verbose logging and following the logic
-  flow. In some cases you may need to increase/reduce the verbosity of the
-  logging, which in some cases involves enabling/disabling C macros in args.h.
+Most issues can be debugged solely by enabling verbose logs;
 
-  Logging uses hardcoded files created in /tmp. The logs are:
+  escp -v
 
-    /tmp/escp.log: Log output from EScp script
-    /tmp/dtn.rx.log: DTN Receive logs, located on receiving system
-    /tmp/dtn.tx.log: DTN Transmit logs
+This will create files /tmp/escp.log.client and /tmp/escp.log.server;
 
-  You can also do things like enable memory checking (see valgrind example),
-  profilers, and so on. Here is an example:
+For more complicated things, GDB is your friend.
 
-```
-  dtn_args = --log-file="/tmp/valgrind.tx.log" /home/cshiflett/dtn/b/dtn -t 4 -b 1M --engine=posix --nodirect
-  dtn_path = /usr/bin/valgrind
+  # Start server
+  gdb --args escp --mgmt /path/to/mgmt/socket --server dont care:
 
-  [receive_host]
-  dtn_path = /usr/bin/valgrind
-  dtn_args = --log-file="/tmp/valgrind.rx.log" /home/cshiflett/dtn/b/dtn --nodirect
+  # Start client
+  gdb --args escp --mgmt /path/to/mgmt/socket file localhost:
 
-```
+If you need to run the management sockets over the internet, you can
+use socat; something like:
 
-  Lastly, you can debug the application directly using traditional tools
-  like gdb. If you go this route you probably want to edit the CMakeFile
-  first to enable debugging (or check what the flags currently are), and
-  then go from there.
+  socat TCP4-LISTEN:1234 UNIX-CONNECT:/tmp/foo.sock
+  socat UNIX-RECVFROM:/tmp/foo.sock TCP4:yikes.com:1234
 
 
 SECURITY

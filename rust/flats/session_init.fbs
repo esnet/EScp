@@ -1,0 +1,25 @@
+// To recompile:
+//
+// flatc -r -b session_init.fbs
+// mv session_init_generated.rs ../src/session_init.rs
+//
+// flatc is very sensitive to the version of flatbuffers used and should match.
+// You may need to manually compile flatc from:
+//
+// https://github.com/google/flatbuffers
+
+table Session_Init {
+  version_major:   int32;
+  version_minor:   int32;
+  session_id:     uint64;
+  crypto_key:     [byte];
+  do_hash:          bool;
+  do_crypto:        bool;
+  do_verbose:       bool;
+  is_error:         bool;
+  message:        string;
+  bind_interface: string;
+  port_start:      int32;
+  port_end:        int32;
+}
+

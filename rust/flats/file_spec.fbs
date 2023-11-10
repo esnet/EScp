@@ -1,0 +1,53 @@
+// To recompile:
+//
+// flatc -r -b file_spec.fbs
+// mv file_spec_generated.rs ../src/file_spec.rs
+//
+// flatc is very sensitive to the version of flatbuffers used and should match.
+// You may need to manually compile flatc from:
+// 
+// https://github.com/google/flatbuffers
+
+
+/*
+
+How we handle placing files on the remote system: 
+
+By default all files specified end up at the root directory of target system: 
+
+for instance in escp foo/bar/blah /tmp/baz/blob host:target
+
+on host, the resultant tree would be target/{blah, blob}
+
+The exception is for directories, where we retain the directory structure; for
+instance if you specify escp recursive_dir host: and recursive_dir contains
+1/foo and 2/bar. The resultant host would contain 1/foo and 2/bar;
+
+Symlinks are a contentious issue; Time permitting we will do the right thing,
+but right now they are probably just ignored. Eventually, we will add
+a second 'links: [Link]' structure, which will be populated with symlinks
+assuming the user specified the correct flags.
+
+ */
+
+table ESCP_file_list { 
+  root: string;        // Ideally root path for files
+  files: [File];
+}
+
+table File {
+  fino: uint64;        // EScp mapping of blocks to files
+  name: string;        // Gets combined with root above. Ideally basename
+  mode: int8;
+  uid:  int32;
+  gid:  int32;
+  sz:   int64;
+  atim_sec:  uint64;
+  atim_nano: uint64;
+  mtim_sec:  uint64;
+  mtim_nano: uint64;
+  ctim_sec:  uint64;
+  ctim_nano: uint64;
+}
+
+root_type ESCP_file_list;

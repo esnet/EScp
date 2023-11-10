@@ -28,6 +28,7 @@
 #include <arpa/inet.h>
 #include <poll.h>
 #include <linux/tcp.h>
+#include <sys/random.h>
 
 #include <isa-l_crypto.h>
 
@@ -36,22 +37,19 @@
 
 #pragma GCC diagnostic ignored "-Wmultichar"
 
-int shutdown_in_progress __attribute__ ((aligned(64))) = 0 ;
-int thread_id __attribute__ ((aligned(64))) = 0 ;
-pthread_t thread[THREAD_COUNT];
+int      thread_id      __attribute__ ((aligned(64))) = 0;
+int      meminit     __attribute__ ((aligned(64))) = 0;
+uint64_t tx_filesclosed __attribute__ ((aligned(64))) = 0;
+
+pthread_t DTN_THREAD[THREAD_COUNT];
 
 int did_session_init __attribute ((aligned(64))) = false ;
 static struct sess_info sess;
-extern char* file_list[];
-extern uint64_t file_count;
-extern uint64_t file_completed;
 
 int crash_fd;
 
 struct tx_args {
   struct dtn_args* dtn;
-  struct sockaddr_storage* sock;
-  int persist;
 };
 
 struct rx_args {
@@ -100,93 +98,6 @@ struct crypto_hdr {
 
 uint64_t global_iv=0;
 
-struct statcntrs* aggregate_statcntrs( ) {
-  static struct statcntrs copy;
-  memset( &copy, 0, sizeof(copy) );
-
-  {
-    int i=0;
-    struct statcntrs copy_temp;
-
-    for (i=0; i<16; i++) {
-      memcpy( &copy_temp, &stat_cntr[i], sizeof(copy) );
-      copy.total_rx   += copy_temp.total_rx;
-      copy.zc         += copy_temp.zc;
-      copy.reg        += copy_temp.reg;
-      copy.bytes_zc   += copy_temp.bytes_zc;
-      copy.bytes_read += copy_temp.bytes_read;
-      if (copy_temp.start_time > copy.start_time)
-        copy.start_time = copy_temp.start_time;
-    }
-  }
-  return &copy;
-}
-
-void* status_bar ( void* arg ) {
-  struct timeval now;
-  struct statcntrs* copy;
-
-  uint64_t last_rx=0, last_time=0, now_time;
-
-  while ( __sync_fetch_and_add ( &shutdown_in_progress, 0 ) == 0 ) {
-    char buf[512];
-    int sz;
-
-    usleep ( 500000 );
-    gettimeofday( &now, NULL );
-    copy = aggregate_statcntrs();
-
-    if (!last_time) {
-      last_time = copy->start_time;
-    }
-
-    now_time = now.tv_sec * 1000000 + now.tv_usec ;
-
-    {
-      uint64_t delta = now_time - last_time;
-      uint64_t bytes = (copy->total_rx - last_rx) * 1000000 ;
-
-      sz = sprintf(buf, "\r %siB, %sbit/s    ",
-         human_write( copy->total_rx, true ),
-         human_write( bytes/delta, false )
-       );
-    }
-
-    if (!quiet)
-      if (write( 1, buf, sz )) {};
-
-    if (managed) {
-      MMSG("STAT\n%zd", copy->total_rx);
-    }
-
-    last_rx = copy->total_rx;
-    last_time = now_time;
-
-  }
-  DBG("[main] Status bar is finished");
-
-  return 0;
-}
-
-int xit( int code ) {
-  // X-it: dismount horse/leave ship
-
-  if (code == 0) {
-    DBG("Exiting... ");
-    MMSG("XIT");
-  } else {
-    DBG("Aborted... ");
-    MMSG("ABRT");
-  }
-
-
-  if (dtn_logfile) {
-    close(dtn_logfile);
-  }
-
-  exit(code);
-}
-
 static inline int io_fixed(
     int fd, void* buf, int sz, ssize_t (*func) (int, void*, size_t) )
 {
@@ -209,25 +120,6 @@ static inline int read_fixed( int fd, void* buf, int sz ) {
 
 static inline int write_fixed ( int fd, void* buf, int sz ) {
   return io_fixed( fd, buf, sz, (ssize_t (*) (int, void*, size_t)) write );
-}
-
-
-int read_newline( int fd, void* buf, int sz ) {
-  int i=0, res;
-  uint8_t* b = buf;
-  for (i=0; i< sz; i++) {
-    res = read( fd, b+i, 1 );
-    if ( res < 0 )
-      return res;
-    if (res == 0)
-      return i;
-    if ( b[i]  == '\n' ) {
-      b[i] = 0;
-      return i;
-    }
-  }
-
-  return i;
 }
 
 
@@ -340,23 +232,7 @@ int64_t network_recv( struct network_obj* knob, void* aad ) {
     memcpy( knob->buf, aad, 16 );
   }
 
-  if ( (fi->hdr_type == FIHDR_LONG) || (fi->hdr_type == FIHDR_END) ) {
-    struct file_info_long* fil = (struct file_info_long*) fi;
-    int read_sz = fil->hdr_sz - 16;
-    if (read_sz) {
-      bytes_read += read_sz;
-      VRFY(read_sz < 2000, "hdr_sz in FIHDR_LONG is 2k+n");
-      if ( read_fixed(knob->socket, knob->buf+16, read_sz) < 1 )
-        return 0;
-      if ( knob->do_crypto ) {
-        aes_gcm_dec_128_update( &knob->gkey, &knob->gctx,
-          knob->buf+16, knob->buf+16, read_sz );
-      }
-    }
-  }
-
-  if ( !did_init && ((fi->hdr_type ==  FIHDR_SHORT) ||
-                     (fi->hdr_type ==  FIHDR_LONG)) ) {
+  if ( !did_init && (fi->hdr_type ==  FIHDR_SHORT) ) {
     static struct sess_info s;
     int loop_count=0;
 
@@ -371,33 +247,42 @@ int64_t network_recv( struct network_obj* knob, void* aad ) {
 
     knob->dtn->thread_count = s.thread_count;
     knob->fob = file_memoryinit( knob->dtn, knob->id );
+    (void*) __sync_val_compare_and_swap ( &knob->dtn->fob, 0, (void*) knob->fob );
+    __sync_fetch_and_add(&meminit, 1);
     did_init=true;
     DBG("[%2d] Init IO mem ", knob->id );
   }
 
   if ( fi->hdr_type == FIHDR_SHORT ) {
     // Read into buffer from storage I/O
-    int sz;
-    uint64_t res;
     uint8_t* buffer;
 
-    bytes_read += fi->block_sz ;
+    bytes_read += 1 << fi->block_sz_packed  ;
 
+    VRFY( (knob->token=knob->fob->fetch(knob->fob)) != 0,
+          "IO Queue full. XXX: I should wait for it to empty");
+
+    /* XXX: UIO needs something like this:
     while ( (knob->token=knob->fob->fetch(knob->fob)) == 0 ) {
         // If no buffer is available wait unti I/O engine writes out data
         knob->token = knob->fob->submit(knob->fob, &sz, &res);
         VRFY(sz > 0, "write error");
         knob->fob->complete(knob->fob, knob->token);
     }
+    */
 
     buffer = knob->fob->get( knob->token, FOB_BUF );
 
-    if (read_fixed(knob->socket, buffer, fi->block_sz)<1)
+    DBG("[%2d] Read of %d sz", knob->id, 1 << fi->block_sz_packed);
+
+    if (read_fixed(knob->socket, buffer, 1 << fi->block_sz_packed )<1) {
+      DBG("[%2d] Returning 0 from network_recv because ... ", knob->id);
       return 0;
+    }
 
     if ( knob->do_crypto ) {
        aes_gcm_dec_128_update( &knob->gkey, &knob->gctx,
-         buffer, buffer, fi->block_sz );
+         buffer, buffer, 1 << fi->block_sz_packed );
     }
   }
 
@@ -406,8 +291,10 @@ int64_t network_recv( struct network_obj* knob, void* aad ) {
     uint8_t actual_hash[16];
 
     aes_gcm_dec_128_finalize( &knob->gkey, &knob->gctx, computed_hash, 16 );
-    if (read_fixed(knob->socket, actual_hash, 16)<1)
+    if (read_fixed(knob->socket, actual_hash, 16)<1) {
+      DBG("[%2d] Couldn't get auth tag... ", knob->id);
       return 0;
+    }
     VRFY( memcmp(computed_hash, actual_hash, 16) == 0,
       "Bad auth tag hdr=%d", fi->hdr_type  );
     bytes_read += 16;
@@ -477,27 +364,30 @@ int64_t network_send (
 };
 
 
+void dtn_waituntilready( void* arg ) {
+  struct dtn_args* dtn = arg;
+  while ( __sync_fetch_and_add(&dtn->fob, 0) == 0 )
+    usleep(10);
+}
+
 
 void* rx_worker( void* arg ) {
-  struct timeval start;
   struct rx_args* rx = arg;
   struct dtn_args* dtn = rx->dtn;
-  int incr=0, fd=0, sz;
-  uint32_t id=0, rbuf;
-  uint64_t file_cur=0, shutdown=0, res;
+  int fd=0;
+  uint32_t id=0, rbuf, crc=0;
 
-  uint64_t file_total=0;
-  uint32_t crc=0;
+  uint64_t file_cur=0;
 
   struct file_object* fob;
   struct file_info* fi;
-  struct file_stat_type* fs=0;
+  // struct file_stat_type* fs=0;
   struct network_obj* knob=0;
-  struct statcntrs local __attribute ((aligned(64))) ;
 
   uint8_t read_buf[16];
 
-
+  struct file_stat_type  fs;
+  struct file_stat_type* fs_ptr=0;
 
   socklen_t rbuf_sz = sizeof(rbuf) ;
 
@@ -509,20 +399,13 @@ void* rx_worker( void* arg ) {
 
   id = __sync_fetch_and_add(&dtn->thread_id, 1);
 
-  if (id==1)
-    MMSG("SESS\nAccept %d", id);
-
   DBG("[%2d] Accept connection", id);
 
   affinity_set( dtn );
 
-  gettimeofday( &start, NULL );
-  memset( &local, 0, sizeof(local) );
-  local.start_time = start.tv_sec * 1000000 + start.tv_usec;
-
-  while ( !shutdown ) {
+  while ( 1 ) {
     uint64_t read_sz=read_fixed( rx->conn, read_buf, 16 );
-    VRFY (read_sz == 16, "bad read (network)" );
+    VRFY (read_sz == 16, "bad read (network), read=%ld", read_sz );
 
     if ( !knob ) {
       knob = network_initrx ( rx->conn, read_buf, dtn );
@@ -534,8 +417,14 @@ void* rx_worker( void* arg ) {
         continue;
     }
 
-    if ( (read_sz=network_recv(knob, read_buf)) < 1 )
+    // network_recv will always read into buffer, but buffer is not
+    // yet associated with a file descriptor. Read into buffer
+    // only occurs if FIHDR_SHORT type is specified.
+
+    if ( (read_sz=network_recv(knob, read_buf)) < 1 ) {
+      DBG("[%2d] Bad read=%ld", id, read_sz);
       break;
+    }
 
     fob = knob->fob;
 
@@ -552,166 +441,85 @@ void* rx_worker( void* arg ) {
     }
 
 
-    if ( fi->hdr_type == FIHDR_END ) {
-      struct file_info_end* fi_end;
-      fi_end = (struct file_info_end*) fi;
-      if (fi_end->type == FIEND_SESS) {
-        DBG("[%2d] Got FIHDR_END", id);
-        shutdown = __sync_add_and_fetch(&shutdown_in_progress, 1);
-        MMSG("SESS\nTerminate");
-        continue;
-      }
-
-      if (fi_end->type == FIEND_FILE) {
-        struct file_close_struct* fc;
-
-        DBG("[%2d] Got FIHDR_FILE", id);
-
-        if ( fi_end->hash_is_valid )
-          fc = file_close( fob, fs, file_total, crc, 0, fi_end->hash, fi_end->workers );
-        else
-          fc = file_close( fob, fs, file_total, crc, 0, 0, fi_end->workers );
-
-        if (fc->flushing == fi_end->workers) {
-          DBG("[%2d] File %d is complete", id, fi_end->file_no);
-          VRFY( (fc->given_crc == fc->hash),
-            "Hash for %d is BAD %08X!=%08X !", fi_end->file_no,
-            fc->given_crc, fc->hash);
-        } else {
-          DBG("[%2d] Not closing file %d, because not complete", id,
-               fi_end->file_no);
-
-        }
-
-        crc=0;
-        continue;
-      }
-
-      DBG("[%2d] Unknown FIHDR_END type", id);
-
-      continue;
-    }
-
-    if ( fi->hdr_type == FIHDR_LONG ) {
-      struct file_info_long* fi_long = (struct file_info_long*) fi;
-      VRFY( fi_long->name_sz < 512, "file name is too long" );
-      fi_long->bytes[fi_long->name_sz-1] = 0;
-
-      fs = file_next( fob, fi_long->file_no, fi_long->bytes );
-      VRFY( fs, "opening file" );
-
-      if ( fi_long->file_sz &&
-           posix_fallocate(fs->fd, 0, fi_long->file_sz) ) {
-        perror("Allocating disk space for file\n");
-        xit(-1);
-      }
-
-      file_cur = fs->file_no;
-      fd = fs->fd;
-
-      local.total_rx += read_sz;
-
-      DBG("[%2d] Completed FIHDR_LONG", id);
-      continue;
-    }
-
     if (fi->hdr_type != FIHDR_SHORT) {
       VRFY(0, "Unkown header type %d", fi->hdr_type);
     }
 
     { // Do FIHDR_SHORT
-      // WARN: fi->offset bit twiddling based on intel byte order
+      int sz = 1 << fi->block_sz_packed;
+      uint64_t file_no = fi->file_no_packed >> 8;
+      uint64_t offset = fi->offset >> 8;
+      uint64_t res=0;
 
-      fob->set( knob->token, FOB_OFFSET, fi->offset >> 8);
-      fob->set( knob->token, FOB_SZ, fi->block_sz );
 
-      if ( (fob->io_flags & O_DIRECT) && (fi->block_sz & 0xfff) ) {
-        fob->set( knob->token, FOB_SZ,  (fi->block_sz & ~0xfff) + 0x1000 );
-        fob->set( knob->token, FOB_TRUNCATE,  fi->block_sz + (fi->offset >> 8));
+      fob->set( knob->token, FOB_OFFSET, offset );
+      fob->set( knob->token, FOB_SZ, sz );
+
+      if ( (fob->io_flags & O_DIRECT) && (sz < 4096) ) {
+        // Always read in at least 4K of data
+        fob->set( knob->token, FOB_SZ,  4096 );
       }
 
-#ifdef O_CRC
-      {
-        uint8_t* buf = fob->get( knob->token, FOB_BUF );
-        crc ^= file_hash( buf, fi->block_sz,
-          ((fi->offset>>8)+sess.block_sz-1LL)/sess.block_sz );
-      }
-#endif
-
-      DBG("[%2d] Do FIHDR_SHORT crc=%08x fn=%d offset=%zx", id, crc, fi->file_no, fi->offset>>8);
-
-
-      file_total += fi->block_sz;
-
-      while ( !fd || (file_cur != fi->file_no) ) {
+      while ( !fd || (file_cur != file_no) ) {
         // Fetch the file descriptor associated with block
 
-        VRFY( fi->file_no, "bad file_no" );
+        VRFY( file_no, "ASSERT: file_no != zero" );
 
-        fs = file_wait( fob, fi->file_no );
-        DBG("[%2d] Got fd=%d for fn=%d", id, fs->fd, fi->file_no);
+        fs_ptr = file_wait( file_no );
+        memcpy( &fs, fs_ptr, sizeof(struct file_stat_type) );
 
-        VRFY( fs->fd, "bad file descriptor %d", fs->fd );
+        DBG("[%2d] Got fd=%d for fn=%ld", id, fs.fd, file_no);
+        VRFY( fs.fd, "ASSERT: fd != zero" );
 
-        file_cur = fi->file_no;
-        fd = fs->fd;
+        file_cur = file_no;
+        fd = fs.fd;
       }
 
       fob->set( knob->token, FOB_FD, fd );
       fob->flush( fob );
+
+#ifdef O_CRC
+      {
+        uint8_t* buf = fob->get( knob->token, FOB_BUF );
+        crc ^= file_hash( buf, sz, offset/sess.block_sz );
+      }
+#endif
+
+      DBG("[%2d] Do FIHDR_SHORT crc=%08x fn=%ld offset=%zX sz=%d", id, crc, file_no, offset, sz);
+
+      while ( (knob->token = fob->submit(fob, &sz, &res)) ) {
+        // XXX: Flushes IO queue; we don't necessarily want to do that;
+        //      For instance when UIO is added back.
+
+        int64_t written;
+        VRFY(sz > 0, "[%2d] write error, fd=%zd fn=%ld", id,
+             (uint64_t)fob->get(knob->token, FOB_FD), file_no);
+        fob->complete(fob, knob->token);
+        written = __sync_add_and_fetch( &fs_ptr->bytes_total, sz );
+        __sync_fetch_and_add( &dtn->bytes_io, 1 );
+
+        DBG("[%2d] FIHDR_SHORT details: bytes=%08ld written=%08ld fn=%ld", id, fs_ptr->bytes, written, file_no );
+
+        if ( fs_ptr->bytes && fs_ptr->bytes <= written  ) {
+          if (fs_ptr->bytes != written) {
+            fob->truncate(fob, fs_ptr->bytes);
+            DBG("[%2d] FIHDR_SHORT: close with truncate fn=%ld ", id, file_no);
+          } else {
+            DBG("[%2d] FIHDR_SHORT: close on fn=%ld ", id, file_no);
+          }
+          fob->close(fob);
+          memset( fs_ptr, 0, sizeof(fs) );
+          __sync_fetch_and_add( &dtn->files_closed, 1 );
+        }
+      }
     }
-
-    while ( (knob->token = fob->submit(fob, &sz, &res)) ) {
-      VRFY(sz > 0, "write error, fd=%zd",
-           (uint64_t)fob->get(knob->token, FOB_FD));
-      fob->complete(fob, knob->token);
-    }
-
-
-    local.total_rx += read_sz;
-    local.reg += 1;
-    local.bytes_read += read_sz;
-
-    if ( (incr++ & 0xff) == 0xff ) // Update stat counter
-      memcpy( &stat_cntr[id&THREAD_MASK], &local, sizeof(local) );
   }
 
-  memcpy( &stat_cntr[id&THREAD_MASK], &local, sizeof(local) );
+  // memcpy( &stat_cntr[id&THREAD_MASK], &local, sizeof(local) );
   if (rx->conn > 1)
     close( rx->conn );
 
-  {
-    struct statcntrs* r;
-    float duration;
-    struct timeval now;
-    uint64_t now_time;
-    uint64_t tc;
-    memcpy ( &tc, &dtn->thread_count, sizeof(tc) );
-
-    if ( shutdown != tc ) {
-      DBG("[%2d] shutdown thread", id);
-      return 0;
-    }
-
-    gettimeofday( &now, NULL );
-    now_time = now.tv_sec * 1000000 + now.tv_usec ;
-
-    r = aggregate_statcntrs();
-    duration = (now_time - r->start_time) / 1000000.0;
-
-    NFO(
-      "\nReceiver Report:\n"
-      "Network= %siB, Elapsed= %.2fs, %sbit/s\n"
-      "# of reads = %zd, bytes/read = %zd",
-
-      human_write(r->total_rx, true),
-      duration, human_write(r->total_rx/duration,false),
-      r->reg, r->reg ? r->bytes_read/r->reg : 0
-
-    );
-
-    xit(0);
-  }
+  DBG("[%2d] Return from RX worker thread ... ", id);
   return 0;
 }
 
@@ -719,17 +527,15 @@ void* tx_worker( void* args ) {
 
   struct tx_args* arg = (struct tx_args*) args;
 
-  struct sockaddr_in* saddr = (struct sockaddr_in*) arg->sock;
+  struct sockaddr_in* saddr ;
   struct dtn_args* dtn = arg->dtn;
   int sock=0, id, file_no=-1;
-  uint64_t offset, incr=0;
+  uint64_t offset;
   int32_t bytes_read;
-  struct statcntrs local;
   struct file_stat_type* fs=0;
 
-  int protocol = saddr->sin_family;
+  int protocol = 0;
   int protocol_sz = sizeof(*saddr);
-  int did_work=0;
 
   uint32_t sbuf;
   struct file_object* fob;
@@ -737,11 +543,8 @@ void* tx_worker( void* args ) {
   struct network_obj* knob;
   void* token;
 
-  uint64_t file_total;
   uint32_t crc=0;
 
-  if (protocol == AF_INET6)
-    protocol_sz = sizeof(struct sockaddr_in6);
 
   affinity_set( dtn );
 
@@ -749,7 +552,22 @@ void* tx_worker( void* args ) {
   fob = file_memoryinit( dtn, id );
   fob->id = id;
 
-  DBG( "[%2d] thread start", id);
+  __sync_fetch_and_add(&meminit, 1);
+
+  (void*) __sync_val_compare_and_swap ( &dtn->fob, 0, (void*) fob );
+
+
+  DBG( "[%2d] tx_worker: thread start", id);
+
+  // Initialize network
+  saddr = (struct sockaddr_in*) &dtn->sock_store[id % dtn->sock_store_count];
+  protocol = saddr->sin_family;
+
+  if (protocol == AF_INET6)
+    protocol_sz = sizeof(struct sockaddr_in6);
+  else
+    VRFY( protocol == AF_INET, "INET family %d not expected connection %d",
+          protocol, id % dtn->sock_store_count );
 
   sbuf = dtn->window;
   socklen_t sbuf_sz = sizeof(sbuf);
@@ -769,27 +587,21 @@ void* tx_worker( void* args ) {
     connect(sock, (void *)saddr, protocol_sz),
     "Connecting to remote host" );
 
-  if (!id) {
-    MMSG("SESS\nConnected");
-  }
-
   VRFY( getsockopt( sock, IPPROTO_TCP, TCP_MAXSEG, &sbuf, &sbuf_sz) != -1, );
 
   if ( (sbuf != dtn->mtu) && ((sbuf+12) != dtn->mtu) ) {
     NFO("[%d] TCP_MAXSEG value is %d, requested %d", id, sbuf, dtn->mtu);
   }
 
-  {
-    struct timeval start;
-    gettimeofday( &start, NULL );
-    memset( &local, 0, sizeof(local) );
-    local.start_time = start.tv_sec * 1000000 + start.tv_usec;
-  }
-
   knob = network_inittx( sock, dtn );
   VRFY (knob != NULL, );
 
+  // Finish netork init
+  DBG("[%2d] tx_worker: connected and ready", id);
+
   if (!id) {
+    // Worker ID==0; Send "session begin" message
+    // FUTURE: Remove this; handle at RUST layer
     struct sess_info s;
 
     s.hdr_type=FIHDR_SESS;
@@ -802,244 +614,201 @@ void* tx_worker( void* args ) {
     VRFY( network_send( knob, &s, 16, 16, false ) > 0, "" );
   }
 
+
+  // Start TX transfer session
   while (1) {
+
     if (!fs) {
-      fs = file_next( fob, 0, 0 );
+      fs = file_next( id );
 
       if ( !fs ) {
-
-        DBG("[%2d] Finished reading file(s), send termination", id );
-        struct file_info_end fi;
-        fi.hdr_type = FIHDR_END;
-        fi.hdr_sz = 16;
-        fi.type = FIEND_SESS;
-
-        VRFY( network_send( knob, &fi, 16, 16, false ) > 0, "" );
+        DBG("[%2d] Finished reading file(s), exiting...", id );
         break;
       }
 
       file_no = fs->file_no;
-      crc= file_total= 0;
-      did_work=0;
+      crc= 0;
+    }
+
+    if (!fs->fd) {
+      DBG("[%2d] tx_worker exiting because fd provided is zero", id );
+      break;
     }
 
     while ( (token=fob->fetch(fob)) ) {
+      // We get as many I/O blocks as we can, and populate them
+      // with operations. The assumption is that the file is large
+      // and we will be able to read all of these. With small files
+      // the extra I/O operations are superflus.
+
       offset = __sync_fetch_and_add( &fs->block_offset, 1 );
+      DBG("[%2d] fs->block_offset result: %ld %lX state=%lX", id, offset, (uint64_t) &fs->block_offset, (uint64_t) fs->state);
+
       offset *= dtn->block;
+
       fob->set(token, FOB_OFFSET, offset);
       fob->set(token, FOB_SZ, dtn->block);
-
-      if (!offset) {
-        // We're the first to read from the file, send FIHDR_LONG:
-        struct file_info_long fil;
-
-        if (!did_work) {
-          file_mark_worker( fs, fob->id );
-          did_work=1;
-        }
-
-        memset( &fil, 0, sizeof(fil) );
-
-        fil.name_sz = strlen ( fs->name );
-        strncpy( (char*) fil.bytes, fs->name, 5000 );
-        {
-          char* tmp = basename( (void*) fil.bytes );
-          fil.name_sz = strlen(tmp);
-          memmove( fil.bytes, tmp, fil.name_sz );
-          fil.bytes[fil.name_sz++] = 0;
-        }
-
-        fil.hdr_type = FIHDR_LONG;
-        fil.hdr_sz = 32 + fil.name_sz;
-        fil.file_no = file_no;
-
-        VRFY( network_send(knob, &fil, fil.hdr_sz, fil.hdr_sz, false) > 0, );
-      }
-
       fob->set(token, FOB_FD, fs->fd);
     }
 
+
     token = fob->submit( fob, &bytes_read, &offset );
+    if (!token) {
+      DBG("[%2d] fob->submit resulted in an emptry result", id);
+      continue;
+    }
 
-    if (bytes_read < 1) {
+    VRFY( fs->poison == 0x4BADC01F, "Someone took our poison!");
+    VRFY( fs->fd >= 0, "Someone took our FD!");
 
-      if (bytes_read == 0) { // EOF
-        struct file_close_struct* fc;
-        struct file_info_end fie = {0};
+    if (bytes_read <= 0) {
+      if (bytes_read == 0 /* EOF */ ) {
 
-        DBG("[%2d] Got EOF reading fd=%d", id, fs->fd );
-        if (!did_work) {
-          DBG("[%2d] But not sending EOF, because I didn't do anything.", id );
-          fc = file_close( fob, fs, file_total, crc, 1, 0, 0 );
-          // VRFY(fc,)
-          fs = 0;
-          continue;
+        int wipe = 0;
+
+        if (file_iow_remove( fs, id ) == (1UL << 62)) {
+          fob->close( fob );
+          int64_t res = __sync_add_and_fetch( &tx_filesclosed, 1 );
+          DBG("[%2d] Worker finished and closing file=%ld files_closed=%ld slot=%016lx", id, fs->file_no, res, (uint64_t) fs);
+          wipe ++;
+        } else {
+          DBG("[%2d] Worker finished with fn=%ld", id, fs->file_no);
         }
 
-        fc = file_close( fob, fs, file_total, crc, 0, 0, 0 );
-        VRFY(fc,)
+        while ( (token=fob->submit( fob, &bytes_read, &offset )) ) {
+          // Drain I/O queue of stale requests
+          fob->complete(fob, token);
+        };
 
-        fie.hdr_type = FIHDR_END;
-        fie.hdr_sz = 32;
-        fie.type = FIEND_FILE;
-        fie.workers = fc->workers;
-        fie.hash    = fc->hash;
-        fie.sz      = fc->sz;
-        fie.hash_is_valid = fc->did_close;
-        fie.file_no = fc->file_no;
+        if (wipe) {
+          uint64_t res;
+          DBG("[%2d] Wiping %ld", id, fs->file_no);
+          memset((void*) (((uint64_t) fs)+64), 0, sizeof(struct file_stat_type)-64 );
+          res = __sync_val_compare_and_swap(&fs->state, 1UL << 62, 0);
+          VRFY (res == (1UL << 62), "[%2d] Bad swap %lX", id, res);
+        }
 
-        DBG("[%2d] send file_close on %s:%d workers=%d sz=%zd",
-          id, fc->fn, fc->file_no, fc->workers, fc->sz);
-
-
-        VRFY( network_send( knob, &fie, fie.hdr_sz, fie.hdr_sz, false ) > 0, "" );
         fs = 0;
         continue;
       }
 
-      VRFY( bytes_read >= 0, "Read Error" );
+      VRFY( bytes_read >= 0, "[%2d] Read Error fd=%d fn=%ld offset=%ld", id, fs->fd, fs->file_no, offset );
       NFO("read error: %s", strerror(errno) );
       return (void*) -1;
     }
 
-    if (!did_work) {
-      file_mark_worker( fs, fob->id );
-      did_work=1;
-    }
-
-
-    file_total += bytes_read;
-
-    local.reg += 1;
-    local.bytes_read += bytes_read;
-    local.total_rx += bytes_read+16;
-    if (dtn->do_crypto)
-      local.total_rx += 32;
-
-    if ( (incr++ & 0xff) == 0xff )
-      memcpy( &stat_cntr[id&THREAD_MASK], &local, sizeof(local) );
-
     {
       uint8_t* buf = fob->get( token, FOB_BUF );
       struct file_info fi = {0};
-      fi.file_no = file_no;
+      int bytes_sent;
+
+      fi.file_no_packed = fs->file_no << 8ULL;
+      if ( __builtin_popcount (bytes_read) > 1 ) {
+        // clz == count leading zeroes; an analogue for log(2)
+        fi.block_sz_packed = 32 - __builtin_clz( bytes_read | 1 );
+      } else {
+        fi.block_sz_packed = 31 - __builtin_clz( bytes_read | 1 );
+      }
       fi.offset = offset << 8ULL;
       fi.hdr_type = FIHDR_SHORT;
-      fi.block_sz = bytes_read;
+
+      bytes_sent = 1 << fi.block_sz_packed;
 
 #ifdef O_CRC
-      crc ^= file_hash( buf, bytes_read, (offset+dtn->block-1LL)/dtn->block );
+      crc ^= file_hash( buf, bytes_sent, offset );
 #endif
 
-      VRFY( network_send(knob, &fi, 16, 16+bytes_read, true) > 0, );
-      VRFY( network_send(knob, buf, bytes_read, 16+bytes_read, false) > 0, );
+      DBG("[%2d] FI_HDR sent with fn=%ld offset=%lX, bytes_read=%d, bytes_sent=%d, packed=%d",
+          id, fs->file_no, offset, bytes_read, bytes_sent, fi.block_sz_packed);
+
+      VRFY( network_send(knob, &fi, 16, 16+bytes_sent, true) > 0, );
+      VRFY( network_send(knob, buf, bytes_sent, 16+bytes_sent, false) > 0, );
+
+      __sync_fetch_and_add( &fs->bytes_total, bytes_read );
+      __sync_fetch_and_add( &dtn->bytes_io, bytes_read );
 
       fob->complete(fob, token);
 
-      DBG("[%2d] Finish block crc=%08x fn=%d offset=%zx", id, crc, file_no, offset);
+      DBG("[%2d] Finish block crc=%08x fn=%d offset=%zx sz=%d sent=%d",
+          id, crc, file_no, offset, bytes_read, bytes_sent);
     }
 
-    did_work=1;
   }
 
+  /*
   memcpy( &stat_cntr[id&THREAD_MASK], &local, sizeof(local) );
-  __sync_add_and_fetch(&shutdown_in_progress, 1);
+  */
 
   DBG("[%2d] Thread exited", id );
   return 0;
 }
 
-void tx_start(struct dtn_args* args ) {
-  int i=0;
-  static int did_tx_start=0;
+void finish_transfer( struct dtn_args* args, uint64_t filecount ) {
+  DBG("[--] finish_transfer is called");
 
-  pthread_attr_t attr;
-  pthread_attr_init(&attr);
-  static struct tx_args tx_arg[THREAD_COUNT] = {0};
+  if (filecount) {
+    while (1) {
+      uint64_t files_closed = __sync_fetch_and_add( &args->files_closed, 0 );
 
-  file_randrd( &args->session_id, 8 );
+      if (files_closed >= filecount)
+        return;
 
-  if (!args->thread_count)
-    args->thread_count=1;
-
-  VRFY( args->host_count, "No host specified");
-
-  DBG("[mgmt] tx_start: begin");
-
-  if (did_tx_start) {
-    DBG("[mgmt] tx_start: already started, returning");
-    MMSG("ERR: tx_start already started");
-    return;
-  }
-
-  MMSG("OKAY");
-
-  for (i=0; i < args->thread_count; i++)  {
-    tx_arg[i].sock = &args->sock_store[i%args->host_count];
-    tx_arg[i].dtn = args;
-    tx_arg[i].persist = args->persist;
-
-    if (  pthread_create(
-          &thread[i], &attr, tx_worker, (void*) &tx_arg[i] )
-       )
-    {
-      VRFY( 0, "pthread_create" );
+      usleep(10);
     }
   }
 
-  did_tx_start=1;
-  if (args->persist) {
-    DBG("[mgmt] tx_start: Exit loop because persist specified");
-    return;
+  for (int i=0; i < args->thread_count; i++)
+    pthread_join( DTN_THREAD[i], NULL );
+}
+
+void tx_start(struct dtn_args* args ) {
+  int i=0;
+
+  pthread_attr_t attr;
+  pthread_attr_init(&attr);
+
+  static struct tx_args tx_arg[THREAD_COUNT] = {0};
+DBG("tx_start spawning workers");
+  if (!args->thread_count)
+    args->thread_count=1;
+
+  for (i=0; i < args->thread_count; i++)  {
+    tx_arg[i].dtn = args;
+
+    VRFY(  0 == pthread_create(
+          &DTN_THREAD[i], &attr, tx_worker, (void*) &tx_arg[i] ),
+          "tx_start: Error spawining tx_worker" );
   }
 
-  DBG("[mgmt] tx_start: show status_bar");
-  status_bar(NULL);
+  while ( __sync_fetch_and_add(&meminit, 0 ) != args->thread_count )
+    usleep(10);
 
-  DBG("[mgmt] tx_start: wait for workers");
-  for (i=0; i < args->thread_count; i++)
-    pthread_join( thread[i], NULL );
-
-  DBG("[mgmt] tx_start: workers exited ");
-
-  {
-    struct statcntrs* r;
-    float duration;
-    struct timeval now;
-    uint64_t now_time;
-    gettimeofday( &now, NULL );
-    now_time = now.tv_sec * 1000000 + now.tv_usec ;
-
-    r = aggregate_statcntrs();
-    duration = (now_time - r->start_time) / 1000000.0;
-
-    NFO(
-      "\nSender Report:\n"
-      "Network= %siB, Elapsed= %.2fs, %sbit/s\n" "# of reads = %zd, bytes/read = %zd",
-
-      human_write(r->total_rx, true),
-      duration, human_write(r->total_rx/duration,false),
-      r->reg, r->reg ? r->bytes_read/r->reg : 0
-
-    );
-  }
-
+  DBG("tx_start workers finished initializing structures");
   return;
 }
 
-void* rx_start( void* fn_arg ) {
-  int i=0, sock, one=1;
+uint64_t tx_getclosed() {
+  return __sync_fetch_and_add( &tx_filesclosed, 0 );
+}
+
+int rx_start( void* fn_arg ) {
+  int i=0,j=0, sock;
   struct dtn_args* args = fn_arg;
-  struct sockaddr_in* saddr = (void*) &args->sock_store[0];
-  int addr_sz;
+  struct sockaddr_in*  saddr = (void*) &args->sock_store[0];
+  struct sockaddr_in6* saddr6 = (void*) &args->sock_store[0];
+  int addr_sz, port;
   static struct rx_args rx_arg[THREAD_COUNT] = {0};
 
-  if ( !saddr->sin_family ) {
-    saddr->sin_family = AF_INET;
-    saddr->sin_port = htons(DEFAULT_PORT);
-    DBG("Listening on default port 0:%d", DEFAULT_PORT);
-  }
+  // XXX: Syntactically and programatically we support multiple interfaces
+  //      but we don't implement a listener on anything but the fist iface
+  //      because at some point this code changed and support for multiple
+  //      interfaces was never added back.
 
+  DBG("Start: rx_start");
+
+  args->thread_count=0;
+
+  port = ntohs(saddr->sin_port);
   if ( saddr->sin_family == AF_INET )
     addr_sz = sizeof(struct sockaddr_in);
   else
@@ -1047,9 +816,20 @@ void* rx_start( void* fn_arg ) {
 
   VRFY ( (sock = socket( saddr->sin_family, SOCK_STREAM, 0)) != -1, );
 
-  setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+  while (bind(sock, (struct sockaddr*) saddr, addr_sz) == -1) {
+    // Keep trying to bind to a port until we get to one that is open
 
-  VRFY( bind(sock, (struct sockaddr*) saddr, addr_sz) != -1, "Socket Bind" );
+    if ( ++j > 100 ) {
+      ERR ( "binding to port(s) %d-%d", port-j+1, port );
+      return -1;
+    }
+
+    close(sock);
+    saddr->sin_port = htons( ++port );
+    VRFY ( (sock = socket( saddr->sin_family, SOCK_STREAM, 0)) != -1, );
+
+  }
+
   VRFY ( listen( sock, THREAD_COUNT ) != -1, "listening" );
 
   /* setsockopt(sock, SOL_SOCKET, SO_RCVLOWAT, &Block_sz, sizeof(Block_sz)) */
@@ -1059,295 +839,107 @@ void* rx_start( void* fn_arg ) {
     socklen_t rbuf_sz = sizeof(rbuf);
     if (setsockopt(sock, SOL_SOCKET, SO_RCVBUF, &rbuf, rbuf_sz) == -1) {
       perror("SO_RCVBUF");
-      xit(errno);
+      exit(-1);
     }
   }
 
+  {
+    char buf[500];
+    if (saddr->sin_family == AF_INET) {
+      inet_ntop( saddr->sin_family, &saddr->sin_addr, buf, addr_sz );
+    } else {
+      inet_ntop( saddr->sin_family, &saddr6->sin6_addr, buf, addr_sz );
+    }
+
+    NFO("Listening on [%s]:%d", buf, ntohs(saddr->sin_port));
+  }
+
+  {
+    uint16_t old_port = args->active_port;
+    uint16_t new_port = ntohs(saddr->sin_port);
+    uint16_t res;
+
+    res = __sync_val_compare_and_swap(&args->active_port, old_port, new_port);
+    VRFY( res == old_port, "Bad val in args->active_port");
+  }
+
   while(1) {
+
     pthread_attr_t attr;
     pthread_attr_init(&attr);
     socklen_t saddr_sz = sizeof(struct sockaddr_in);
 
-    rx_arg[i].conn = accept( sock, (struct sockaddr *) saddr, &saddr_sz );
-    rx_arg[i].dtn = args;
-
-    VRFY (rx_arg[i].conn != -1, "accepting socket" );
+    fcntl( sock, F_SETFL, O_NONBLOCK );
+    while (1) {
+      rx_arg[i].conn = accept( sock, (struct sockaddr *) saddr, &saddr_sz );
+      rx_arg[i].dtn = args;
+      if (rx_arg[i].conn > 0)
+        break;
+      if (args->thread_count && (i >= args->thread_count)) {
+        DBG("Finished spawning workers");
+        return 0;
+      }
+      usleep(1000);
+    }
 
     if (  pthread_create(
-            &thread[i], &attr, rx_worker, (void*) &rx_arg[i] )
+            &DTN_THREAD[i], &attr, rx_worker, (void*) &rx_arg[i] )
        ) {
       perror("pthread_create");
       close(rx_arg[i].conn);
       continue;
     }
 
-    i = (i+1) & THREAD_MASK;
+    i = (i+1) % THREAD_COUNT;
+  }
+
+  return 0;
+}
+
+char decode_bool( bool b ) {
+  return b? 'Y': 'N';
+}
+
+void print_args ( struct dtn_args* args ) {
+
+  printf(" Receiver=%c, SSH=%c, Crypto=%c, Hash=%c, Affinity=%c disable_io=%c\n",
+    decode_bool( args->do_server ),
+    decode_bool( args->do_ssh ),
+    decode_bool( args->do_crypto ),
+    decode_bool( args->do_hash ),
+    decode_bool( args->do_affinity ),
+    decode_bool( args->disable_io )
+  );
+
+
+  printf(" IO Flags: O_WRONLY=%c, O_DIRECT=%c, O_CREAT=%c, O_TRUNC=%c \n",
+    decode_bool( args->flags & O_WRONLY ),
+    decode_bool( args->flags & O_DIRECT ),
+    decode_bool( args->flags & O_CREAT  ),
+    decode_bool( args->flags & O_TRUNC  )
+  );
+
+  /*
+  printf(" Block Size: %s, QD: %d, IO_Engine: %s/%d, window: %s, thread_count: %d\n",
+    human_write( args->block, true ), args->QD, args->io_engine_name,
+    args->io_engine, human_write(args->window, true), args->thread_count
+  );
+  */
+
+
+};
+
+int64_t get_bytes_io( struct dtn_args* dtn ) {
+  return __sync_fetch_and_add( &dtn->bytes_io, 0 );
+}
+
+void tx_init( struct dtn_args* args ) {
+  if (args->do_crypto) {
+    int res = getrandom(args->crypto_key, 16, GRND_RANDOM);
+    // XXX: We should handle the case of getting less than
+    //      16 bytes of data.
+    VRFY( res == 16, "Error initializing random key");
   }
 }
 
-void do_management( struct dtn_args* args ) {
-  bool tru=true, did_emit=false;
-  char buf[1024];
-  int i, res=0;
-  uint32_t arg;
-  uint32_t* code;
 
-  MMSG("REDY");
-  while ( managed ) {
-    if (read( STDIN_FILENO, buf, 5 ) != 5) {
-      DBG("Management session is closed");
-      break;
-    }
-
-    code = (uint32_t*) buf;
-
-    switch( code[0] ) {
-      case 'CKEY':
-      case 'YEKC':
-        // Set Crypto Key ( Exactly 16 bytes in 32 hex chars )
-
-
-        DBG("[mgmt] Enable Crypto");
-        VRFY( (res=read_newline( STDIN_FILENO, buf, 32 )) > 0, );
-        VRFY( (res=file_b64decode(buf, buf, res)) >= 16, "crypto key too short, read=%d", res );
-        memcpy( args->crypto_key, buf, 16 );
-        memcpy( &args->do_crypto, &tru, sizeof(bool) );
-        DBG("Enabled Crypto");
-        MMSG("OKAY");
-        break;
-      case 'RECV':
-      case 'VCER':
-        // Initiate client as a receiver
-
-        DBG("[mgmt] Start RECV");
-        MMSG("OKAY");
-        rx_start(args);
-        break;
-      case 'SEND':
-      case 'DNES':
-        // Initiate client as a sender
-
-        DBG("[mgmt] Start SEND");
-        tx_start(args);
-        break;
-      case 'TEST':
-      case 'TSET':
-        DBG("[mgmt] Running file_iotest");
-        MMSG("OKAY");
-        if (!args->thread_count)
-          args->thread_count=1;
-        file_iotest(args);
-        break;
-
-      case 'PERS':
-      case 'SREP':
-        DBG("[mgmt] Enable persistent mode");
-        // Enable persistent mode (don't exit after last file is complete)
-        args->persist = true;
-        file_persist(true);
-        MMSG("OKAY");
-        break;
-
-      case 'FILE':
-      case 'ELIF':
-        // Add a list of files; # files <newline> [ file <newline> ] ...
-        VRFY( (res=read_newline( STDIN_FILENO, buf, 1000 )) > 0, );
-        sscanf(buf, "%d", &arg);
-        {
-          VRFY( arg < 15000, "Add files in smaller groups" );
-          char** lines;
-          lines = malloc( (arg+1) * sizeof (char*) );
-          VRFY( lines, );
-
-          for (i=0; i<arg; i++) {
-            VRFY( (res=read_newline( STDIN_FILENO, buf, 1000 )) > 0, );
-
-            lines[i] = malloc(res+1);
-            VRFY(lines[i],);
-
-            memcpy( lines[i], buf, res );
-            lines[i][res] = 0;
-
-            DBG("[mgmt] FILE: '%s'", buf);
-          }
-
-          file_add_bulk( lines, arg );
-
-          for (i=0; i<arg; i++) {
-            free(lines[i]);
-          }
-          free(lines);
-        }
-
-        MMSG("OKAY");
-        break;
-
-      case 'ABRT':
-      case 'TRBA':
-        DBG("[mgmt] QUIT received, exiting.");
-
-        if (args->fob && args->fob->cleanup) {
-          printf("doing cleanup\n");
-          args->fob->cleanup(args->fob);
-        }
-
-        __sync_add_and_fetch(&shutdown_in_progress, 1);
-
-        MMSG("ABRT");
-        did_emit=true;
-
-      case 'DONE':
-      case 'ENOD':
-        // Mark session as complete and wait for exit
-        DBG("[mgmt] Join workers.");
-
-        args->persist = false;
-        file_persist(false);
-
-        for (i=0; i < args->thread_count; i++)
-          pthread_join( thread[i], NULL );
-
-        if (!did_emit)
-          MMSG("OKAY");
-        return;
-
-      case 'HASH':
-      case 'HSAH':
-        DBG("[mgmt] Enabling hash");
-
-        // Primarily for debugging; This enables a modified CRC32 hash of
-        // each file to verify that files are being written to disk correctly.
-
-        args->do_hash=1;
-        MMSG("OKAY");
-        break;
-
-      case 'STAT':
-      case 'TATS':
-        DBG("[mgmt] Enabling stats!");
-        {
-          pthread_t id;
-          VRFY( pthread_create( &id, NULL, status_bar, NULL ) == 0, );
-        }
-        MMSG("OKAY");
-        break;
-
-      case 'FTOT':
-      case 'TOTF':
-        DBG("[mgmt] Computing file sizes");
-
-        // Requires: (int) file to start at
-        // Return metrics; files <newline> total bytes
-
-        VRFY( (res=read_newline( STDIN_FILENO, buf, 32 )) > 0, );
-
-        i = atoi( buf );
-        DBG("[mgmt] Got starting from file %d", i);
-
-        file_compute_totals(i);
-
-
-        break;
-
-      case 'CHDR':
-      case 'RDHC':
-        // CHeDeR
-        VRFY( (res=read_newline( STDIN_FILENO, buf, 512)) > 0, );
-
-        {
-          int res;
-          struct stat st;
-          res = stat(buf, &st);
-
-          if (res) {
-            if ( errno == ENOENT ) {
-              // File does not exist, we are clear to overwrite
-              MMSG("FILE");
-              break;
-            }
-            MMSG("ABRT\nCouldn't stat: %s", strerror(errno) );
-          }
-
-          switch (st.st_mode & S_IFMT) {
-            case S_IFDIR:
-              if (chdir(buf)) {
-                MMSG("ABRT\nCouldn't chdir: %s", strerror(errno));
-              } else {
-                MMSG("CHDR");
-              }
-              break;
-            case S_IFREG:
-              MMSG("FILE");
-              break;
-            case S_IFLNK:
-              MMSG("ABRT\nTarget is a symlink. Symlinks are not supported\n");
-              break;
-            default:
-              MMSG("ABRT\nTarget is special device");
-          }
-
-        }
-        break;
-
-      case 'EHLO':
-      case 'HELO':
-      case 'OLHE':
-      case 'OLEH':
-        {
-          int foo = 0xa599e2;
-          sprintf(buf, " %s%s !!", (char*) &foo, (char*) &foo);
-          MMSG("%s", buf);
-        }
-        break;
-
-      case 'VERS':
-      case 'SREV':
-        MMSG("0.1");
-        return;
-
-      case 'EXIT':
-      case 'TIXE':
-        DBG("[mgmt] Exit is called. Exiting...");
-        MMSG("OKAY");
-        xit(0);
-
-      default:
-        DBG("[mgmt] Bad data '%s', exiting.", (char*) code);
-        MMSG("BAD!");
-        xit(1);
-    }
-  }
-}
-
-int main( int argc, char** argv ) {
-  struct dtn_args* args;
-
-  file_lockinit();
-  memset( &stat_cntr[0], 0, sizeof(stat_cntr) );
-
-  args = args_get( argc, argv );
-  VRFY( args, "parsing arguments");
-
-  if (managed) {
-    do_management(args);
-  } else {
-
-    if (args->disable_io>=11) {
-      if (!args->thread_count)
-        args->thread_count=1;
-      file_iotest( args );
-      return 0;
-    }
-
-    if (!args->do_server) {
-      tx_start( args );
-    } else {
-      rx_start( args );
-    }
-  }
-
-  DBG("[MAIN] Reached end of control, exiting.");
-
-  xit(0);
-
-}

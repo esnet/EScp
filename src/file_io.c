@@ -16,118 +16,207 @@
 
 #include "file_io.h"
 #include "args.h"
-#include "es_shm.h"
 
-pthread_mutex_t file_next_lock;
-pthread_cond_t file_next_cv;
-pthread_cond_t file_comp_cv; // Signals when files complete
+// FILE_STAT_COUNT is somewhat mis-named, it indirectly represents the
+// maximum number of open files we can have in flight. As files are opened
+// first and then sent, there is potential to have all slots filled with
+// open files. As Linux has a soft limit of 1024 files, we set this number
+// to something below that maximum. It must always be set below the configured
+// FD limit.
 
-struct file_stat_type file_stat[THREAD_COUNT*2]={0};
+#define FILE_STAT_COUNT 800
+#define FS_INIT        0x1cafc886
+#define FS_IO          (1UL << 63)
+#define FS_COMPLETE    (1UL << 62)
+#define FS_RECYCLE     0xc15ca978
+
+struct file_stat_type file_stat[FILE_STAT_COUNT]={0};
 
 uint64_t rand_seed=0;      // for Dummy IO
 uint64_t bytes_written=0;  // for Dummy IO
 
 bool file_persist_state = false;
 
-struct file_name_type file_list[FILE_LIST_SZ] = {0};
-
 uint64_t file_count = 0;
 uint64_t file_completed = 0;
-uint64_t file_wanted = 0;
+uint64_t file_wanted __attribute__ ((aligned(64))) = 0;
 
+uint64_t file_fileno_next  __attribute__ ((aligned(64))) = 0;
 
-void file_lockinit() {
-  pthread_mutexattr_t attr;
-  pthread_mutexattr_init(&attr);
-  pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
+struct file_stat_type* file_addfile(uint64_t fileno, int fd, uint32_t crc, int64_t file_sz ) {
+  struct file_stat_type fs= {0};
+  int i=fileno % FILE_STAT_COUNT;
+  uint64_t iterations=0;
 
-  pthread_mutex_init( &file_next_lock, &attr );
-  pthread_cond_init( &file_next_cv, NULL );
-  pthread_cond_init( &file_comp_cv, NULL );
-}
-
-struct file_name_type* file_nameget(uint64_t file_no) {
-  // Must already obtain thread lock
-
-  while ( file_list[file_no % FILE_LIST_SZ].state & 2 ) {
-    DBV("Got state=2, will wait for file");
-    pthread_cond_wait( &file_next_cv, &file_next_lock );
+  if ( fileno == ~0UL ) {
+    __sync_add_and_fetch( &file_fileno_next, 1 );
+    i=0;
   }
 
-  return &file_list[file_no % FILE_LIST_SZ];
+  if (!fileno) {
+    fileno = __sync_add_and_fetch( &file_fileno_next, 1 );
+  }
 
-  // Returns &file_name_type where state in [0,1]
-}
+  DBV("Entered file_addfile fn=%ld, fd=%d crc=%X",
+      fileno, fd, crc);
 
-void file_compute_totals( int start ) {
-  // We return the bytes total starting from start file but always
-  // return the total number of successful file_stats
+  while (1) {
 
-  int count=0;
-  int i=0;
-  uint64_t total=0;
-  int file_stated=0;
+    if ( (iterations++ % FILE_STAT_COUNT) == (FILE_STAT_COUNT-1) )
+      usleep(1);
 
-  VRFY( pthread_mutex_lock( &file_next_lock ) == 0, );
-  count = file_count;
-  pthread_mutex_unlock( &file_next_lock );
-
-  for (i=start; i<count; i++) {
-    struct stat st;
-
-    if ( stat( file_list[i % FILE_LIST_SZ].name, &st ) )
+    if ( file_stat[i].fd != 0 ) {
+      i = (i+1) % FILE_STAT_COUNT;
       continue;
+    }
 
-    file_stated++;
-    total+=st.st_size;
+    if ( __sync_val_compare_and_swap( &file_stat[i].state, 0, 0xBedFace0 ) ) {
+      i = (i+1) % FILE_STAT_COUNT;
+      continue;
+    }
+
+    // Got an empty file_stat structure
+
+    fs.state = FS_INIT;
+    fs.fd = fd;
+    // fs.given_crc = crc;
+    fs.poison = 0x4BADC01F;
+    fs.file_no = fileno;
+    fs.bytes = file_sz;
+
+    break;
   }
 
-  MMSG("FTOT\n%d %zd", file_stated, total);
+  memcpy( &file_stat[i], &fs, sizeof(struct file_stat_type) );
+  return( &file_stat[i] );
+}
 
+struct file_stat_type* file_wait( uint64_t fileno ) {
+  DBV("Enter file_wait with fn=%ld", fileno);
+
+  struct file_stat_type test_fs;
+  int64_t test_fn;
+  int i, k;
+
+  while (1) {
+    k = FILE_STAT_COUNT;
+    test_fn = __sync_fetch_and_add(&file_fileno_next, 0);
+
+    if (test_fn && (test_fn < FILE_STAT_COUNT))
+      k = test_fn;
+
+    for (i=0; i<=k; i++) {
+      memcpy( &test_fs, &file_stat[i], sizeof(struct file_stat_type) );
+
+      if (test_fs.file_no != fileno)
+        continue;
+
+      if ( (test_fs.state == FS_INIT) && (__sync_val_compare_and_swap(
+        &file_stat[i].state, FS_INIT, FS_COMPLETE|FS_IO) == FS_INIT ) )
+      {
+        DBV("NEW writer on %lx", file_stat[i].file_no);
+        return &file_stat[i]; // Fist worker on file
+      }
+
+      if (test_fs.state & FS_IO) {
+        DBV("ADD writer on %lx", file_stat[i].file_no);
+        return &file_stat[i]; // Added worker to file
+      }
+    }
+
+    usleep(10);
+  }
 }
 
 
-void file_persist( bool state ) {
-  VRFY( pthread_mutex_lock( &file_next_lock ) == 0, );
+struct file_stat_type* file_next( int id ) {
 
-  file_persist_state = state;
+  // Generic function to fetch the next file, may return FD to multiple
+  // threads depending on work load / incomming file stream.
+  //
+  DBV("[%2d] Enter file_next", id);
 
-  VRFY( pthread_cond_broadcast( &file_next_cv ) == 0, );
-  pthread_mutex_unlock( &file_next_lock );
+  struct file_stat_type test_fs;
+  int64_t test_fn;
+  int i, j, k, did_iteration=0, do_exit=0, active_file;
+
+
+  while (1) {
+    k = FILE_STAT_COUNT;
+    test_fn = __sync_fetch_and_add(&file_fileno_next, 0);
+    if (test_fn && (test_fn < FILE_STAT_COUNT))
+      k = test_fn;
+    active_file=0;
+
+    for (i=1; i<=k; i++) {
+      j = (FILE_STAT_COUNT + test_fn - i) % FILE_STAT_COUNT;
+      memcpy( &test_fs, &file_stat[j], sizeof(struct file_stat_type) );
+
+      if (test_fs.file_no == ~0UL) {
+        do_exit=1;
+        continue;
+      }
+
+      if (test_fs.fd == 0)
+        continue;
+
+      active_file=1;
+      if ( (test_fs.state == FS_INIT) && (__sync_val_compare_and_swap(
+        &file_stat[j].state, FS_INIT, FS_COMPLETE|FS_IO|(1<<id) ) == FS_INIT ) )
+      {
+        DBV("[%2d] NEW IOW on fn=%ld, slot=%d/%016lx", id, file_stat[j].file_no, j, (uint64_t) &file_stat[j]);
+        return &file_stat[j]; // Fist worker on file
+      }
+
+      uint64_t st = test_fs.state;
+      if ( (test_fs.state & FS_IO) && (__sync_val_compare_and_swap(
+        &file_stat[j].state, st, st| (1<<id) ) == st) ) {
+
+        DBV("[%2d] ADD IOW on %lx", id, file_stat[j].file_no);
+        return &file_stat[j]; // Added worker to file
+
+      }
+
+    }
+
+    if ( !active_file  && do_exit ) {
+      DBV("file_next: exit criteria is reached");
+      return NULL;
+    }
+
+    if (!did_iteration) {
+      did_iteration=1;
+      continue;
+    }
+    usleep(1000);
+  }
 
 }
 
-static inline uint64_t xorshift64s(uint64_t* x)
-{
+uint64_t  file_iow_remove( struct file_stat_type* fs, int id ) {
+  DBV("[%2d] Release interest in file: fn=%ld state=%lX fd=%d", id, fs->file_no, fs->state, fs->fd);
+  return __sync_and_and_fetch( &fs->state, ~((1UL << id) | FS_IO) );
+}
+
+
+int file_get_activeport( void* args_raw ) {
+  int res;
+  struct dtn_args* args = (struct dtn_args*) args_raw;
+
+  while ( !(res= __sync_add_and_fetch(&args->active_port, 0) ) ) {
+    usleep(1000);
+  }
+
+  return res;
+}
+
+static inline uint64_t xorshift64s(uint64_t* x) {
   *x ^= *x >> 12; // a
   *x ^= *x << 25; // b
   *x ^= *x >> 27; // c
   return *x * 0x2545F4914F6CDD1DUL;
 }
 
-
-struct file_stat_type* file_wait( struct file_object* fob, uint32_t file_no ) {
-  struct file_stat_type* ret = NULL;
-  int i;
-
-  VRFY( pthread_mutex_lock( &file_next_lock ) == 0, );
-  while (!ret) {
-    for (i=0; i < THREAD_COUNT*2; i++) {
-      if ( file_stat[i].file_no == file_no ) {
-        ret = &file_stat[i];
-        break;
-      }
-    }
-
-    if (!ret)
-      pthread_cond_wait( &file_next_cv, &file_next_lock );
-  }
-
-  ret->worker_map |= 1LL << fob->id;
-  pthread_mutex_unlock( &file_next_lock );
-
-  return ret;
-}
 
 int32_t file_hash( void* block, int sz, int seed ) {
   uint32_t *block_ptr = (uint32_t*) block;
@@ -148,455 +237,51 @@ int32_t file_hash( void* block, int sz, int seed ) {
   return hash;
 }
 
-static inline int file_add_raw( void* file_name, int64_t no ) {
-
-  if (no)
-    no -= 1;
-  else
-    no = file_count;
-
-  no = no % FILE_LIST_SZ;
-  if ( !file_persist_state && file_list[no].state ) {
-    DBV("file_add: file '%s' exceeds static file limits", (char*)file_name );
-    return -1;
-  }
-
-  while ( file_list[no].state != 0 ) {
-    DBV("file_add: Waiting because state != 0. no=%zd fn=%s", no,
-      file_list[no].name );
-    pthread_cond_wait( &file_next_cv, &file_next_lock );
-  }
-
-  file_list[no].name = malloc(strlen(file_name)+8);
-  VRFY( file_list[no].name, "bad malloc" );
-
-  file_list[no].state = 1;
-  strcpy( file_list[no].name, file_name );
-  file_list[no].fino = file_count;
-
-  file_count ++;
-  VRFY( pthread_cond_broadcast( &file_next_cv ) == 0, );
-
-  return 0;
-}
-
-int file_add( void* file_name, uint64_t file_no ) {
-  int ret;
-
-  DBV("file_add: add file '%s'/%zd", (char*)file_name, file_no );
-
-  VRFY( pthread_mutex_lock( &file_next_lock ) == 0, );
-  ret = file_add_raw( file_name, file_no );
-  pthread_mutex_unlock( &file_next_lock );
-
-  DBV("file_add: finished adding file.... ");
-
-  return ret;
-}
-
-void file_add_bulk( void* arg, uint32_t count ) {
-  int i=0;
-  char** files = (char**) arg;
-
-  VRFY( pthread_mutex_lock( &file_next_lock ) == 0, );
-  for (i=0; i<count; i++) {
-    file_add_raw( files[i], 0 );
-  }
-  pthread_mutex_unlock( &file_next_lock );
-
-}
-
-struct file_stat_type* file_next( struct file_object* fob,
-                                  int file_no, void* file_name ) {
-
-  // Generic function to fetch the next file, may return FD to multiple
-  // threads depending on work load / incomming file stream.
-  //
-
-  static uint64_t file_stat_count=0;
-  static __thread struct file_stat_type* fs= &file_stat[0];
-  int i;
-  bool found = false;
-  struct file_name_type* curfile;
-
-
-  if (file_name) {
-    DBV("[%2d] Entered file_next with file_no=%d name=%s",
-      fob->id, file_no, (char*) file_name);
-  }
-  else  {
-    DBV("[%2d] Entered file_next with file_no=%d", fob->id, file_no );
-  }
-
-  VRFY( pthread_mutex_lock( &file_next_lock )==0, "pthread_lock" );
-
-  if (file_no) {
-    curfile = file_nameget(file_no-1);
-    if (file_name)
-      // after potential wait on slot, add filename and update state
-      file_add_raw( file_name, file_no );
-  } else
-    curfile = file_nameget(file_stat_count);
-
-  if ( !curfile->state ) {
-    // No new files
-
-    if ( file_no ) {
-      // This is a receiver error, because filename should either be
-      // set through management or from FIHDR_LONG message.
-      pthread_mutex_unlock( &file_next_lock );
-
-      NFO("file_no=%d does not have a corresponding filename", file_no);
-      DBV("[%2d] No work for thread (RX)", fob->id);
-
-      return 0;
-    } else {
-      // We are sender, try to attach to existing session
-
-      while ( !found ) {
-        DBV("[%2d] Thread looking for work", fob->id);
-        for (i=0; i<THREAD_COUNT*2; i++) {
-          fs = &file_stat[i];
-
-          if ( (fs->pending || fs->worker_map) && !fs->flushing ) {
-            found = true;
-            break;
-          }
-        }
-
-        if ( !found && file_persist_state ) {
-          DBV("[%2d] file__next: wait=true (RX), waiting for file", fob->id);
-          pthread_cond_wait( &file_next_cv, &file_next_lock );
-
-          // Check if a new file has been added
-          curfile = file_nameget(file_stat_count);
-          if (curfile->state)
-            break;
-
-          continue;
-        }
-
-        if ( !found ) {
-          pthread_mutex_unlock( &file_next_lock );
-
-          DBV("[%2d] No work for thread (TX)", fob->id);
-          return 0;
-        }
-
-        fs->pending |= 1LL << fob->id;
-        fob->fd = fs->fd;
-
-        pthread_mutex_unlock( &file_next_lock );
-        DBV("[%2d] Adding worker to '%s'", fob->id, fs->name);
-        return fs;
-      }
-    }
-  }
-
-  while ( !found ) {
-    for (i=0; i<THREAD_COUNT*2; i++) {
-      fs = &file_stat[i];
-      if ( !fs->worker_map  && !fs->pending ) {
-        found = true;
-        break;
-      }
-    }
-
-    if ( !found ) 
-      pthread_cond_wait( &file_next_cv, &file_next_lock );
-  }
-
-  memset( fs, 0, sizeof( struct file_stat_type ) );
-
-  if (file_no)
-    fs->worker_map |= 1LL << fob->id;
-  else
-    fs->pending |= 1LL << fob->id;
-
-  curfile->state |= 2;
-  if ( fob->io_flags & O_WRONLY )
-    fob->fd = fob->open( curfile->name,  fob->io_flags, 0644 );
-  else
-    fob->fd = fob->open( curfile->name,  fob->io_flags, 00 );
-
-  VRFY( fob->fd > 0, "[%2d] opening '%s'; flags=%x, errno=%s",
-                      fob->id, curfile->name, fob->io_flags, strerror(errno) );
-
-  fs->fd = fob->fd;
-  fs->name = curfile->name;
-
-  file_stat_count ++;
-
-  if (file_no)
-    fs->file_no = file_no;
-  else
-    fs->file_no = file_stat_count;
-
-
-  VRFY( pthread_cond_broadcast( &file_next_cv ) == 0, );
-  VRFY( pthread_mutex_unlock(&file_next_lock) == 0, "" );
-
-  DBV("[%2d] Opened file %s, fd=%d, flags=%x fn=%d",
-    fob->id, curfile->name, fob->fd, fob->io_flags, fs->file_no );
-  MMSG("OPEN\n%d %s", fs->file_no, fs->name);
-
-  return fs;
-}
-
-void file_mark_worker( struct file_stat_type* fs, int id) {
-  VRFY( pthread_mutex_lock(&file_next_lock) == 0, "" );
-  DBV("[%2d] mark_worker changed pending state", id);
-
-  fs->pending &= ~(1LL << id);
-  fs->worker_map |= 1LL << id;
-
-  pthread_cond_broadcast( &file_next_cv );
-  VRFY( pthread_mutex_unlock(&file_next_lock) == 0, "" );
-
-}
-
-
-
-void* file_close( struct file_object* fob, struct file_stat_type* fs,
-  uint64_t bytes_total, uint32_t crc, bool abbreviated, uint32_t given_crc,
-  int given_workers ) {
-
-  int did_close=0;
-  int workers=given_workers;
-  char buf[2048];
-
-  static __thread struct file_close_struct ret;
-
-  DBV("[%2d] file_close: Entering file_close\n", fob->id);
-  VRFY( fs != 0, "Double close on file stat object" ); // should never happen
-
-  VRFY( pthread_mutex_lock(&file_next_lock) == 0, "" );
-
-  if (given_workers)
-    fs->pending=0;
-
-  fs->pending &= ~(1LL << fob->id);
-
-  if (abbreviated) {
-    fs->flushing++;
-    pthread_cond_broadcast( &file_next_cv );
-    pthread_mutex_unlock(&file_next_lock);
-    DBV("[%2d] file_close: removed pending flag\n", fob->id);
-    return 0;
-  }
-
-  if (given_crc) {
-    DBV("[%2d] file_close: set crc=%08x\n", fob->id, given_crc);
-    fs->given_crc = given_crc;
-  }
-
-  while ( fs->pending & ~(1LL << fob->id)  ) {
-    if (!fs->worker_map) {
-      // Everyone is holding a pending, safe to exit
-      DBV("[%2d] file_close: not waiting on pending, no workers\n", fob->id);
-      break;
-    }
-    DBV("[%2d] file_close: wait on pending %04x %s",
-      fob->id, fs->pending, fs->name);
-    pthread_cond_wait( &file_next_cv, &file_next_lock );
-  }
-
-  if (fs->pending & (1LL << fob->id) )
-    pthread_cond_broadcast( &file_next_cv );
-
-  fs->pending &= ~(1LL << fob->id);
-
-  if ( !(fs->worker_map & (1LL << fob->id)) ) {
-    NFO("[%2d] file_close: close on '%s' without open",
-      fob->id, fs->name);
-    VRFY( pthread_mutex_unlock(&file_next_lock) == 0, "" );
-    return 0;
-  }
-
-  {
-    // This is how the sender computes it's worker count
-    workers = __builtin_popcountl( fs -> worker_map );
-
-    if (fs->workers < workers)
-      fs->workers = workers;
-  }
-
-  fs->worker_map &= ~(1LL << fob->id);
-
-  ++fs->flushing;
-  fs->bytes_total += bytes_total;
-  fs->crc ^= crc;
-
-  ret.sz = fs->bytes_total;
-  ret.file_no = fs->file_no;
-  ret.flushing = fs->flushing;
-  ret.given_crc = fs->given_crc;
-
-  if ( strlen(fs->name)  > 75 ) {
-    strncpy( ret.fn, fs->name, 70 );
-    strncpy( ret.fn+70, "...", 4 );
-  } else {
-    strncpy( ret.fn, fs->name, 76 );
-  }
-  ret.workers = fs->workers;
-  ret.hash = fs->crc;
-
-  if ( fs -> worker_map || (fs->flushing < fs->workers)
-                        || (fs->flushing < given_workers) ) {
-    if (given_workers)
-      fs->pending=1;
-    DBV("[%2d] releasing interest in '%s', %d workers left",
-      fob->id, fs->name, __builtin_popcountl( fs -> worker_map ));
-  } else {
-    int fno = (fs->file_no-1) % FILE_LIST_SZ;
-    did_close=1;
-    snprintf( buf, 2000, "STOP\n%d %s", fs->file_no, fs->name );
-    DBV("[%2d] Calling close on '%s'", fob->id, fs->name );
-
-    if ( file_list[fno].state ) {
-      free( file_list[fno].name );
-      file_list[fno].name = 0;
-      file_list[fno].state = 0;
-      file_list[fno].fino= 0;
-    }
-
-    fob->close( fs -> fd );
-    VRFY( pthread_cond_broadcast( &file_next_cv ) == 0, );
-    file_completed ++;
-  }
-
-  ret.did_close = did_close;
-  VRFY( pthread_mutex_unlock(&file_next_lock) == 0, "" );
-
-  if (did_close) {
-    MMSG("%s", buf);
-  }
-
-  return &ret;
-}
-
 struct file_object* file_memoryinit( void* arg, int id ) {
   struct dtn_args* dtn = arg;
-  static __thread struct file_object fob = {0} ;
+  struct file_object* fob = aligned_alloc( 64, sizeof(struct file_object) );
+  struct file_object f = {0};
 
-  fob.io_type = dtn->io_engine;
-  fob.QD = dtn->QD;
-  fob.blk_sz = dtn->block;
-  fob.io_flags = dtn->flags;
-  fob.thread_count = dtn->thread_count;
-  fob.args = &dtn->io_engine_name[5];
-  fob.id = id;
+  memset( fob, 0, sizeof(struct file_object) );
 
-  switch (fob.io_type) {
+  f.io_type = dtn->io_engine;
+  f.QD = dtn->QD;
+  f.blk_sz = dtn->block;
+  f.io_flags = dtn->flags;
+  f.thread_count = dtn->thread_count;
+  f.args = &dtn->io_engine_name[5];
+  f.id = id;
+
+  switch (f.io_type) {
 #ifdef __ENGINE_POSIX__
     case FIIO_POSIX:
-      file_posixinit( &fob );
+      file_posixinit( &f );
       break;
 #endif
 #ifdef __ENGINE_URING__
     case FIIO_URING:
-      file_uringinit( &fob );
+      file_uringinit( &f );
       break;
 #endif
 #ifdef __ENGINE_DUMMY__
     case FIIO_DUMMY:
-      file_dummyinit( &fob );
+      file_dummyinit( &f );
       break;
 #endif
-#ifdef __ENGINE_URING__
+/*
     case FIIO_SHMEM:
-      shmem_init( &fob );
+      shmem_init( &f );
       break;
-#endif
+*/
     default:
       VRFY( 0, "No matching engine for '%x'",
-               fob.io_type );
+               fob->io_type );
   }
 
-  return &fob;
+  memcpy ( fob, &f, sizeof(struct file_object) );
 
-}
+  return fob;
 
-uint8_t b64_enc[] = {
-  'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N',
-  'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b',
-  'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p',
-  'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '0', '1', '2', '3',
-  '4', '5', '6', '7', '8', '9', '+', '/' };
-
-uint8_t b64_dec[256] = {
-  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-  0,  0,  0, 62,  0,  0,  0, 63, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61,  0,  0,
-  0,  0,  0,  0,  0,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14,
- 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,  0,  0,  0,  0,  0,  0, 26, 27, 28,
- 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48,
- 49, 50, 51 };
-
-int file_b64encode( void* dst, void* src, int len ) {
-  uint8_t* d = (uint8_t*) dst;
-  uint8_t* s = (uint8_t*) src;
-  int i=0,j=0;
-
-  while ( j + 2 < len ) {
-    d[i++] = b64_enc[s[j] >> 2];
-    d[i++] = b64_enc[((s[j] & 0x3)   << 4) + (( s[j+1] & 0xf0 ) >> 4)];
-    d[i++] = b64_enc[((s[j+1] & 0xf) << 2) + (s[j+2]  >> 6)];
-    d[i++] = b64_enc[s[j+2] & 0x3f];
-    j+=3;
-  }
-
-  if ( j<len ) {
-    d[i++] = b64_enc[s[j] >> 2];
-    d[i] = b64_enc[((s[j] & 0x3) << 4)];
-    if ( (j + 1) >= len  )
-      return i+1;
-    d[i++] = b64_enc[((s[j] & 0x3)   << 4) + (( s[j+1] & 0xf0 ) >> 4)];
-    d[i++] = b64_enc[((s[j+1] & 0xf) << 2)] ;
-  }
-
-  return i;
-}
-
-int file_b64decode( void* dst, void* src, int len ) {
-  uint8_t* r = (uint8_t*) dst;
-  uint8_t* s = (uint8_t*) src;
-  int i=0,j=0;
-
-  while ( (j+3) < len ) {
-    int a= b64_dec[ s[j] ],
-        b= b64_dec[ s[j+1] ],
-        c= b64_dec[ s[j+2] ],
-        d= b64_dec[ s[j+3] ];
-
-    r[i]   = (a << 2) | (b >> 4);
-    r[i+1] = (b << 4) | (c >> 2);
-    r[i+2] = (c << 6) | d;
-    i+=3;
-    j+=4;
-  }
-
-  if ( j < len ) {
-    int a= b64_dec[ s[j] ],
-        b= b64_dec[ s[j+1] ],
-        c= b64_dec[ s[j+2] ];
-
-    r[i]   = (a << 2);
-    if ( (j+1) >= len  )
-      return i+1;
-
-    r[i]   = (a << 2) | (b >> 4);
-    r[i+1] = (b << 4) ;
-
-    if ( (j+2) >= len  )
-      return i+2;
-
-    r[i+1] = (b << 4) | (c >> 2);
-    r[i+2] = (c << 6);
-    return i+3;
-  }
-
-  return i;
 }
 
 void file_prng( void* buf, int sz ) {
@@ -622,7 +307,7 @@ void file_prng( void* buf, int sz ) {
 
 
 void* file_ioworker( void* arg ) {
-  struct file_stat_type* file_stat=0;
+  struct file_stat_type* fs=0;
   struct dtn_args* dtn = arg;
   struct file_object* fob;
   int id = __sync_fetch_and_add(&dtn->thread_id, 1);
@@ -632,12 +317,11 @@ void* file_ioworker( void* arg ) {
   uint64_t res;
   void* token;
   int32_t sz;
-  int did_work;
   uint32_t crc=0;
 
   affinity_set( dtn );
   fob = file_memoryinit( dtn, id );
-  dtn->fob = fob;
+  (void*) __sync_val_compare_and_swap ( &dtn->fob, 0, (void*) fob );
 
   if (s) {
     // Seed S differently for each thread
@@ -651,27 +335,30 @@ void* file_ioworker( void* arg ) {
     uint64_t offset;
     int64_t io_sz=1;
 
-    if (!file_stat) {
+    if (!fs) {
 
-      file_stat = file_next( fob, 0, 0 );
-      if (!file_stat) {
+      fs = file_next( fob->id );
+
+      if (!fs) {
         DBV("[%2d] no more work, exit work loop", id);
         break;
       } else {
-        DBV("[%2d] got work", id);
+        DBV("[%2d] IOW attached to fn: %ld, fd: %d", id, fs->file_no, fs->fd);
       }
-      crc= did_work= 0;
+      crc= 0;
 
     }
 
+
     while ( (token=fob->fetch(fob)) ) {
 
-      offset = __sync_fetch_and_add( &file_stat->block_offset, 1 );
+      offset = __sync_fetch_and_add( &fs->block_offset, 1 );
       offset *= dtn->block;
       fob->set(token, FOB_OFFSET, offset);
+      fob->set(token, FOB_FD, fs->fd);
 
       if ( dtn->flags & O_WRONLY ) {
-        io_sz = dtn->io_bytes - offset;
+        io_sz = dtn->disable_io - offset;
 
         if ( io_sz > dtn->block )
           io_sz = dtn->block;
@@ -702,7 +389,6 @@ void* file_ioworker( void* arg ) {
       VRFY ( sz >= 0, "IO Error");
 
       if (sz<1) {
-        struct file_close_struct* fc;
 
         XLOG("file_ioworker: queue_flush");
 
@@ -712,16 +398,14 @@ void* file_ioworker( void* arg ) {
 
         XLOG("file_ioworker: flush complete");
 
-        fc = file_close( fob, file_stat, 0, crc, 0, 0, 0 );
-        if (fc->did_close)
-          NFO("'%s': %08X", fc->fn, fc->hash);
-        file_stat = 0;
-        continue;
-      }
+        if (file_iow_remove( fs, id ) == FS_COMPLETE) {
+          DBG("[%2d] Close on file_no: %ld, fd=%d", id, fs->file_no, fs->fd);
+          fob->close( fob );
+          bzero( fs, sizeof( struct file_stat_type ) );
+        }
 
-      if (!did_work) {
-        did_work=1;
-        file_mark_worker( file_stat, id );
+        fs= 0;
+        continue;
       }
 
       offset = (uint64_t) fob->get( token, FOB_OFFSET );
@@ -730,7 +414,7 @@ void* file_ioworker( void* arg ) {
       crc ^= file_hash( buffer, sz, (offset+dtn->block-1LL)/dtn->block );
       fob->complete(fob, token);
 
-      __sync_fetch_and_add( &bytes_written, sz );
+      __sync_fetch_and_add( &fs->bytes_total, sz );
     }
   }
 
@@ -751,53 +435,141 @@ void file_randrd( void* buf, int count ) {
     close(fd);
 }
 
+pthread_t file_iotest_thread[THREAD_COUNT];
+uint64_t file_iotest_start_time;
+int file_iotest_tc=0;
+
 void file_iotest( void* args ) {
   int i=0;
   struct dtn_args* dtn = args;
-  pthread_t thread[THREAD_COUNT];
   pthread_attr_t attr;
   pthread_attr_init(&attr);
-  char* op = "Read";
 
   struct timeval t;
-  uint64_t start_time, now_time;
-  float duration;
 
   if (dtn->disable_io > 11) {
     file_randrd( &rand_seed, 8 );
   }
 
   gettimeofday( &t, NULL );
-  start_time = t.tv_sec * 1000000 + t.tv_usec;
-
-  if ( dtn->flags & O_WRONLY )
-    op = "Written";
+  file_iotest_start_time = t.tv_sec * 1000000 + t.tv_usec;
 
   for ( i=0; i< dtn->thread_count; i++ ) {
-    if ( pthread_create( &thread[i], &attr, &file_ioworker, dtn ) ) {
+    file_iotest_tc++;
+    if ( pthread_create( &file_iotest_thread[i], &attr, &file_ioworker, dtn ) ) {
       perror("pthread");
       exit(-1);
     }
   }
+}
 
-  for ( i=0; i< dtn->thread_count; i++ )
-    pthread_join( thread[i], NULL );
+void file_iotest_finish() {
+  int i;
+
+  for ( i=0; i< file_iotest_tc; i++ )
+    pthread_join( file_iotest_thread[i], NULL );
+
+  /*
+  uint64_t now_time;
+  float duration;
+  struct timeval t;
 
   gettimeofday( &t, NULL );
   now_time = t.tv_sec * 1000000 + t.tv_usec ;
-  duration = (now_time - start_time) / 1000000.0;
+  duration = (now_time - file_iotest_start_time) / 1000000.0;
 
   NFO(
-      "%s=%siB, Elapsed= %.2fs, %sbit/s %siB/s",
-      op, human_write(bytes_written, true),
+      "%siB, Elapsed= %.2fs, %sbit/s %siB/s",
+      human_write(bytes_written, true),
       duration, human_write(bytes_written/duration,false),
       human_write(bytes_written/duration,true)
   );
 
-  MMSG("Bytes %s: %sbit/s %s",
-       op,
+  MMSG("Bytes: %sbit/s %s",
        human_write(bytes_written/duration,false),
        human_write(bytes_written,true)  );
 
-
+  */
 }
+
+int64_t file_stat_getbytes( void *file_object, int fd ) {
+  struct file_object* fob = file_object;
+  struct stat st;
+  int res;
+
+  res = fob->fstat( fd, &st );
+
+  if (res)
+    return -1;
+
+  return st.st_size;
+}
+
+
+/* Note: These queues are non-blocking; If they are full, they will overrun
+         data.  We try to mitigate the effects of an overrun by by copying
+         the result to char[] msg; but that is obviously imperfect.
+
+         The code does detect when the queue has been overrun, but it
+         doesn't do anything with that information.
+
+         While you can make the queue larger, it doesn't really help if
+         the consumers are slower than the producers.
+
+         The best approach if you are having overwritten messages is
+         to have multiple log writers; but for that to work, you need
+         to update the cursor to be a real tail using atomic operations.
+  */
+
+char* dtn_log_getnext() {
+  static __thread int64_t cursor=0;
+  static __thread char msg[ESCP_MSG_SZ];
+
+  int64_t head = __sync_fetch_and_add( &ESCP_DTN_ARGS->debug_count, 0 );
+  char* ptr;
+
+  if ( cursor >= head )
+    return NULL; // Ring Buffer Empty
+
+  if ( (head > ESCP_MSG_COUNT) &&
+      ((head - ESCP_MSG_COUNT) > cursor ) ) {
+
+    // head has advanced past implicit tail
+    cursor = head - ESCP_MSG_COUNT;
+  }
+
+  ptr = (char*) (((cursor % ESCP_MSG_COUNT)*ESCP_MSG_SZ)
+                   + ESCP_DTN_ARGS->debug_buf);
+
+  memcpy( msg, ptr, ESCP_MSG_SZ );
+  cursor++;
+  return msg;
+}
+
+char* dtn_err_getnext() {
+  static __thread int64_t cursor=0;
+  static __thread char msg[ESCP_MSG_SZ];
+
+  int64_t head = __sync_fetch_and_add( &ESCP_DTN_ARGS->msg_count, 0 );
+  char* ptr;
+
+  if ( cursor >= head )
+    return NULL; // Ring Buffer Empty
+
+  if ( (head > ESCP_MSG_COUNT) &&
+      ((head - ESCP_MSG_COUNT) > cursor ) ) {
+
+    // head has advanced past implicit tail
+    cursor = head - ESCP_MSG_COUNT;
+  }
+
+  ptr = (char*) (((cursor % ESCP_MSG_COUNT)*ESCP_MSG_SZ)
+                   + ESCP_DTN_ARGS->msg_buf);
+
+  memcpy( msg, ptr, ESCP_MSG_SZ );
+  cursor++;
+  return msg;
+}
+
+
+
