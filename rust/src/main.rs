@@ -337,12 +337,15 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
         unsafe{
           let filename = entry.name().unwrap();
 
-          let fd = ((*(*args).fob).open.unwrap())( filename.as_ptr() as *const i8, (*args).flags, 0o644 );
+          let open = (*(*args).fob).open.unwrap();
+          let fd = open( filename.as_ptr() as *const i8, (*args).flags, 0o644 );
 
-          debug!("Add file {filename}:{fino} with {} sz={sz} fd={fd}", (*args).flags, fino=entry.fino(), sz=entry.sz() );
+          debug!("Add file {filename}:{fino} with {} sz={sz} fd={fd}",
+                 (*args).flags, fino=entry.fino(), sz=entry.sz() );
 
           if fd < 1 {
-            info!("Got an error opening file {:?} {:?}", filename, io::Error::last_os_error() );
+            info!("Got an error opening file {:?} {:?}",
+                  filename, io::Error::last_os_error() );
             return;
           }
           file_addfile( entry.fino(), fd, 0, entry.sz() );
@@ -556,35 +559,68 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
       tx_start (args);
     }
 
+    // For the purpose of metrics, we consider this to be the start of the
+    // transfer. At this point we have not read any data from disk but have
+    // configured the transfer endpoints.
+
+    let start = std::time::Instant::now();
+
     let bytes_total = iterate_files( flags.source, safe_args, sin );
     debug!("Finished iterating files");
 
-    let mut old = std::time::Instant::now();
-    let mut bytes_old:i64 = 0;
     let mut fi;
 
     unsafe {
       fi = std::fs::File::from_raw_fd(1);
+      _ = fi.write(b"\rCalculating transfer");
+      _ = fi.flush();
     }
 
     loop {
-      let now = std::time::Instant::now();
+
       let bytes_now;
 
       unsafe {
         bytes_now = get_bytes_io( args as *mut dtn_args );
       }
 
-      if bytes_now >= bytes_total
-        { break; }
+      let duration = start.elapsed();
 
-      let status = format!("\r{}/{} {:?}", bytes_now, bytes_total, now-old);
-      _ = fi.write(status.as_bytes());
+      let width= ((bytes_now as f32 / bytes_total as f32) * 60.0) as usize ;
+      let progress = format!("{1:=<0$}", width, "");
+      let rate = bytes_now as f32/duration.as_secs_f32();
+
+      let eta= ((bytes_total - bytes_now) as f32 / rate) as i64;
+      let eta_human;
+
+      if eta > 3600 {
+        eta_human = format!("{:02}:{:02}:{:02}", eta/3600, (eta/60)%60, eta%60);
+      } else {
+        eta_human = format!("{:02}:{:02}", eta/60, eta%60);
+      }
+
+      let rate_str;
+
+      unsafe {
+        let tmp = human_write( rate as u64, false );
+        rate_str= CStr::from_ptr(tmp).to_str().unwrap();
+      }
+
+
+
+
+
+      let bar = format!("\r[{: <60}] {}B/s {}", progress, rate_str, eta_human);
+      _ = fi.write(bar.as_bytes());
       _ = fi.flush();
 
+      if bytes_now >= bytes_total {
+        _ = fi.write(b"\n");
+        _ = fi.flush();
+        break;
+      }
+
       let interval = std::time::Duration::from_millis(250);
-      old = now;
-      bytes_old = bytes_now;
       thread::sleep(interval);
 
 
