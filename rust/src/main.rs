@@ -565,29 +565,37 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
 
     let start = std::time::Instant::now();
 
-    let bytes_total = iterate_files( flags.source, safe_args, sin );
-    debug!("Finished iterating files");
 
     let mut fi;
 
     unsafe {
       fi = std::fs::File::from_raw_fd(1);
-      _ = fi.write(b"\rCalculating transfer");
-      _ = fi.flush();
+      if !flags.quiet {
+        _ = fi.write(b"\rCalculating ... ");
+        _ = fi.flush();
+      }
     }
 
+    let bytes_total = iterate_files( flags.source, safe_args, sin );
+    debug!("Finished iterating files");
+
     loop {
+      if flags.quiet {
+        break;
+      }
+
+      let interval = std::time::Duration::from_millis(250);
+      thread::sleep(interval);
 
       let bytes_now;
-
       unsafe {
         bytes_now = get_bytes_io( args as *mut dtn_args );
       }
 
       let duration = start.elapsed();
 
-      let width= ((bytes_now as f32 / bytes_total as f32) * 60.0) as usize ;
-      let progress = format!("{1:=<0$}", width, "");
+      let width= ((bytes_now as f32 / bytes_total as f32) * 40.0) as usize ;
+      let progress = format!("{1:=>0$}", width, ">");
       let rate = bytes_now as f32/duration.as_secs_f32();
 
       let eta= ((bytes_total - bytes_now) as f32 / rate) as i64;
@@ -600,17 +608,28 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
       }
 
       let rate_str;
+      let tot_str;
 
       unsafe {
-        let tmp = human_write( rate as u64, false );
+        let tmp = human_write( rate as u64, !flags.bits );
         rate_str= CStr::from_ptr(tmp).to_str().unwrap();
+
+        let tmp = human_write( bytes_now as u64, true );
+        tot_str= CStr::from_ptr(tmp).to_str().unwrap();
+
+        debug!("{}/{}", bytes_now, bytes_total);
+      }
+
+      let units;
+      if flags.bits {
+        units = "bits"
+      } else {
+        units = "B"
       }
 
 
-
-
-
-      let bar = format!("\r[{: <60}] {}B/s {}", progress, rate_str, eta_human);
+      let bar = format!("\r [{: <40}] {}B {}{}/s {: <10}",
+                        progress, tot_str, rate_str, units, eta_human);
       _ = fi.write(bar.as_bytes());
       _ = fi.flush();
 
@@ -619,11 +638,6 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
         _ = fi.flush();
         break;
       }
-
-      let interval = std::time::Duration::from_millis(250);
-      thread::sleep(interval);
-
-
     }
 
     {
@@ -1055,6 +1069,9 @@ struct EScp_Args {
 
    #[arg(long, help="mgmt UDS/IPC connection", default_value_t=String::from(""))]
    mgmt: String,
+
+   #[arg(long, help="Display speed in bits/s")]
+   bits: bool,
 
    #[arg(short='L', long, help="Display License")]
    license: bool,
