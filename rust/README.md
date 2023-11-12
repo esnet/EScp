@@ -2,7 +2,9 @@ curl https://sh.rustup.rs -sSf | sh
 . "$HOME/.cargo/env"
 
 cargo build
-sudo cargo install --path . --root /usr/local --force
+
+# Become root (and install rust for root, same as above)
+cargo install --path . --root /usr/local --force
 
 
 
