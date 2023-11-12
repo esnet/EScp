@@ -157,6 +157,7 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
   let (mut sin, mut sout, file, file2, listener, stream);
 
   let mut buf = vec![ 0u8; 6 ];
+  let mut direct_mode = true;
 
   if flags.mgmt.len() > 0 {
     _ = fs::remove_file(flags.mgmt.clone());
@@ -337,10 +338,26 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
 
         unsafe{
           let filename = entry.name().unwrap();
-          let full_path = format!("{}/{}", root, filename);
+          let full_path;
+          if root.len() > 0 {
+            full_path = format!("{}/{}", root, filename);
+          } else {
+            full_path = format!("{}", filename);
+          }
 
           let open = (*(*args).fob).open.unwrap();
-          let fd = open( full_path.as_ptr() as *const i8, (*args).flags, 0o644 );
+          let mut fd;
+
+          if direct_mode {
+            fd = open( full_path.as_ptr() as *const i8, (*args).flags | libc::O_DIRECT, 0o644 );
+            if (fd == -1) && (*libc::__errno_location() == 22) {
+              direct_mode = false;
+              fd = open( full_path.as_ptr() as *const i8, (*args).flags, 0o644 );
+            }
+          } else {
+            fd = open( full_path.as_ptr() as *const i8, (*args).flags, 0o644 );
+          }
+
 
           debug!("Add file {filename}:{fino} with {} sz={sz} fd={fd}",
                  (*args).flags, fino=entry.fino(), sz=entry.sz() );
@@ -716,6 +733,11 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, sin: &std::fs::Fi
   let mut fino:u64=0;
   let mut file_list = Vec::new();
   let mut bytes_total:i64 = 0;
+  let mut direct_mode = true;
+  let open ;
+  unsafe {
+    open = (*(*args.args).fob).open.unwrap();
+  }
 
   for fi in files {
     if fi.len() < 1 { continue; };
@@ -724,7 +746,15 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, sin: &std::fs::Fi
     unsafe{
       let mut st: stat = std::mem::zeroed();
 
-      fd = ((*(*args.args).fob).open.unwrap())( c_str.as_ptr() as *const i8, (*args.args).flags, mode );
+      if direct_mode {
+        fd = open( c_str.as_ptr() as *const i8, (*args.args).flags | libc::O_DIRECT, mode );
+        if (fd == -1) && (*libc::__errno_location() == 22) {
+          direct_mode = false;
+          fd = open( c_str.as_ptr() as *const i8, (*args.args).flags, mode );
+        }
+      } else {
+        fd = open( c_str.as_ptr() as *const i8, (*args.args).flags, mode );
+      }
 
       if fd == -1 {
         info!("RUST Got an error trying to open {:?} {:?}", c_str,
