@@ -330,15 +330,17 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
       }
 
       let fs = flatbuffers::root::<file_spec::ESCP_file_list>(buf.as_slice()).unwrap();
-      debug!("Root set to: {}", fs.root().unwrap());
+      let root = fs.root().unwrap();
+      debug!("Root set to: {}", root);
 
       for entry in fs.files().unwrap() {
 
         unsafe{
           let filename = entry.name().unwrap();
+          let full_path = format!("{}/{}", root, filename);
 
           let open = (*(*args).fob).open.unwrap();
-          let fd = open( filename.as_ptr() as *const i8, (*args).flags, 0o644 );
+          let fd = open( full_path.as_ptr() as *const i8, (*args).flags, 0o644 );
 
           debug!("Add file {filename}:{fino} with {} sz={sz} fd={fd}",
                  (*args).flags, fino=entry.fino(), sz=entry.sz() );
@@ -576,7 +578,7 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
       }
     }
 
-    let bytes_total = iterate_files( flags.source, safe_args, sin );
+    let bytes_total = iterate_files( flags.source, safe_args, sin, dest.to_string() );
     debug!("Finished iterating files");
 
     loop {
@@ -668,7 +670,7 @@ struct dtn_args_wrapper {
   args: *mut dtn_args
 }
 
-fn sendmsg_files( files: &Vec<(String, u64, i64)>, mut sin: &std::fs::File) {
+fn sendmsg_files( files: &Vec<(String, u64, i64)>, mut sin: &std::fs::File, dest_path: &String) {
   let mut builder = flatbuffers::FlatBufferBuilder::with_capacity(8192);
   let mut vec = Vec::new();
 
@@ -685,7 +687,7 @@ fn sendmsg_files( files: &Vec<(String, u64, i64)>, mut sin: &std::fs::File) {
 
   }
 
-  let root = Some(builder.create_string("."));
+  let root = Some(builder.create_string((*dest_path).as_str()));
   let fi   = Some( builder.create_vector( &vec ) );
   let bu = file_spec::ESCP_file_list::create(
     &mut builder, &file_spec::ESCP_file_listArgs{
@@ -707,7 +709,7 @@ fn sendmsg_files( files: &Vec<(String, u64, i64)>, mut sin: &std::fs::File) {
 
 }
 
-fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, sin: &std::fs::File) -> i64 {
+fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, sin: &std::fs::File, dest_path: String) -> i64 {
 
   let mode:i32 = 0;
   let mut fd:i32;
@@ -758,7 +760,7 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, sin: &std::fs::Fi
       // debug!("Adding file {f}");
 
       if (fino & 0x7f) == 0x7f {
-        sendmsg_files( &file_list, sin );
+        sendmsg_files( &file_list, sin, &dest_path );
         file_list.clear();
       }
 
@@ -766,7 +768,7 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, sin: &std::fs::Fi
   }
 
   if file_list.len() > 0 {
-    sendmsg_files( &file_list, sin );
+    sendmsg_files( &file_list, sin, &dest_path );
   }
 
   bytes_total
