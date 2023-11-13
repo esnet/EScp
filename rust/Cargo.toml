@@ -23,6 +23,8 @@ log4rs = "1.*"
 log = "*"
 rand = "*"
 shadow-rs = "*"
+yaml-rust = "*"
+hex = "*"
 
 [profile.release]
 opt-level = 'z'     # Optimize for size

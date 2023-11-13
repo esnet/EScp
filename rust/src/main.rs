@@ -23,6 +23,7 @@ use std::os::unix::net::{UnixStream,UnixListener};
 use std::os::fd::AsRawFd;
 use std::os::fd::FromRawFd;
 use std::fs;
+use hex;
 
 use log::{{debug, info, error}};
 
@@ -45,6 +46,8 @@ const msg_session_init:u16      =1;
 const msg_file_spec:u16         =2;
 const msg_session_complete:u16  =3;
 const msg_session_terminate:u16 =5;
+
+const config_items: [&str; 2]= [ "cpumask", "nodemask" ];
 
 
 macro_rules! sess_init {
@@ -1148,13 +1151,45 @@ struct EScp_Args {
  */
 
 
+fn load_yaml(file_str: &str) -> HashMap<String, String> {
+    let file_raw = std::fs::File::open(file_str);
+    let mut file;
+    let mut map = HashMap::new();
+
+    // If the configuration file doesn't exist, we don't care
+    match file_raw {
+      Ok(value)  => { file = value; }
+      Err(_) => { return map; }
+    }
+
+    let mut contents = String::new();
+
+    // If the configuration exists but contains bad data, then error
+    file.read_to_string(&mut contents)
+        .expect("Unable to read file");
+
+    let docs = yaml_rust::YamlLoader::load_from_str(
+      &contents).expect("Error parsing YAML File");
+    let doc = &docs[0];
+
+    for i in config_items {
+      let res;
+      match doc[i].as_str() {
+        Some(value)  => { res= value; }
+        _ => { continue }
+      }
+      map.insert(i.to_string(), res.to_string());
+    }
+
+    return map;
+}
+
 fn main() {
 
-  let args: Vec<String> = env::args().collect();
-  // let mut permies: Vec<*const i8> = [].to_vec();
+  let config = load_yaml("/etc/escp.conf");
+
   let mut permies: Vec<CString> = [].to_vec();
-
-
+  let args: Vec<String> = env::args().collect();
   let path = std::path::Path::new( &args[0] );
   let cmd = path.file_name().expect("COWS!").to_str().unwrap() ;
 
@@ -1162,6 +1197,31 @@ fn main() {
   unsafe {
     args_new()
   };
+
+  if config.contains_key(&"cpumask".to_string()) {
+    unsafe{
+      (*args).do_affinity = true;
+
+      // let res = u64::from_str_radix(config["cpumask"].as_str(), 16)...
+      let res = hex::decode( config["cpumask"].as_str() ).expect("Bad cpumask");
+      let mut len = res.len();
+      if len > 31 {
+        len = 32;
+      }
+
+      std::ptr::copy_nonoverlapping(
+        res.as_ptr() as *mut i8,
+        (*args).cpumask_bytes.as_ptr() as *mut i8, len);
+      (*args).cpumask_len = len as i32;
+    }
+  }
+
+  if config.contains_key(&"nodemask".to_string()) {
+    unsafe{
+      (*args).nodemask = u64::from_str_radix(
+        config["nodemask"].as_str(), 16).expect("Bad nodemask");
+    }
+  }
 
   let io_engine_names = HashMap::from( [
     ("posix", 1),
