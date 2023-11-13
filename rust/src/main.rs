@@ -1188,7 +1188,6 @@ fn main() {
 
   let config = load_yaml("/etc/escp.conf");
 
-  let mut permies: Vec<CString> = [].to_vec();
   let args: Vec<String> = env::args().collect();
   let path = std::path::Path::new( &args[0] );
   let cmd = path.file_name().expect("COWS!").to_str().unwrap() ;
@@ -1235,6 +1234,11 @@ fn main() {
     let flags = DTN_Args::parse();
     // println!("Files={:?}", flags.file );
 
+    if flags.license {
+      print_license();
+      process::exit(0);
+    };
+
     unsafe {
       if flags.verbose { verbose_logging += 1; }
 
@@ -1260,25 +1264,13 @@ fn main() {
         process::exit(0);
       }
 
-      let c_str = CString::new(io_engine.as_str()).unwrap();
-      let ptr = c_str.as_ptr();
-
-      permies.push(c_str);
-
-      (*args).io_engine_name = ptr as *mut i8;
+      (*args).io_engine_name = io_engine.as_ptr() as *mut i8;
       (*args).window = int_from_human(flags.window.clone()) as u32;
-    }
 
-    unsafe {
       print_args( args );
+      do_dtn( args, flags );
     }
 
-    if flags.license {
-      print_license();
-      process::exit(0);
-    };
-
-    do_dtn( args, flags );
   } else {
     let flags = EScp_Args::parse();
 
@@ -1302,12 +1294,11 @@ fn main() {
       (*args).block = 1 << 20;
       (*args).do_server = flags.server;
 
-      // (*args).io_engine = FIIO_POSIX as i32;
-      (*args).io_engine_name = "dummy\0".as_ptr() as *mut i8;
       (*args).active_port = flags.escp_port;
       (*args).flags = libc::O_RDONLY;
+      (*args).io_engine = io_engine_names.get(&io_engine.as_str()).cloned().unwrap_or(-1);
+      (*args).io_engine_name = io_engine.as_ptr() as *mut i8;
 
-      // file_add( "1T\0".as_ptr()  as *mut ::std::os::raw::c_void, 0 as u64 );
 
       /*
       println!("Source: {:?}", flags.source );
