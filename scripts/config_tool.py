@@ -1,4 +1,11 @@
 #!/usr/bin/python3
+
+# This parses systool output to provide a mask that binds to
+# a particular socket using NIC as a reference. If your NIC
+# is on socket 0 then you probably want to bind EScp to
+# socket 1 (as an example).
+
+
 import subprocess
 import sys
 import pprint

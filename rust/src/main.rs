@@ -1102,7 +1102,10 @@ struct EScp_Args {
    #[arg(short='E', long="escp", default_value_t=String::from("escp"))]
    escp: String,
 
-   #[arg(long="io_engine", default_value_t = String::from("posix"),
+   #[arg(long="blocksize", default_value_t = String::from("1M"))]
+   block_sz: String,
+
+   #[arg(long="ioengine", default_value_t = String::from("posix"),
          help="posix,dummy")]
    io_engine: String,
 
@@ -1288,6 +1291,8 @@ fn main() {
       (*args).io_engine = io_engine_names.get(&io_engine.as_str()).cloned().unwrap_or(-1);
       (*args).io_engine_name = io_engine.as_ptr() as *mut i8;
 
+      (*args).block = int_from_human(flags.block_sz.to_string()) as i32;
+
       if (*args).io_engine  == -1 {
         eprintln!("io_engine='{}' not in compiled io_engines {:?}",
                   io_engine, io_engine_names.keys());
@@ -1301,7 +1306,6 @@ fn main() {
       (*args).mtu=8204;
       (*args).thread_count = flags.threads as i32;
       (*args).QD = 4;
-      (*args).block = 1 << 20;
       (*args).do_server = flags.server;
 
       (*args).active_port = flags.escp_port;
