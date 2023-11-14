@@ -65,6 +65,7 @@ void* file_dummysubmit( void* arg, int32_t* sz, uint64_t* offset ) {
   struct posix_op* op = (struct posix_op*) fob->pvdr;
 
   int64_t file_sz;
+  int64_t sz_ret;
 
   if ( fob->tail >= fob->head )
     return 0;
@@ -89,18 +90,21 @@ void* file_dummysubmit( void* arg, int32_t* sz, uint64_t* offset ) {
   file_sz = dummy_sb[op->fd].st_size;
   pthread_mutex_unlock(&dummy_lock);
 
+  // XXX: fix 4GB error
 
-  sz[0] = file_sz - op->offset;
+  sz_ret = file_sz - op->offset;
 
-  if (sz[0] > fob->blk_sz)
-    sz[0] = fob->blk_sz;
+  if (sz_ret > fob->blk_sz)
+    sz_ret = fob->blk_sz;
 
-  if (op->offset > file_sz)
-    sz[0] = 0;
+  if (file_sz <= op->offset)
+    sz_ret = 0;
 
-  DBG( "[%2d] %s op fd=%d sz=%zd, offset=%zd, file_total=%zd", 
-    fob->id, fob->io_flags & O_WRONLY ? "write":"read",
-    op->fd, fob->io_flags & O_WRONLY ? op->sz: fob->blk_sz,
+  sz[0] = sz_ret;
+
+  DBG( "[%2d] read op fd=%d sz=%d, offset=%zd, file_total=%zd", 
+    fob->id, 
+    op->fd, sz[0],
     op->offset, file_sz );
 
   return (void*) op;

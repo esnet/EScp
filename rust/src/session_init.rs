@@ -37,6 +37,7 @@ impl<'a> Session_Init<'a> {
   pub const VT_BIND_INTERFACE: flatbuffers::VOffsetT = 22;
   pub const VT_PORT_START: flatbuffers::VOffsetT = 24;
   pub const VT_PORT_END: flatbuffers::VOffsetT = 26;
+  pub const VT_IO_ENGINE: flatbuffers::VOffsetT = 28;
 
   #[inline]
   pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
@@ -49,6 +50,7 @@ impl<'a> Session_Init<'a> {
   ) -> flatbuffers::WIPOffset<Session_Init<'bldr>> {
     let mut builder = Session_InitBuilder::new(_fbb);
     builder.add_session_id(args.session_id);
+    builder.add_io_engine(args.io_engine);
     builder.add_port_end(args.port_end);
     builder.add_port_start(args.port_start);
     if let Some(x) = args.bind_interface { builder.add_bind_interface(x); }
@@ -148,6 +150,13 @@ impl<'a> Session_Init<'a> {
     // which contains a valid value in this slot
     unsafe { self._tab.get::<i32>(Session_Init::VT_PORT_END, Some(0)).unwrap()}
   }
+  #[inline]
+  pub fn io_engine(&self) -> i32 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<i32>(Session_Init::VT_IO_ENGINE, Some(0)).unwrap()}
+  }
 }
 
 impl flatbuffers::Verifiable for Session_Init<'_> {
@@ -169,6 +178,7 @@ impl flatbuffers::Verifiable for Session_Init<'_> {
      .visit_field::<flatbuffers::ForwardsUOffset<&str>>("bind_interface", Self::VT_BIND_INTERFACE, false)?
      .visit_field::<i32>("port_start", Self::VT_PORT_START, false)?
      .visit_field::<i32>("port_end", Self::VT_PORT_END, false)?
+     .visit_field::<i32>("io_engine", Self::VT_IO_ENGINE, false)?
      .finish();
     Ok(())
   }
@@ -186,6 +196,7 @@ pub struct Session_InitArgs<'a> {
     pub bind_interface: Option<flatbuffers::WIPOffset<&'a str>>,
     pub port_start: i32,
     pub port_end: i32,
+    pub io_engine: i32,
 }
 impl<'a> Default for Session_InitArgs<'a> {
   #[inline]
@@ -203,6 +214,7 @@ impl<'a> Default for Session_InitArgs<'a> {
       bind_interface: None,
       port_start: 0,
       port_end: 0,
+      io_engine: 0,
     }
   }
 }
@@ -261,6 +273,10 @@ impl<'a: 'b, 'b> Session_InitBuilder<'a, 'b> {
     self.fbb_.push_slot::<i32>(Session_Init::VT_PORT_END, port_end, 0);
   }
   #[inline]
+  pub fn add_io_engine(&mut self, io_engine: i32) {
+    self.fbb_.push_slot::<i32>(Session_Init::VT_IO_ENGINE, io_engine, 0);
+  }
+  #[inline]
   pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a>) -> Session_InitBuilder<'a, 'b> {
     let start = _fbb.start_table();
     Session_InitBuilder {
@@ -290,6 +306,7 @@ impl core::fmt::Debug for Session_Init<'_> {
       ds.field("bind_interface", &self.bind_interface());
       ds.field("port_start", &self.port_start());
       ds.field("port_end", &self.port_end());
+      ds.field("io_engine", &self.io_engine());
       ds.finish()
   }
 }

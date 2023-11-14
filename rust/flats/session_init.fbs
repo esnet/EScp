@@ -21,5 +21,6 @@ table Session_Init {
   bind_interface: string;
   port_start:      int32;
   port_end:        int32;
+  io_engine:       int32;
 }
 

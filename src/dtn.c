@@ -447,6 +447,7 @@ void* rx_worker( void* arg ) {
 
     { // Do FIHDR_SHORT
       int sz = 1 << fi->block_sz_packed;
+      int sz_orig = sz;
       uint64_t file_no = fi->file_no_packed >> 8;
       uint64_t offset = fi->offset >> 8;
       uint64_t res=0;
@@ -498,6 +499,10 @@ void* rx_worker( void* arg ) {
         written = __sync_add_and_fetch( &fs_ptr->bytes_total, sz );
         __sync_fetch_and_add( &dtn->bytes_io, 1 );
 
+        if ( sz != sz_orig ) {
+          DBG("[%2d] *WARN* Write sz is undersized %d!=%d", id, sz, sz_orig);
+          // XXX: This is probably a fatal error
+        }
         DBG("[%2d] FIHDR_SHORT details: bytes=%08ld written=%08ld fn=%ld", id, fs_ptr->bytes, written, file_no );
 
         if ( fs_ptr->bytes && fs_ptr->bytes <= written  ) {
@@ -642,8 +647,6 @@ void* tx_worker( void* args ) {
       // the extra I/O operations are superflus.
 
       offset = __sync_fetch_and_add( &fs->block_offset, 1 );
-      DBG("[%2d] fs->block_offset result: %ld %lX state=%lX", id, offset, (uint64_t) &fs->block_offset, (uint64_t) fs->state);
-
       offset *= dtn->block;
 
       fob->set(token, FOB_OFFSET, offset);
@@ -651,15 +654,11 @@ void* tx_worker( void* args ) {
       fob->set(token, FOB_FD, fs->fd);
     }
 
-
     token = fob->submit( fob, &bytes_read, &offset );
     if (!token) {
       DBG("[%2d] fob->submit resulted in an emptry result", id);
       continue;
     }
-
-    VRFY( fs->poison == 0x4BADC01F, "Someone took our poison!");
-    VRFY( fs->fd >= 0, "Someone took our FD!");
 
     if (bytes_read <= 0) {
       if (bytes_read == 0 /* EOF */ ) {

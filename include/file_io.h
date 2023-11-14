@@ -114,17 +114,16 @@ struct file_stat_type {
   uint64_t state        __attribute__ ((aligned(64)));
 
   // Atomic XOR of block file_hash
-  uint32_t crc          __attribute__ ((aligned(64))); 
+  uint64_t crc          __attribute__ ((aligned(64)));
 
-  uint32_t poison;     // 0x4BADC01F
-  int32_t  fd;         // If set, file is open and read
   uint64_t file_no;
-  uint64_t bytes;      // Typically file total XXX: Delete ? 
+  uint64_t bytes;      // Typically file total XXX: Delete ?
   uint64_t block_sz;   // Copied from args
+  int32_t  fd;         // If set, file is open and read
+  // uint32_t poison;
 
   // Reader atomically increments this to find next read location
-  // Future: Writer sets to sz from fi_end message. 
-  uint64_t pad          __attribute__ ((aligned(64)));
+  // Future: Writer sets to sz from fi_end message.
   uint64_t block_offset __attribute__ ((aligned(64)));
 
   // Each time an I/O successfully completes this gets incremented

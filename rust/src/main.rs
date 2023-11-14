@@ -243,6 +243,13 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
       }
     }
 
+    if helo.io_engine() > 0 {
+      unsafe {
+        (*args).io_engine = helo.io_engine();
+        (*args).io_engine_name = "RCVER".as_ptr() as *mut i8;
+      }
+    }
+
     match helo.bind_interface() {
       Some( string )  => { bind_interface = CString::new(string).unwrap(); },
       _ => { },
@@ -416,11 +423,12 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
 
 
   match flags.destination.rfind(':') {
-    Some ( a ) => { (host, dest_tmp) = flags.destination.split_at(a); },
-    _          => {
-                    eprintln!("Expected ':' in argument '{}'; local copy not implemented", flags.destination) ;
-                    process::exit(-1);
-                  }
+    Some (a) => { (host, dest_tmp) = flags.destination.split_at(a); },
+    _        => {
+      eprintln!("Expected ':' in argument '{}'; local copy not implemented",
+                flags.destination);
+      process::exit(-1);
+    }
   }
 
   (_, dest) = dest_tmp.split_at(1);
@@ -433,8 +441,9 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
   }
 
   initialize_logging("/tmp/escp.log.", safe_args);
-  debug!("GIT: {} on {} clean={}", build::SHORT_COMMIT, build::BUILD_TIME, shadow_rs::git_clean());
-  debug!(" host: {}, dest_files: {} ", host, dest );
+  debug!("GIT: {} on {} clean={}", build::SHORT_COMMIT,
+         build::BUILD_TIME, shadow_rs::git_clean());
+  debug!("Treansfer to host: {}, dest_files: {} ", host, dest );
 
   let (mut sin, mut sout, mut serr, file, proc, stream, fd);
   if flags.mgmt.len() > 0 {
@@ -488,7 +497,7 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
     sout = proc.stdout.as_ref().unwrap();
     serr = proc.stderr.as_ref().unwrap();
   }
-  let (session_id, start_port, do_verbose, crypto_key);
+  let (session_id, start_port, do_verbose, crypto_key, io_engine);
 
   crypto_key = vec![ 0i8; 16 ];
 
@@ -498,6 +507,7 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
     (*args).session_id = rand::random::<u64>();
     session_id = (*args).session_id;
     start_port = (*args).active_port;
+    io_engine  = (*args).io_engine;
     do_verbose = verbose_logging  > 0;
     std::intrinsics::copy_nonoverlapping( (*args).crypto_key.as_ptr() , crypto_key.as_ptr() as *mut u8, 16 );
   }
@@ -514,6 +524,7 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
       do_verbose: do_verbose,
       do_crypto: true,
       crypto_key: ckey,
+      io_engine: io_engine,
       ..Default::default()
     }
   );
@@ -911,10 +922,7 @@ fn do_dtn( args: *mut dtn_args, flags: DTN_Args) {
 
 
     unsafe {
-      // let (host, port) = (b"::1", b"1000");
       (*args).sock_store[connection_count] =  dns_lookup( c_str.as_ptr() as *mut i8, d_str.as_ptr() as *mut i8 );
-      // (*args).sock_store[connection_count] =  dns_lookup( host, port );
-      // (*args).sock_store[connection_count] =  dns_lookup( host.as_ptr() as *mut i8 , port.as_ptr() as *mut i8);
       connection_count += 1;
       (*args).sock_store_count = connection_count as i32;
     }
@@ -1278,9 +1286,11 @@ fn main() {
 
       let io_engine = flags.io_engine.to_lowercase();
       (*args).io_engine = io_engine_names.get(&io_engine.as_str()).cloned().unwrap_or(-1);
+      (*args).io_engine_name = io_engine.as_ptr() as *mut i8;
 
       if (*args).io_engine  == -1 {
-        eprintln!("io_engine='{}' not in compiled io_engines {:?}", io_engine, io_engine_names.keys());
+        eprintln!("io_engine='{}' not in compiled io_engines {:?}",
+                  io_engine, io_engine_names.keys());
         process::exit(0);
       }
 
@@ -1296,18 +1306,6 @@ fn main() {
 
       (*args).active_port = flags.escp_port;
       (*args).flags = libc::O_RDONLY;
-      (*args).io_engine = io_engine_names.get(&io_engine.as_str()).cloned().unwrap_or(-1);
-      (*args).io_engine_name = io_engine.as_ptr() as *mut i8;
-
-
-      /*
-      println!("Source: {:?}", flags.source );
-      println!("Destination: {}", flags.destination );
-      println!("Server?: {}", flags.server );
-      */
-
-      // let var = "dummy".as_ptr() as *mut i8;
-      // std::ptr::copy_nonoverlapping( (*args).io_engine_name, var,  5);
 
     }
 
@@ -1319,19 +1317,5 @@ fn main() {
     do_escp( args, flags );
   };
 
-
-  // std::process::exit(0);
-
-
-  // let arg = unsafe { *args };
-
-
-  /*
-  unsafe {
-    println!("{}", (*args).mtu );
-  }
-  */
-
-  // topo();
 }
 

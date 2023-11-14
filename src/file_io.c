@@ -80,7 +80,6 @@ struct file_stat_type* file_addfile(uint64_t fileno, int fd, uint32_t crc, int64
     fs.state = FS_INIT;
     fs.fd = fd;
     // fs.given_crc = crc;
-    fs.poison = 0x4BADC01F;
     fs.file_no = fileno;
     fs.bytes = file_sz;
 
