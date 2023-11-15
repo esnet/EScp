@@ -72,8 +72,6 @@ void* file_dummysubmit( void* arg, int32_t* sz, uint64_t* offset ) {
 
   fob->tail++;
 
-
-
   if (fob->io_flags & O_WRONLY) {
 
     DBG( "[%2d] %s op fd=%d sz=%zd, offset=%zd",
@@ -89,8 +87,6 @@ void* file_dummysubmit( void* arg, int32_t* sz, uint64_t* offset ) {
   VRFY( pthread_mutex_lock(&dummy_lock)==0, );
   file_sz = dummy_sb[op->fd].st_size;
   pthread_mutex_unlock(&dummy_lock);
-
-  // XXX: fix 4GB error
 
   sz_ret = file_sz - op->offset;
 
