@@ -617,7 +617,7 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
         break;
       }
 
-      let interval = std::time::Duration::from_millis(250);
+      let interval = std::time::Duration::from_millis(200);
       thread::sleep(interval);
 
       let bytes_now;
@@ -667,7 +667,9 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
       _ = fi.flush();
 
       if bytes_now >= bytes_total {
-        _ = fi.write(b"\n");
+        let s = format!("\rComplete: {tot_str}B at {rate_str}{units}/s in {:0.1}s {:38}\n",
+          duration.as_secs_f32(), "");
+        _ = fi.write(s.as_bytes());
         _ = fi.flush();
         break;
       }
