@@ -24,6 +24,7 @@ use std::os::fd::AsRawFd;
 use std::os::fd::FromRawFd;
 use std::fs;
 use hex;
+use crossbeam_channel;
 
 use log::{{debug, info, error}};
 
@@ -67,7 +68,8 @@ macro_rules! sess_init {
 
 static GLOBAL_FILEOPEN_CLEANUP: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 static GLOBAL_FILEOPEN_COUNT: usize = 4;
-
+static GLOBAL_DIROPEN_COUNT: usize = 2;
+static GLOBAL_FINO: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 fn _print_type_of<T>(_: &T) {
     println!("{}", std::any::type_name::<T>())
@@ -388,7 +390,6 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
 
     }
 
-
     if t == msg_session_terminate {
       debug!("Got terminate request sz={sz}, type={t}");
       // XXX: Should do an immediate exit here
@@ -610,7 +611,7 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
     }
 
     let bytes_total = iterate_files( flags.source, safe_args, sin, dest.to_string() );
-    debug!("Finished iterating files");
+    debug!("Finished iterating files, total bytes={bytes_total}");
 
     loop {
       if flags.quiet {
@@ -703,6 +704,7 @@ struct dtn_args_wrapper {
   args: *mut dtn_args
 }
 
+/*
 fn sendmsg_files( files: &Vec<(String, u64, i64)>, mut sin: &std::fs::File, dest_path: &String) {
   let mut builder = flatbuffers::FlatBufferBuilder::with_capacity(8192);
   let mut vec = Vec::new();
@@ -741,25 +743,47 @@ fn sendmsg_files( files: &Vec<(String, u64, i64)>, mut sin: &std::fs::File, dest
   _ = sin.flush();
 
 }
+*/
 
-fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, sin: &std::fs::File, dest_path: String) -> i64 {
+fn iterate_dir_worker(  _dir_out:  crossbeam_channel::Receiver<String>,
+                        _files_in: crossbeam_channel::Sender<String>,
+                        _args:     dtn_args_wrapper ) {
+
+}
+
+fn iterate_file_worker(
+  files_out: crossbeam_channel::Receiver<String>,
+  _dir_in:    crossbeam_channel::Sender<String>,
+  msg_in:    crossbeam_channel::Sender<(String, u64, stat)>,
+  args:      dtn_args_wrapper) {
 
   let mode:i32 = 0;
-  let mut fd:i32;
-  let mut fino:u64=0;
-  let mut file_list = Vec::new();
-  let mut bytes_total:i64 = 0;
   let mut direct_mode = true;
-  let open ;
+  let open;
+
   unsafe {
     open = (*(*args.args).fob).open.unwrap();
   }
 
-  for fi in files {
-    if fi.len() < 1 { continue; };
-    let c_str = CString::new(fi.clone()).unwrap();
+  loop {
+    let mut fd;
 
-    unsafe{
+    let filename = files_out.recv().unwrap();
+
+    if filename.len() < 1 {
+      // No more files to read
+      unsafe{
+        let st: stat = std::mem::zeroed();
+        _ = msg_in.send( ("".to_string(), 0, st) );
+      }
+      break;
+    }
+
+    let c_str = CString::new(filename).unwrap();
+    let fino = 1+GLOBAL_FINO.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    debug!("got fino={fino}");
+
+    unsafe {
       let mut st: stat = std::mem::zeroed();
 
       if direct_mode {
@@ -796,28 +820,124 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, sin: &std::fs::Fi
 
       }
 
-      fino += 1;
-      let tmp = std::path::Path::new(&fi).file_name().unwrap().to_str().unwrap().to_string();
-      file_list.push( (tmp, fino, st.st_size) );
+      _ = msg_in.send( (f.to_string(), fino, st) );
+      // let tmp = std::path::Path::new(&fi).file_name().unwrap().to_str().unwrap().to_string();
+      // file_list.push( (fi, fino, st.st_size) );
       file_addfile( fino, fd, 0, st.st_size );
-
-      bytes_total += st.st_size;
-
-      // debug!("Adding file {f}");
-
-      if (fino & 0x7f) == 0x7f {
-        sendmsg_files( &file_list, sin, &dest_path );
-        file_list.clear();
-      }
-
     }
   }
+}
 
+
+fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, mut sin: &std::fs::File, dest_path: String) -> i64 {
+
+  let (files_in, files_out) = crossbeam_channel::bounded(75);
+  let (dir_in, dir_out) = crossbeam_channel::bounded(10);
+  let (msg_in, msg_out) = crossbeam_channel::bounded(75);
+
+  for j in 0..GLOBAL_FILEOPEN_COUNT{
+    let nam = format!("file_{}", j as i32);
+    // let rx = r.clone();
+    let a = args.clone();
+    let fo = files_out.clone();
+    let di = dir_in.clone();
+    let mi = msg_in.clone();
+    thread::Builder::new().name(nam).spawn(move ||
+      iterate_file_worker(fo, di, mi, a)).unwrap();
+  }
+
+  for j in 0..GLOBAL_DIROPEN_COUNT{
+    let nam = format!("dir_{}", j as i32);
+    // let rx = r.clone();
+    let a = args.clone();
+    let dir_o = dir_out.clone();
+    let fi = files_in.clone();
+
+    thread::Builder::new().name(nam).spawn(move ||
+      iterate_dir_worker(dir_o, fi, a)).unwrap();
+  }
+
+  for fi in files {
+    if fi.len() < 1 { continue; };
+    _ = files_in.send(fi);
+  }
+
+  for _ in 0..GLOBAL_FILEOPEN_COUNT {
+    // Send empty files to signify we are done sending content. 
+    _ = files_in.send("".to_string());
+  }
+
+
+  let mut counter=0;
+  let mut bytes_total=0;
+  let mut files_total=0;
+
+  let mut builder = flatbuffers::FlatBufferBuilder::with_capacity(1); 
+  let mut vec = Vec::new();
+  let mut did_init = false;
+
+  loop {
+
+    if !did_init {
+      builder = flatbuffers::FlatBufferBuilder::with_capacity(8192);
+      vec = Vec::new();
+      did_init = true;
+    }
+
+    let (fi, fino, st) = msg_out.recv().unwrap();
+    if fino == 0 {
+      counter += 1;
+      if counter == GLOBAL_FILEOPEN_COUNT {
+        debug!("Done!");
+        break;
+      }
+      continue;
+    }
+
+    debug!( "File: {} {}", fi, fino);
+    files_total += 1;
+    bytes_total += st.st_size;
+
+    let name = Some(builder.create_string(fi.as_str()));
+    vec.push(
+    file_spec::File::create( &mut builder,
+      &file_spec::FileArgs{
+            fino: fino,
+            name: name,
+            sz: st.st_size,
+            ..Default::default()
+      }));
+
+  }
+
+  let root = Some(builder.create_string((dest_path).as_str()));
+  let fi   = Some( builder.create_vector( &vec ) );
+  let bu = file_spec::ESCP_file_list::create(
+    &mut builder, &file_spec::ESCP_file_listArgs{
+      root: root,
+      files: fi,
+      ..Default::default()
+    }
+
+  );
+  builder.finish( bu, None );
+
+  let buf = builder.finished_data();
+
+  debug!("Sending file meta data for {}, size is {}", files_total, buf.len());
+  let mut hdr = to_header( buf.len() as u32, msg_file_spec );
+  _ = sin.write( &mut hdr );
+  _ = sin.write( buf );
+  _ = sin.flush();
+
+
+  /*
   if file_list.len() > 0 {
     sendmsg_files( &file_list, sin, &dest_path );
   }
-
-  bytes_total
+  */
+  
+  return bytes_total;
 
 }
 
@@ -1198,6 +1318,7 @@ fn load_yaml(file_str: &str) -> HashMap<String, String> {
 }
 
 fn main() {
+
 
   let config = load_yaml("/etc/escp.conf");
 
