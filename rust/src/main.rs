@@ -25,6 +25,7 @@ use std::os::fd::FromRawFd;
 use std::fs;
 use hex;
 use crossbeam_channel;
+use clean_path;
 
 use log::{{debug, info, error}};
 
@@ -349,10 +350,10 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
       debug!("Root set to: {}", root);
 
       for entry in fs.files().unwrap() {
+        let full_path;
 
         unsafe{
           let filename = entry.name().unwrap();
-          let full_path;
           if root.len() > 0 {
             full_path = format!("{}/{}", root, filename);
           } else {
@@ -373,7 +374,7 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
           }
 
 
-          debug!("Add file {filename}:{fino} with {} sz={sz} fd={fd}",
+          debug!("Add file {full_path}:{fino} with {} sz={sz} fd={fd}",
                  (*args).flags, fino=entry.fino(), sz=entry.sz() );
 
           if fd < 1 {
@@ -708,8 +709,8 @@ struct dtn_args_wrapper {
   args: *mut dtn_args
 }
 
-fn iterate_dir_worker(  dir_out:  crossbeam_channel::Receiver<(String, i32)>,
-                        files_in: crossbeam_channel::Sender<String>,
+fn iterate_dir_worker(  dir_out:  crossbeam_channel::Receiver<(String, String, i32)>,
+                        files_in: crossbeam_channel::Sender<(String, String)>,
                         args:     dtn_args_wrapper ) {
 
   let (close, fdopendir, readdir);
@@ -720,9 +721,9 @@ fn iterate_dir_worker(  dir_out:  crossbeam_channel::Receiver<(String, i32)>,
   }
 
   loop {
-    let ( filename, fd );
+    let ( filename, prefix, fd );
     match dir_out.recv() {
-      Ok((s,i)) => { (filename, fd) = (s, i); }
+      Ok((s,p,i)) => { (filename, prefix, fd) = (s, p, i); }
       Err(_) => { debug!("iterate_dir_worker: !dir_out, worker end."); return; }
     }
 
@@ -746,7 +747,7 @@ fn iterate_dir_worker(  dir_out:  crossbeam_channel::Receiver<(String, i32)>,
         path = format!("{filename}/{s}");
         if ((*fi).d_type as u32 == DT_REG) || ((*fi).d_type as u32 == DT_DIR) {
           debug!("iterate_dir_worker: added {path}");
-          _ = files_in.send(path);
+          _ = files_in.send((path, prefix.clone()));
           continue;
         }
       }
@@ -761,8 +762,8 @@ fn iterate_dir_worker(  dir_out:  crossbeam_channel::Receiver<(String, i32)>,
 }
 
 fn iterate_file_worker(
-  files_out: crossbeam_channel::Receiver<String>,
-  dir_in:    crossbeam_channel::Sender<(String, i32)>,
+  files_out: crossbeam_channel::Receiver<(String, String)>,
+  dir_in:    crossbeam_channel::Sender<(String, String, i32)>,
   msg_in:    crossbeam_channel::Sender<(String, u64, stat)>,
   args:      dtn_args_wrapper) {
 
@@ -777,11 +778,11 @@ fn iterate_file_worker(
   loop {
     let mut fd;
 
-    let filename; 
+    let (filename, prefix); 
 
 
     match files_out.recv_timeout(std::time::Duration::from_millis(100)) {
-      Ok(value) => { filename = value; }
+      Ok((value, p)) => { (filename, prefix) = (value, p); }
       Err(crossbeam_channel::RecvTimeoutError::Timeout) => { 
 
         // We could conceivably have something happen where one worker could be
@@ -797,15 +798,6 @@ fn iterate_file_worker(
         continue;
       }
       Err(_) => { debug!("iterate_file_worker: !files_out, worker end."); return; }
-    }
-
-    if filename.len() < 1 {
-      // No more files to read
-      unsafe{
-        let st: stat = std::mem::zeroed();
-        _ = msg_in.send( ("".to_string(), 0, st) );
-      }
-      break;
     }
 
     let c_str = CString::new(filename).unwrap();
@@ -841,7 +833,7 @@ fn iterate_file_worker(
 
         libc::S_IFDIR => { 
           let _ = GLOBAL_FILEOPEN_CLEANUP.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-          _ = dir_in.send((c_str.to_str().unwrap().to_string(), fd)); 
+          _ = dir_in.send((c_str.to_str().unwrap().to_string(), prefix, fd)); 
           continue; 
         }
         libc::S_IFLNK => { 
@@ -859,11 +851,23 @@ fn iterate_file_worker(
       }
 
       let fino = 1+GLOBAL_FINO.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-      debug!("got fino={fino}");
 
-      _ = msg_in.send( (f.to_string(), fino, st) );
-      // let tmp = std::path::Path::new(&fi).file_name().unwrap().to_str().unwrap().to_string();
-      // file_list.push( (fi, fino, st.st_size) );
+      let res;
+
+      if f == prefix.as_str() {
+        let prefix  = std::path::Path::new(prefix.as_str());
+        let f_path = std::path::Path::new(f);
+        let strip=prefix.parent().unwrap();
+        res = f_path.strip_prefix(strip).unwrap();
+      } else {
+        let prefix  = std::path::Path::new(prefix.as_str());
+        let f_path = std::path::Path::new(f);
+        res = f_path.strip_prefix(prefix).unwrap();
+      }
+
+      debug!("got fino={fino}, {f}, {prefix} {:?}", res);
+
+      _ = msg_in.send( (res.to_str().unwrap().to_string(), fino, st) );
       file_addfile( fino, fd, 0, st.st_size );
     }
   }
@@ -874,13 +878,19 @@ fn iterate_file_worker(
 
 fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, mut sin: &std::fs::File, dest_path: String) -> i64 {
 
+  // we use clean_path instead of path.canonicalize() because the engines are
+  // responsible for implementing there own view of the file system and we can't
+  // just plug rust's canonicalize into the engine's io routines.
+
+  let dest_path = clean_path::clean(dest_path).into_os_string().into_string().unwrap();
   let msg_out; 
+
   {
-    let (files_in, files_out) = crossbeam_channel::bounded(75);
+    let (files_in, files_out) = crossbeam_channel::bounded(100);
     let (dir_in, dir_out) = crossbeam_channel::bounded(10);
 
     let msg_in; 
-    (msg_in, msg_out) = crossbeam_channel::bounded(75);
+    (msg_in, msg_out) = crossbeam_channel::bounded(100);
 
     let _ = GLOBAL_FILEOPEN_CLEANUP.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
@@ -908,7 +918,8 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, mut sin: &std::fs
 
     for fi in files {
       if fi.len() < 1 { continue; };
-      _ = files_in.send(fi);
+      let path = clean_path::clean(fi).into_os_string().into_string().unwrap();
+      _ = files_in.send((path.clone(),path));
     }
   }
 
