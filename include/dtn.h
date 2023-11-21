@@ -11,8 +11,9 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-// #include <netinet/in.h>
 #include <sys/stat.h>
+
+#include <dirent.h>
 
 struct sockaddr_storage {
   char byte[128];
@@ -99,6 +100,11 @@ struct file_object {
   char*    args;
 
   int   (*open)    (const char*, int, ...);
+
+  DIR*   (*fopendir) (int);
+  struct dirent* (*readdir) (DIR *dirp);
+
+  int   (*close_fd) (int);
   int   (*close)    (void*);
   int   (*truncate) (void*, int64_t);
   int   (*fstat)   (int, struct stat*);

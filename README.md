@@ -99,19 +99,60 @@ COMPILING
 
   # DEVELOPMENT TOOLS:
 
-  cargo install bindgen-cli
+  cargo install bindgen-cli # bindgen at version 0.68.1
   # and flatbuffers-compiler
-  apt  install flatbuffers-compiler
+  apt  install flatbuffers-compiler # flatc at version 23.5.26
 
   # + GDB, valgrind,
 
 
 ```
 
+KNOWNBUGS
+=========
+
+  * Error messages are inconsistent at best. For more information, run with -v
+    and check logs on sender (/tmp/escp.log.sender) and
+    receiver (/tmp/escp.log.server on remote host).
+  * Dummy engine is really only meant to be used with a few files
+  * Check https://github.com/ESnet/EScp/issues
+
+
+TODO
+====
+
+  * Add `engine_uring` back
+  * Add API
+  * reimplement `engine_shmem`
+
+
 TUNING
 ======
 
-Insert TEXT here
+Most important is to verify I/O is appropriate for storage. For instance, if
+your block size is greater then 2MB but less than or equal to 4MB use:
+
+```
+  $ escp -b 4M <files> [host]:[path]
+```
+
+
+If running on a NUMA enabled processor, you should also pin the threads/memory
+node using /etc/escp.conf. As an example:
+
+```
+  # escp/scripts/config_tool.py eno1 > /etc/escp.conf
+```
+
+This will pin EScp to the netork card eno1. The `config_tool` is misleading 
+because you really want EScp to run on the NUMA node that *isn't* where your
+network card is. So for instance, if we are running a transfer utilizing eth0,
+you would need to find a network card that is on a different NUMA domain from
+eth0 and then pin EScp to that domain. Alternatively, hand edit the config
+generated to specifically exclude the eth0 domain.
+
+nodemask and cpumask are passed to `set_mempolicy` and `sched_setaffinity` as
+binary masks. The input format is expected to be HEX.
 
 
 DEBUGGING
@@ -119,23 +160,29 @@ DEBUGGING
 
 Most issues can be debugged solely by enabling verbose logs;
 
+```
   escp -v
+```
 
 This will create files /tmp/escp.log.client and /tmp/escp.log.server;
 
 For more complicated things, GDB is your friend.
 
+```
   # Start server
   gdb --args escp --mgmt /path/to/mgmt/socket --server dont care:
 
   # Start client
   gdb --args escp --mgmt /path/to/mgmt/socket file localhost:
+```
 
 If you need to run the management sockets over the internet, you can
 use socat; something like:
 
+```
   socat TCP4-LISTEN:1234 UNIX-CONNECT:/tmp/foo.sock
   socat UNIX-RECVFROM:/tmp/foo.sock TCP4:yikes.com:1234
+```
 
 
 SECURITY

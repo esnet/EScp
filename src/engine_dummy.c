@@ -8,6 +8,7 @@
 #include <sys/time.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <dirent.h>
 #include <fcntl.h>
 #include "args.h"
 #include "file_io.h"
@@ -110,6 +111,9 @@ void* file_dummycomplete( void* arg, void* arg2 ) {
   return 0;
 }
 
+int file_dummyclosefd( int ) {
+  return 0;
+}
 
 int file_dummyinit( struct file_object* fob ) {
   struct posix_op *op;
@@ -137,6 +141,11 @@ int file_dummyinit( struct file_object* fob ) {
   fob->close    = file_dummyclose;
   fob->fstat    = file_dummystat;
   fob->truncate = file_dummytruncate;
+
+  fob->close_fd = file_dummyclosefd;
+  fob->fopendir = fdopendir;
+  fob->readdir  = readdir;
+
 
   return 0;
 }

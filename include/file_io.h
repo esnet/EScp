@@ -1,6 +1,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <sys/uio.h>
+#include <dirent.h>
 
 
 #ifndef __FILE_IO_DOT_H__
@@ -65,6 +66,11 @@ struct file_object {
   char*    args;
 
   int   (*open)    (const char*, int, ...);
+
+  DIR*   (*fopendir) (int);
+  struct dirent* (*readdir) (DIR *dirp);
+  int   (*close_fd) (int);
+
   int   (*close)    (void*);
   int   (*truncate) (void*, int64_t);
   int   (*fstat)   (int, struct stat*);

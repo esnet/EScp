@@ -8,6 +8,7 @@
 #include <sys/time.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <dirent.h>
 #include "args.h"
 #include "file_io.h"
 
@@ -144,6 +145,11 @@ int file_posixinit( struct file_object* fob ) {
 
   fob->open     = open;
   fob->close    = file_posixclose;
+
+  fob->close_fd = close;
+  fob->fopendir = fdopendir;
+  fob->readdir  = readdir;
+
   fob->truncate = file_posixtruncate;
   fob->fstat    = fstat;
 

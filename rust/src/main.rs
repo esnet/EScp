@@ -66,7 +66,9 @@ macro_rules! sess_init {
   }
 }
 
-static GLOBAL_FILEOPEN_CLEANUP: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+static GLOBAL_FILEOPEN_CLEANUP: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static GLOBAL_FILEOPEN_TAIL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 static GLOBAL_FILEOPEN_COUNT: usize = 4;
 static GLOBAL_DIROPEN_COUNT: usize = 2;
 static GLOBAL_FINO: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -387,7 +389,6 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
       }
 
       continue;
-
     }
 
     if t == msg_session_terminate {
@@ -545,7 +546,6 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
     debug!("Wait for response from receiver");
 
     let mut buf = vec![ 0u8; 6 ];
-
     let result = sout.read_exact( &mut buf );
 
     match result {
@@ -626,6 +626,10 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
         bytes_now = get_bytes_io( args as *mut dtn_args );
       }
 
+      if bytes_now == 0 {
+        continue;
+      }
+
       let duration = start.elapsed();
 
       let width= ((bytes_now as f32 / bytes_total as f32) * 40.0) as usize ;
@@ -704,56 +708,61 @@ struct dtn_args_wrapper {
   args: *mut dtn_args
 }
 
-/*
-fn sendmsg_files( files: &Vec<(String, u64, i64)>, mut sin: &std::fs::File, dest_path: &String) {
-  let mut builder = flatbuffers::FlatBufferBuilder::with_capacity(8192);
-  let mut vec = Vec::new();
+fn iterate_dir_worker(  dir_out:  crossbeam_channel::Receiver<(String, i32)>,
+                        files_in: crossbeam_channel::Sender<String>,
+                        args:     dtn_args_wrapper ) {
 
-  for (fi,fino,sz) in files {
-    let name = Some(builder.create_string(fi));
-    vec.push(
-    file_spec::File::create( &mut builder,
-      &file_spec::FileArgs{
-            fino: *fino,
-            name: name,
-            sz: *sz,
-            ..Default::default()
-      }));
-
+  let (close, fdopendir, readdir);
+  unsafe {
+    close     = (*(*args.args).fob).close_fd.unwrap();
+    fdopendir = (*(*args.args).fob).fopendir.unwrap();
+    readdir   = (*(*args.args).fob).readdir.unwrap();
   }
 
-  let root = Some(builder.create_string((*dest_path).as_str()));
-  let fi   = Some( builder.create_vector( &vec ) );
-  let bu = file_spec::ESCP_file_list::create(
-    &mut builder, &file_spec::ESCP_file_listArgs{
-      root: root,
-      files: fi,
-      ..Default::default()
+  loop {
+    let ( filename, fd );
+    match dir_out.recv() {
+      Ok((s,i)) => { (filename, fd) = (s, i); }
+      Err(_) => { debug!("iterate_dir_worker: !dir_out, worker end."); return; }
     }
 
-  );
-  builder.finish( bu, None );
+    debug!("iterate_dir_worker: open {filename}, fd={fd}");
+    let dir = unsafe { fdopendir( fd ) };
 
-  let buf = builder.finished_data();
+    loop {
+      let fi = unsafe { readdir( dir ) };
+      if fi == std::ptr::null_mut() {
+        break;
+      }
 
-  debug!("Sending file meta data for {}, size is {}", files.len(), buf.len());
-  let mut hdr = to_header( buf.len() as u32, msg_file_spec );
-  _ = sin.write( &mut hdr );
-  _ = sin.write( buf );
-  _ = sin.flush();
+      let path;
+      unsafe {
+        let c_str = CStr::from_ptr((*fi).d_name.as_ptr());
+        let s = c_str.to_str().unwrap().to_string();
 
-}
-*/
+        if (s == ".") || (s == "..") {
+          continue;
+        }
+        path = format!("{filename}/{s}");
+        if ((*fi).d_type as u32 == DT_REG) || ((*fi).d_type as u32 == DT_DIR) {
+          debug!("iterate_dir_worker: added {path}");
+          _ = files_in.send(path);
+          continue;
+        }
+      }
 
-fn iterate_dir_worker(  _dir_out:  crossbeam_channel::Receiver<String>,
-                        _files_in: crossbeam_channel::Sender<String>,
-                        _args:     dtn_args_wrapper ) {
+      debug!("iterate_dir_worker: ignoring {path}");
+    }
 
+    let _ = GLOBAL_FILEOPEN_TAIL.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    debug!("iterate_dir_worker: Iterated {filename}, close fd={fd}");
+    unsafe{ close(fd) };
+  }
 }
 
 fn iterate_file_worker(
   files_out: crossbeam_channel::Receiver<String>,
-  _dir_in:    crossbeam_channel::Sender<String>,
+  dir_in:    crossbeam_channel::Sender<(String, i32)>,
   msg_in:    crossbeam_channel::Sender<(String, u64, stat)>,
   args:      dtn_args_wrapper) {
 
@@ -768,7 +777,27 @@ fn iterate_file_worker(
   loop {
     let mut fd;
 
-    let filename = files_out.recv().unwrap();
+    let filename; 
+
+
+    match files_out.recv_timeout(std::time::Duration::from_millis(100)) {
+      Ok(value) => { filename = value; }
+      Err(crossbeam_channel::RecvTimeoutError::Timeout) => { 
+
+        // We could conceivably have something happen where one worker could be
+        // very slow, nothing is in the queue, and thus a worker will prematurely
+        // exit. At the worst case, there would be one file worker left, which
+        // is not optimal, but OK.
+
+        if GLOBAL_FILEOPEN_TAIL.load(std::sync::atomic::Ordering::SeqCst) ==
+           GLOBAL_FILEOPEN_CLEANUP.load(std::sync::atomic::Ordering::SeqCst) {
+          debug!("iterate_file_worker: break because tail==head");
+          break;
+        }
+        continue;
+      }
+      Err(_) => { debug!("iterate_file_worker: !files_out, worker end."); return; }
+    }
 
     if filename.len() < 1 {
       // No more files to read
@@ -780,8 +809,6 @@ fn iterate_file_worker(
     }
 
     let c_str = CString::new(filename).unwrap();
-    let fino = 1+GLOBAL_FINO.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    debug!("got fino={fino}");
 
     unsafe {
       let mut st: stat = std::mem::zeroed();
@@ -797,14 +824,14 @@ fn iterate_file_worker(
       }
 
       if fd == -1 {
-        info!("RUST Got an error trying to open {:?} {:?}", c_str,
+        error!("trying to open {:?} {:?}", c_str,
                  std::io::Error::last_os_error() );
         continue;
       }
 
       let res = ((*(*args.args).fob).fstat.unwrap())( fd, &mut st as * mut _ );
       if res == -1 {
-        info!("RUST Got an error trying to stat {:?} {}", c_str,
+        error!("trying to stat {:?} {}", c_str,
                   std::io::Error::last_os_error().raw_os_error().unwrap() );
         continue;
       }
@@ -812,13 +839,27 @@ fn iterate_file_worker(
       let f = c_str.to_str().unwrap();
       match st.st_mode & libc::S_IFMT {
 
-        libc::S_IFDIR => { info!("Ignoring directory {f}"); continue; }
-        libc::S_IFLNK => { info!("Ignoring link {f}"); continue; }
+        libc::S_IFDIR => { 
+          let _ = GLOBAL_FILEOPEN_CLEANUP.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+          _ = dir_in.send((c_str.to_str().unwrap().to_string(), fd)); 
+          continue; 
+        }
+        libc::S_IFLNK => { 
+          info!("Ignoring link {f}"); 
+          _ = ((*(*args.args).fob).close_fd.unwrap())( fd );
+          continue; 
+        }
         libc::S_IFREG => { /* add */ }
-        _             => { info!("Ignoring {:#X} {f}", st.st_mode & libc::S_IFMT); continue; }
-
+        _             => {
+          info!("Ignoring {:#X} {f}", st.st_mode & libc::S_IFMT);
+          _ = ((*(*args.args).fob).close_fd.unwrap())( fd );
+          continue;
+        }
 
       }
+
+      let fino = 1+GLOBAL_FINO.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+      debug!("got fino={fino}");
 
       _ = msg_in.send( (f.to_string(), fino, st) );
       // let tmp = std::path::Path::new(&fi).file_name().unwrap().to_str().unwrap().to_string();
@@ -826,109 +867,138 @@ fn iterate_file_worker(
       file_addfile( fino, fd, 0, st.st_size );
     }
   }
+
+  debug!("iterate_file_worker: exiting"); 
 }
 
 
 fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, mut sin: &std::fs::File, dest_path: String) -> i64 {
 
-  let (files_in, files_out) = crossbeam_channel::bounded(75);
-  let (dir_in, dir_out) = crossbeam_channel::bounded(10);
-  let (msg_in, msg_out) = crossbeam_channel::bounded(75);
+  let msg_out; 
+  {
+    let (files_in, files_out) = crossbeam_channel::bounded(75);
+    let (dir_in, dir_out) = crossbeam_channel::bounded(10);
 
-  for j in 0..GLOBAL_FILEOPEN_COUNT{
-    let nam = format!("file_{}", j as i32);
-    // let rx = r.clone();
-    let a = args.clone();
-    let fo = files_out.clone();
-    let di = dir_in.clone();
-    let mi = msg_in.clone();
-    thread::Builder::new().name(nam).spawn(move ||
-      iterate_file_worker(fo, di, mi, a)).unwrap();
+    let msg_in; 
+    (msg_in, msg_out) = crossbeam_channel::bounded(75);
+
+    let _ = GLOBAL_FILEOPEN_CLEANUP.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+    for j in 0..GLOBAL_FILEOPEN_COUNT{
+      let nam = format!("file_{}", j as i32);
+      // let rx = r.clone();
+      let a = args.clone();
+      let fo = files_out.clone();
+      let di = dir_in.clone();
+      let mi = msg_in.clone();
+      thread::Builder::new().name(nam).spawn(move ||
+        iterate_file_worker(fo, di, mi, a)).unwrap();
+    }
+
+    for j in 0..GLOBAL_DIROPEN_COUNT{
+      let nam = format!("dir_{}", j as i32);
+      // let rx = r.clone();
+      let a = args.clone();
+      let dir_o = dir_out.clone();
+      let fi = files_in.clone();
+
+      thread::Builder::new().name(nam).spawn(move ||
+        iterate_dir_worker(dir_o, fi, a)).unwrap();
+    }
+
+    for fi in files {
+      if fi.len() < 1 { continue; };
+      _ = files_in.send(fi);
+    }
   }
 
-  for j in 0..GLOBAL_DIROPEN_COUNT{
-    let nam = format!("dir_{}", j as i32);
-    // let rx = r.clone();
-    let a = args.clone();
-    let dir_o = dir_out.clone();
-    let fi = files_in.clone();
-
-    thread::Builder::new().name(nam).spawn(move ||
-      iterate_dir_worker(dir_o, fi, a)).unwrap();
-  }
-
-  for fi in files {
-    if fi.len() < 1 { continue; };
-    _ = files_in.send(fi);
-  }
-
-  for _ in 0..GLOBAL_FILEOPEN_COUNT {
-    // Send empty files to signify we are done sending content. 
-    _ = files_in.send("".to_string());
-  }
+  let _ = GLOBAL_FILEOPEN_TAIL.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
 
-  let mut counter=0;
   let mut bytes_total=0;
   let mut files_total=0;
 
   let mut builder = flatbuffers::FlatBufferBuilder::with_capacity(1); 
-  let mut vec = Vec::new();
-  let mut did_init = false;
 
-  loop {
+  loop { 
+    let mut do_break = false;
+    let mut vec = Vec::new();
+    let mut did_init = false;
+    let mut counter: i64 = 0;
 
-    if !did_init {
-      builder = flatbuffers::FlatBufferBuilder::with_capacity(8192);
-      vec = Vec::new();
-      did_init = true;
-    }
 
-    let (fi, fino, st) = msg_out.recv().unwrap();
-    if fino == 0 {
-      counter += 1;
-      if counter == GLOBAL_FILEOPEN_COUNT {
-        debug!("Done!");
-        break;
+    loop {
+
+      if !did_init {
+        builder = flatbuffers::FlatBufferBuilder::with_capacity(8192);
+        vec = Vec::new();
+        did_init = true;
       }
-      continue;
+
+      let (fi, fino, st);
+
+      match msg_out.recv_timeout(std::time::Duration::from_millis(10)) {
+        Ok((a,b,c)) => { (fi, fino, st) = (a,b,c); }
+        Err(crossbeam_channel::RecvTimeoutError::Timeout) => { 
+          if counter > 0 {
+            // Go ahead and send whatever we have now
+            break;
+          }
+          continue;
+        }
+        Err(_) => { do_break = true; break }
+      }
+
+
+
+
+      debug!( "File: {} {}", fi, fino);
+      files_total += 1;
+      bytes_total += st.st_size;
+
+      let name = Some(builder.create_string(fi.as_str()));
+      vec.push(
+      file_spec::File::create( &mut builder,
+        &file_spec::FileArgs{
+              fino: fino,
+              name: name,
+              sz: st.st_size,
+              ..Default::default()
+        }));
+
+        counter += 1;
+
+        if counter > 128 {
+          break;
+        }
     }
 
-    debug!( "File: {} {}", fi, fino);
-    files_total += 1;
-    bytes_total += st.st_size;
+    if counter > 0 {
+      let root = Some(builder.create_string((dest_path).as_str()));
+      let fi   = Some( builder.create_vector( &vec ) );
+      let bu = file_spec::ESCP_file_list::create(
+        &mut builder, &file_spec::ESCP_file_listArgs{
+          root: root,
+          files: fi,
+          ..Default::default()
+        }
 
-    let name = Some(builder.create_string(fi.as_str()));
-    vec.push(
-    file_spec::File::create( &mut builder,
-      &file_spec::FileArgs{
-            fino: fino,
-            name: name,
-            sz: st.st_size,
-            ..Default::default()
-      }));
+      );
+      builder.finish( bu, None );
+
+      let buf = builder.finished_data();
+
+      debug!("Sending file meta data for {}, size is {}", files_total, buf.len());
+      let mut hdr = to_header( buf.len() as u32, msg_file_spec );
+      _ = sin.write( &mut hdr );
+      _ = sin.write( buf );
+      _ = sin.flush();
+    }
+
+    if do_break { break; }
 
   }
 
-  let root = Some(builder.create_string((dest_path).as_str()));
-  let fi   = Some( builder.create_vector( &vec ) );
-  let bu = file_spec::ESCP_file_list::create(
-    &mut builder, &file_spec::ESCP_file_listArgs{
-      root: root,
-      files: fi,
-      ..Default::default()
-    }
-
-  );
-  builder.finish( bu, None );
-
-  let buf = builder.finished_data();
-
-  debug!("Sending file meta data for {}, size is {}", files_total, buf.len());
-  let mut hdr = to_header( buf.len() as u32, msg_file_spec );
-  _ = sin.write( &mut hdr );
-  _ = sin.write( buf );
-  _ = sin.flush();
 
 
   /*
@@ -962,7 +1032,7 @@ fn fileopen( queue: std::sync::mpsc::Receiver<String>, args: dtn_args_wrapper ) 
 
     if fi == "".to_string() {
       let val = GLOBAL_FILEOPEN_CLEANUP.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-      if val == ((GLOBAL_FILEOPEN_COUNT as u32)-1) {
+      if val == ((GLOBAL_FILEOPEN_COUNT as u64)-1) {
         unsafe { file_addfile( !(0 as u64), 0, 0, 0 ); }
       }
       return;
