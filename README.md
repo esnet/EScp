@@ -228,8 +228,8 @@ If you are interested in contributing, you are in the unique position of
 being the first external collaborator to be added here.
 
 
-LICENSE
-=======
+LICENSE (BSD3)
+==============
 
 ESnet Secure Copy (EScp) Copyright (c) 2021, The Regents of the
 University of California, through Lawrence Berkeley National Laboratory
