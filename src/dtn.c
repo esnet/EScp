@@ -452,13 +452,18 @@ void* rx_worker( void* arg ) {
       uint64_t offset = fi->offset >> 8;
       uint64_t res=0;
 
-
       fob->set( knob->token, FOB_OFFSET, offset );
       fob->set( knob->token, FOB_SZ, sz );
 
-      if ( (fob->io_flags & O_DIRECT) && (sz < 4096) ) {
+      // if ( (fob->io_flags & O_DIRECT) && (sz < 4096) ) {
+      if ( sz < 4096 )  {
+
+        // XXX: io_flags & O_DIRECT doesn't get set anymore because we
+        //      always try to do direct mode... 
+
         // Always read in at least 4K of data
         fob->set( knob->token, FOB_SZ,  4096 );
+        sz_orig=4096;
       }
 
       while ( !fd || (file_cur != file_no) ) {
@@ -466,6 +471,7 @@ void* rx_worker( void* arg ) {
 
         VRFY( file_no, "ASSERT: file_no != zero" );
 
+        DBG("[%2d] file_wait for fn=%ld", id, file_no);
         fs_ptr = file_wait( file_no );
         memcpy( &fs, fs_ptr, sizeof(struct file_stat_type) );
 
@@ -500,9 +506,10 @@ void* rx_worker( void* arg ) {
         __sync_fetch_and_add( &dtn->bytes_io, 1 );
 
         if ( sz != sz_orig ) {
-          DBG("[%2d] *WARN* Write sz is undersized %d!=%d", id, sz, sz_orig);
-          // XXX: This is probably a fatal error
+          NFO("[%2d] *WARN* Write sz is undersized %d!=%d", id, sz, sz_orig);
+          // XXX: This is probably a fatal error, and should not happen.
         }
+
         DBG("[%2d] FIHDR_SHORT details: bytes=%08ld written=%08ld fn=%ld", id, fs_ptr->bytes, written, file_no );
 
         if ( fs_ptr->bytes && fs_ptr->bytes <= written  ) {
@@ -668,7 +675,8 @@ void* tx_worker( void* args ) {
         if (file_iow_remove( fs, id ) == (1UL << 62)) {
           fob->close( fob );
           int64_t res = __sync_add_and_fetch( &tx_filesclosed, 1 );
-          DBG("[%2d] Worker finished and closing file=%ld files_closed=%ld slot=%016lx", id, fs->file_no, res, (uint64_t) fs);
+          DBG("[%2d] Worker finished with file=%ld files_closed=%ld; closing",
+              id, fs->file_no, res);
           wipe ++;
         } else {
           DBG("[%2d] Worker finished with fn=%ld", id, fs->file_no);

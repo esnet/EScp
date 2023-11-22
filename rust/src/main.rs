@@ -363,18 +363,19 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
           let open = (*(*args).fob).open.unwrap();
           let mut fd;
 
+          let fp = CString::new( full_path.clone() ).unwrap();
           if direct_mode {
-            fd = open( full_path.as_ptr() as *const i8, (*args).flags | libc::O_DIRECT, 0o644 );
+            fd = open( fp.as_ptr(), (*args).flags | libc::O_DIRECT, 0o644 );
             if (fd == -1) && (*libc::__errno_location() == 22) {
               direct_mode = false;
-              fd = open( full_path.as_ptr() as *const i8, (*args).flags, 0o644 );
+              fd = open( fp.as_ptr(), (*args).flags, 0o644 );
             }
           } else {
-            fd = open( full_path.as_ptr() as *const i8, (*args).flags, 0o644 );
+            fd = open( fp.as_ptr(), (*args).flags, 0o644 );
           }
 
 
-          debug!("Add file {full_path}:{fino} with {} sz={sz} fd={fd}",
+          debug!("Add file {full_path}:{fino} with {:#X} sz={sz} fd={fd}",
                  (*args).flags, fino=entry.fino(), sz=entry.sz() );
 
           if fd < 1 {
@@ -384,8 +385,6 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
           }
           file_addfile( entry.fino(), fd, 0, entry.sz() );
           filecount += 1;
-
-          debug!("Finished adding file!");
         }
       }
 
@@ -775,15 +774,15 @@ fn iterate_file_worker(
     open = (*(*args.args).fob).open.unwrap();
   }
 
-  loop {
-    let mut fd;
+  let mut fd;
+  let (mut filename, mut prefix, mut c_str);
 
-    let (filename, prefix); 
+  loop {
 
 
     match files_out.recv_timeout(std::time::Duration::from_millis(100)) {
       Ok((value, p)) => { (filename, prefix) = (value, p); }
-      Err(crossbeam_channel::RecvTimeoutError::Timeout) => { 
+      Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
 
         // We could conceivably have something happen where one worker could be
         // very slow, nothing is in the queue, and thus a worker will prematurely
@@ -800,7 +799,7 @@ fn iterate_file_worker(
       Err(_) => { debug!("iterate_file_worker: !files_out, worker end."); return; }
     }
 
-    let c_str = CString::new(filename).unwrap();
+    c_str = CString::new(filename).unwrap();
 
     unsafe {
       let mut st: stat = std::mem::zeroed();
@@ -831,15 +830,15 @@ fn iterate_file_worker(
       let f = c_str.to_str().unwrap();
       match st.st_mode & libc::S_IFMT {
 
-        libc::S_IFDIR => { 
+        libc::S_IFDIR => {
           let _ = GLOBAL_FILEOPEN_CLEANUP.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-          _ = dir_in.send((c_str.to_str().unwrap().to_string(), prefix, fd)); 
-          continue; 
+          _ = dir_in.send((c_str.to_str().unwrap().to_string(), prefix, fd));
+          continue;
         }
-        libc::S_IFLNK => { 
-          info!("Ignoring link {f}"); 
+        libc::S_IFLNK => {
+          info!("Ignoring link {f}");
           _ = ((*(*args.args).fob).close_fd.unwrap())( fd );
-          continue; 
+          continue;
         }
         libc::S_IFREG => { /* add */ }
         _             => {
@@ -872,7 +871,7 @@ fn iterate_file_worker(
     }
   }
 
-  debug!("iterate_file_worker: exiting"); 
+  debug!("iterate_file_worker: exiting");
 }
 
 
@@ -883,13 +882,13 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, mut sin: &std::fs
   // just plug rust's canonicalize into the engine's io routines.
 
   let dest_path = clean_path::clean(dest_path).into_os_string().into_string().unwrap();
-  let msg_out; 
+  let msg_out;
 
   {
     let (files_in, files_out) = crossbeam_channel::bounded(100);
     let (dir_in, dir_out) = crossbeam_channel::bounded(10);
 
-    let msg_in; 
+    let msg_in;
     (msg_in, msg_out) = crossbeam_channel::bounded(100);
 
     let _ = GLOBAL_FILEOPEN_CLEANUP.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -929,14 +928,17 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, mut sin: &std::fs
   let mut bytes_total=0;
   let mut files_total=0;
 
-  let mut builder = flatbuffers::FlatBufferBuilder::with_capacity(1); 
+  let mut builder = flatbuffers::FlatBufferBuilder::with_capacity(1);
 
-  loop { 
-    let mut do_break = false;
-    let mut vec = Vec::new();
-    let mut did_init = false;
-    let mut counter: i64 = 0;
+  let mut do_break = false;
+  let mut did_init;
+  let mut counter: i64;
+  let mut vec;
 
+  loop {
+    vec = Vec::new();
+    did_init = false;
+    counter=0;
 
     loop {
 
@@ -950,18 +952,18 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, mut sin: &std::fs
 
       match msg_out.recv_timeout(std::time::Duration::from_millis(10)) {
         Ok((a,b,c)) => { (fi, fino, st) = (a,b,c); }
-        Err(crossbeam_channel::RecvTimeoutError::Timeout) => { 
+        Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
           if counter > 0 {
             // Go ahead and send whatever we have now
             break;
           }
           continue;
         }
-        Err(_) => { do_break = true; break }
+        Err(_) => {
+          debug!("msg_out.recv returned an error, probably EOQ");
+          do_break = true; break
+        }
       }
-
-
-
 
       debug!( "File: {} {}", fi, fino);
       files_total += 1;
@@ -999,12 +1001,13 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, mut sin: &std::fs
 
       let buf = builder.finished_data();
 
-      debug!("Sending file meta data for {}, size is {}", files_total, buf.len());
+      debug!("Sending file meta data for {}/{}, size is {}", counter, files_total, buf.len());
       let mut hdr = to_header( buf.len() as u32, msg_file_spec );
       _ = sin.write( &mut hdr );
       _ = sin.write( buf );
       _ = sin.flush();
     }
+
 
     if do_break { break; }
 
@@ -1017,7 +1020,9 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, mut sin: &std::fs
     sendmsg_files( &file_list, sin, &dest_path );
   }
   */
-  
+
+  debug!("file_iterate is finished");
+
   return bytes_total;
 
 }

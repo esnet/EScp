@@ -91,7 +91,6 @@ struct file_stat_type* file_addfile(uint64_t fileno, int fd, uint32_t crc, int64
 }
 
 struct file_stat_type* file_wait( uint64_t fileno ) {
-  DBV("Enter file_wait with fn=%ld", fileno);
 
   struct file_stat_type test_fs;
   int64_t test_fn;
