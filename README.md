@@ -231,6 +231,7 @@ being the first external collaborator to be added here.
 LICENSE (BSD3)
 ==============
 
+```
 ESnet Secure Copy (EScp) Copyright (c) 2021, The Regents of the
 University of California, through Lawrence Berkeley National Laboratory
 (subject to receipt of any required approvals from the U.S. Dept. of
@@ -274,6 +275,6 @@ non-exclusive, royalty-free perpetual license to install, use, modify,
 prepare derivative works, incorporate into other computer software,
 distribute, and sublicense such enhancements or derivative works thereof,
 in binary and source code form.
-
+```
 
 
