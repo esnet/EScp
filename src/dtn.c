@@ -273,8 +273,7 @@ int64_t network_recv( struct network_obj* knob, void* aad ) {
 
     buffer = knob->fob->get( knob->token, FOB_BUF );
 
-    DBG("[%2d] Read of %d sz", knob->id, 1 << fi->block_sz_packed);
-
+    DBV("[%2d] Read of %d sz", knob->id, 1 << fi->block_sz_packed);
     if (read_fixed(knob->socket, buffer, 1 << fi->block_sz_packed )<1) {
       DBG("[%2d] Returning 0 from network_recv because ... ", knob->id);
       return 0;
@@ -292,7 +291,7 @@ int64_t network_recv( struct network_obj* knob, void* aad ) {
 
     aes_gcm_dec_128_finalize( &knob->gkey, &knob->gctx, computed_hash, 16 );
     if (read_fixed(knob->socket, actual_hash, 16)<1) {
-      DBG("[%2d] Couldn't get auth tag... ", knob->id);
+      NFO("[%2d] Couldn't get auth tag... ", knob->id);
       return 0;
     }
     VRFY( memcmp(computed_hash, actual_hash, 16) == 0,
@@ -375,7 +374,7 @@ void* rx_worker( void* arg ) {
   struct rx_args* rx = arg;
   struct dtn_args* dtn = rx->dtn;
   int fd=0;
-  uint32_t id=0, rbuf, crc=0;
+  uint32_t id=0, rbuf; // , crc=0;
 
   uint64_t file_cur=0;
 
@@ -422,7 +421,7 @@ void* rx_worker( void* arg ) {
     // only occurs if FIHDR_SHORT type is specified.
 
     if ( (read_sz=network_recv(knob, read_buf)) < 1 ) {
-      DBG("[%2d] Bad read=%ld", id, read_sz);
+      NFO("[%2d] Bad read=%ld", id, read_sz);
       break;
     }
 
@@ -471,11 +470,11 @@ void* rx_worker( void* arg ) {
 
         VRFY( file_no, "ASSERT: file_no != zero" );
 
-        DBG("[%2d] file_wait for fn=%ld", id, file_no);
+        DBV("[%2d] FIHDR_SHORT: call file_wait for fn=%ld", id, file_no);
         fs_ptr = file_wait( file_no );
         memcpy( &fs, fs_ptr, sizeof(struct file_stat_type) );
 
-        DBG("[%2d] Got fd=%d for fn=%ld", id, fs.fd, file_no);
+        DBG("[%2d] FIHDR_SHORT: file_wait returned fd=%d for fn=%ld", id, fs.fd, file_no);
         VRFY( fs.fd, "ASSERT: fd != zero" );
 
         file_cur = file_no;
@@ -492,7 +491,7 @@ void* rx_worker( void* arg ) {
       }
 #endif
 
-      DBG("[%2d] Do FIHDR_SHORT crc=%08x fn=%ld offset=%zX sz=%d", id, crc, file_no, offset, sz);
+      DBV("[%2d] Do FIHDR_SHORT crc=%08x fn=%ld offset=%zX sz=%d", id, crc, file_no, offset, sz);
 
       while ( (knob->token = fob->submit(fob, &sz, &res)) ) {
         // XXX: Flushes IO queue; we don't necessarily want to do that;
@@ -506,11 +505,13 @@ void* rx_worker( void* arg ) {
         __sync_fetch_and_add( &dtn->bytes_io, 1 );
 
         if ( sz != sz_orig ) {
-          NFO("[%2d] *WARN* Write sz is undersized %d!=%d", id, sz, sz_orig);
           // XXX: This is probably a fatal error, and should not happen.
+          NFO("[%2d] *WARN* Write sz is undersized %d!=%d",
+              id, sz, sz_orig);
         }
 
-        DBG("[%2d] FIHDR_SHORT details: bytes=%08ld written=%08ld fn=%ld", id, fs_ptr->bytes, written, file_no );
+        DBG("[%2d] FIHDR_SHORT written=%08ld/%08ld fn=%ld os=%zX sz=%d",
+            id, written, fs_ptr->bytes, file_no, offset, sz );
 
         if ( fs_ptr->bytes && fs_ptr->bytes <= written  ) {
           if (fs_ptr->bytes != written) {
@@ -541,7 +542,7 @@ void* tx_worker( void* args ) {
 
   struct sockaddr_in* saddr ;
   struct dtn_args* dtn = arg->dtn;
-  int sock=0, id, file_no=-1;
+  int sock=0, id; // , file_no=-1;
   uint64_t offset;
   int32_t bytes_read;
   struct file_stat_type* fs=0;
@@ -555,7 +556,7 @@ void* tx_worker( void* args ) {
   struct network_obj* knob;
   void* token;
 
-  uint32_t crc=0;
+  // uint32_t crc=0;
 
 
   affinity_set( dtn );
@@ -638,8 +639,8 @@ void* tx_worker( void* args ) {
         break;
       }
 
-      file_no = fs->file_no;
-      crc= 0;
+      // file_no = fs->file_no;
+      // crc= 0;
     }
 
     if (!fs->fd) {
@@ -663,7 +664,7 @@ void* tx_worker( void* args ) {
 
     token = fob->submit( fob, &bytes_read, &offset );
     if (!token) {
-      DBG("[%2d] fob->submit resulted in an emptry result", id);
+      NFO("[%2d] fob->submit resulted in an emptry result fn=%ld", id, fs->file_no);
       continue;
     }
 
@@ -675,7 +676,7 @@ void* tx_worker( void* args ) {
         if (file_iow_remove( fs, id ) == (1UL << 62)) {
           fob->close( fob );
           int64_t res = __sync_add_and_fetch( &tx_filesclosed, 1 );
-          DBG("[%2d] Worker finished with file=%ld files_closed=%ld; closing",
+          DBG("[%2d] Worker finished with fn=%ld files_closed=%ld; closing",
               id, fs->file_no, res);
           wipe ++;
         } else {
@@ -689,7 +690,7 @@ void* tx_worker( void* args ) {
 
         if (wipe) {
           uint64_t res;
-          DBG("[%2d] Wiping %ld", id, fs->file_no);
+          DBV("[%2d] Wiping fn=%ld", id, fs->file_no);
           memset((void*) (((uint64_t) fs)+64), 0, sizeof(struct file_stat_type)-64 );
           res = __sync_val_compare_and_swap(&fs->state, 1UL << 62, 0);
           VRFY (res == (1UL << 62), "[%2d] Bad swap %lX", id, res);
@@ -700,8 +701,7 @@ void* tx_worker( void* args ) {
       }
 
       VRFY( bytes_read >= 0, "[%2d] Read Error fd=%d fn=%ld offset=%ld", id, fs->fd, fs->file_no, offset );
-      NFO("read error: %s", strerror(errno) );
-      return (void*) -1;
+      return (void*) -1; // Not reached
     }
 
     {
@@ -736,7 +736,7 @@ void* tx_worker( void* args ) {
 
       fob->complete(fob, token);
 
-      DBG("[%2d] Finish block crc=%08x fn=%d offset=%zx sz=%d sent=%d",
+      DBV("[%2d] Finish block crc=%08x fn=%d offset=%zx sz=%d sent=%d",
           id, crc, file_no, offset, bytes_read, bytes_sent);
     }
 
@@ -751,17 +751,30 @@ void* tx_worker( void* args ) {
 }
 
 void finish_transfer( struct dtn_args* args, uint64_t filecount ) {
-  DBG("[--] finish_transfer is called");
 
-  if (filecount) {
-    while (1) {
-      uint64_t files_closed = __sync_fetch_and_add( &args->files_closed, 0 );
+  // Typically this function is called with filecount argument, and will wait
+  // until all files written, This way the receiver can verify to the sender
+  // that all files were transferred successfully. Conversely it should return
+  // an error on failure.
 
-      if (files_closed >= filecount)
-        return;
+  DBG("[--] finish_transfer is called fc=%ld", filecount);
 
-      usleep(10);
+  int j = 0;
+
+  while (filecount) {
+    uint64_t files_closed = __sync_fetch_and_add( &args->files_closed, 0 );
+    j+=1; 
+
+    if (files_closed >= filecount) {
+      DBG("[--] finish_transfer complete");
+      return;
     }
+
+    if ((j & 0x3ff ) == 0x3ff) {
+      DBG("[--] Waiting on %ld/%ld", files_closed, filecount);
+    }
+
+    usleep(1000);
   }
 
   for (int i=0; i < args->thread_count; i++)

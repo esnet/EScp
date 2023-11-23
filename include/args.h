@@ -52,8 +52,8 @@ static inline void dtn_log2( char* msg ) {
 #define XLOG(x, ...) {}
 #endif
 
-// #define DBV(x, ...) {}
-#define DBV DBG
+#define DBV(x, ...) {}
+// #define DBV DBG
 
 #define DBG(x, ...) if (verbose_logging) {               \
     char bu[2200];                                       \

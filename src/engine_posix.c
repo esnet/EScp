@@ -79,7 +79,7 @@ void* file_posixsubmit( void* arg, int32_t* sz, uint64_t* offset ) {
 
   if ( fob->tail < fob->head ) {
 
-    DBG( "[%2d] %s op fd=%d sz=%zd, offset=%zd %ld:%ld",
+    DBV( "[%2d] %s op fd=%d sz=%zd, offset=%zd %ld:%ld",
       fob->id, fob->io_flags & O_WRONLY ? "write":"read",
       op->fd, fob->io_flags & O_WRONLY ? op->sz: fob->blk_sz,
       op->offset, fob->tail, fob->head );
@@ -106,7 +106,7 @@ int file_posixtruncate( void* arg, int64_t sz ) {
   struct file_object* fob = arg;
   struct posix_op* op = (struct posix_op*) fob->pvdr;
 
-  DBG( "[%2d] Truncate op fd=%d sz=%ld", fob->id, op->fd, sz );
+  DBV( "[%2d] Truncate op fd=%d sz=%ld", fob->id, op->fd, sz );
 
   return ftruncate( op->fd, sz );
 }
@@ -115,7 +115,7 @@ int file_posixclose(void* arg) {
   struct file_object* fob = arg;
   struct posix_op* op = (struct posix_op*) fob->pvdr;
 
-  DBG( "[%2d] Close on fd=%d", fob->id, op->fd );
+  DBV( "[%2d] Close on fd=%d", fob->id, op->fd );
   return close( op->fd );
 }
 

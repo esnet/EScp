@@ -3,7 +3,7 @@ name = "escp"
 version = "0.7.0"
 edition = "2018"
 author = "Charles Shiflett <cshiflett@ESnet>"
-about = "The ESnet Transfer Tool"
+about = "Energy Sciences Network transfer tool (EScp)"
 
 build = "src/build.rs"
 

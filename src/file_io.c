@@ -41,21 +41,11 @@ uint64_t file_count = 0;
 uint64_t file_completed = 0;
 uint64_t file_wanted __attribute__ ((aligned(64))) = 0;
 
-uint64_t file_fileno_next  __attribute__ ((aligned(64))) = 0;
-
-struct file_stat_type* file_addfile(uint64_t fileno, int fd, uint32_t crc, int64_t file_sz ) {
+struct file_stat_type* file_addfile( uint64_t fileno, int fd, uint32_t crc,
+                                     int64_t file_sz ) {
   struct file_stat_type fs= {0};
   int i=fileno % FILE_STAT_COUNT;
   uint64_t iterations=0;
-
-  if ( fileno == ~0UL ) {
-    __sync_add_and_fetch( &file_fileno_next, 1 );
-    i=0;
-  }
-
-  if (!fileno) {
-    fileno = __sync_add_and_fetch( &file_fileno_next, 1 );
-  }
 
   DBV("Entered file_addfile fn=%ld, fd=%d crc=%X",
       fileno, fd, crc);
@@ -93,15 +83,10 @@ struct file_stat_type* file_addfile(uint64_t fileno, int fd, uint32_t crc, int64
 struct file_stat_type* file_wait( uint64_t fileno ) {
 
   struct file_stat_type test_fs;
-  int64_t test_fn;
   int i, k;
 
   while (1) {
     k = FILE_STAT_COUNT;
-    test_fn = __sync_fetch_and_add(&file_fileno_next, 0);
-
-    if (test_fn && (test_fn < FILE_STAT_COUNT))
-      k = test_fn;
 
     for (i=0; i<=k; i++) {
       memcpy( &test_fs, &file_stat[i], sizeof(struct file_stat_type) );
@@ -112,12 +97,12 @@ struct file_stat_type* file_wait( uint64_t fileno ) {
       if ( (test_fs.state == FS_INIT) && (__sync_val_compare_and_swap(
         &file_stat[i].state, FS_INIT, FS_COMPLETE|FS_IO) == FS_INIT ) )
       {
-        DBV("NEW writer on %lx", file_stat[i].file_no);
+        DBV("NEW writer on fn=%ld", file_stat[i].file_no);
         return &file_stat[i]; // Fist worker on file
       }
 
       if (test_fs.state & FS_IO) {
-        DBV("ADD writer on %lx", file_stat[i].file_no);
+        DBV("ADD writer on fn=%ld", file_stat[i].file_no);
         return &file_stat[i]; // Added worker to file
       }
     }
@@ -135,19 +120,15 @@ struct file_stat_type* file_next( int id ) {
   DBV("[%2d] Enter file_next", id);
 
   struct file_stat_type test_fs;
-  int64_t test_fn;
   int i, j, k, did_iteration=0, do_exit=0, active_file;
 
 
   while (1) {
     k = FILE_STAT_COUNT;
-    test_fn = __sync_fetch_and_add(&file_fileno_next, 0);
-    if (test_fn && (test_fn < FILE_STAT_COUNT))
-      k = test_fn;
     active_file=0;
 
     for (i=1; i<=k; i++) {
-      j = (FILE_STAT_COUNT + test_fn - i) % FILE_STAT_COUNT;
+      j = (FILE_STAT_COUNT + i) % FILE_STAT_COUNT;
       memcpy( &test_fs, &file_stat[j], sizeof(struct file_stat_type) );
 
       if (test_fs.file_no == ~0UL) {
@@ -170,7 +151,7 @@ struct file_stat_type* file_next( int id ) {
       if ( (test_fs.state & FS_IO) && (__sync_val_compare_and_swap(
         &file_stat[j].state, st, st| (1<<id) ) == st) ) {
 
-        DBV("[%2d] ADD IOW on %lx", id, file_stat[j].file_no);
+        DBV("[%2d] ADD IOW on fn=%ld", id, file_stat[j].file_no);
         return &file_stat[j]; // Added worker to file
 
       }
@@ -397,7 +378,7 @@ void* file_ioworker( void* arg ) {
         XLOG("file_ioworker: flush complete");
 
         if (file_iow_remove( fs, id ) == FS_COMPLETE) {
-          DBG("[%2d] Close on file_no: %ld, fd=%d", id, fs->file_no, fs->fd);
+          DBV("[%2d] Close on file_no: %ld, fd=%d", id, fs->file_no, fs->fd);
           fob->close( fob );
           bzero( fs, sizeof( struct file_stat_type ) );
         }

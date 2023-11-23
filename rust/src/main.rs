@@ -360,7 +360,8 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
             full_path = format!("{}", filename);
           }
 
-          let open = (*(*args).fob).open.unwrap();
+          let open  = (*(*args).fob).open.unwrap();
+          let close = (*(*args).fob).close_fd.unwrap();
           let mut fd;
 
           let fp = CString::new( full_path.clone() ).unwrap();
@@ -377,6 +378,12 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
 
           debug!("Add file {full_path}:{fino} with {:#X} sz={sz} fd={fd}",
                  (*args).flags, fino=entry.fino(), sz=entry.sz() );
+
+          if entry.sz() < 1 {
+            debug!("Closed and ignoring {fino} because 0 sz", fino=entry.fino());
+            close(fd);
+            continue;
+          }
 
           if fd < 1 {
             info!("Got an error opening file {:?} {:?}",
@@ -405,7 +412,6 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
     debug!("Got message from sender sz={sz}, type={t}");
   }
 
-
   unsafe {
     debug!("Calling finish transfer");
     finish_transfer( args as *mut dtn_args, filecount );
@@ -416,6 +422,7 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
   let mut hdr = to_header( 0, msg_session_complete );
   _ = sout.write( &mut hdr );
   _ = sout.flush();
+
 
 }
 
@@ -885,11 +892,11 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, mut sin: &std::fs
   let msg_out;
 
   {
-    let (files_in, files_out) = crossbeam_channel::bounded(100);
+    let (files_in, files_out) = crossbeam_channel::bounded(15000);
     let (dir_in, dir_out) = crossbeam_channel::bounded(10);
 
     let msg_in;
-    (msg_in, msg_out) = crossbeam_channel::bounded(100);
+    (msg_in, msg_out) = crossbeam_channel::bounded(400);
 
     let _ = GLOBAL_FILEOPEN_CLEANUP.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
