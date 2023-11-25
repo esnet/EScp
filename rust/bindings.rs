@@ -1758,6 +1758,8 @@ pub struct dtn_args {
     pub do_ssh: bool,
     pub do_crypto: bool,
     pub do_hash: bool,
+    pub nodirect: bool,
+    pub recursive: bool,
     pub file_count: ::core::ffi::c_int,
     pub host_count: ::core::ffi::c_int,
     pub mtu: ::core::ffi::c_int,
@@ -1858,8 +1860,28 @@ fn bindgen_test_layout_dtn_args() {
         )
     );
     assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).file_count) as usize - ptr as usize },
+        unsafe { ::core::ptr::addr_of!((*ptr).nodirect) as usize - ptr as usize },
         4usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(dtn_args),
+            "::",
+            stringify!(nodirect)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).recursive) as usize - ptr as usize },
+        5usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(dtn_args),
+            "::",
+            stringify!(recursive)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).file_count) as usize - ptr as usize },
+        8usize,
         concat!(
             "Offset of field: ",
             stringify!(dtn_args),
@@ -1869,7 +1891,7 @@ fn bindgen_test_layout_dtn_args() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).host_count) as usize - ptr as usize },
-        8usize,
+        12usize,
         concat!(
             "Offset of field: ",
             stringify!(dtn_args),
@@ -1879,7 +1901,7 @@ fn bindgen_test_layout_dtn_args() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).mtu) as usize - ptr as usize },
-        12usize,
+        16usize,
         concat!(
             "Offset of field: ",
             stringify!(dtn_args),
@@ -1889,7 +1911,7 @@ fn bindgen_test_layout_dtn_args() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).block) as usize - ptr as usize },
-        16usize,
+        20usize,
         concat!(
             "Offset of field: ",
             stringify!(dtn_args),
@@ -1899,7 +1921,7 @@ fn bindgen_test_layout_dtn_args() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).flags) as usize - ptr as usize },
-        20usize,
+        24usize,
         concat!(
             "Offset of field: ",
             stringify!(dtn_args),
@@ -1909,7 +1931,7 @@ fn bindgen_test_layout_dtn_args() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).QD) as usize - ptr as usize },
-        24usize,
+        28usize,
         concat!(
             "Offset of field: ",
             stringify!(dtn_args),

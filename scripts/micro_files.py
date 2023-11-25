@@ -13,7 +13,7 @@ except:
 try: 
   for i in range(1024*128):
     with open( "/tmp/test_src_1k/test_%06d" % i, "wb") as fi:
-      sz = random.randint( 1, 16384 )
+      sz = random.randint( 0, 8192 )
       fi.write( os.urandom(sz) )
 finally: 
   pass

@@ -95,6 +95,9 @@ struct dtn_args {
   bool do_ssh;
   bool do_crypto;
   bool do_hash;
+  bool nodirect;
+  bool recursive;
+
   int file_count;
   int host_count;
   int mtu;
@@ -102,6 +105,7 @@ struct dtn_args {
   int flags;
   int QD;
   int64_t disable_io;
+
   char* io_engine_name;
   int io_engine;
   unsigned int window;

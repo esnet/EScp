@@ -255,6 +255,8 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
       }
     }
 
+    if helo.no_direct() { direct_mode = false; }
+
     match helo.bind_interface() {
       Some( string )  => { bind_interface = CString::new(string).unwrap(); },
       _ => { },
@@ -506,7 +508,7 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
     sout = proc.stdout.as_ref().unwrap();
     serr = proc.stderr.as_ref().unwrap();
   }
-  let (session_id, start_port, do_verbose, crypto_key, io_engine);
+  let (session_id, start_port, do_verbose, crypto_key, io_engine, nodirect);
 
   crypto_key = vec![ 0i8; 16 ];
 
@@ -517,6 +519,7 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
     session_id = (*args).session_id;
     start_port = (*args).active_port;
     io_engine  = (*args).io_engine;
+    nodirect  = (*args).nodirect;
     do_verbose = verbose_logging  > 0;
     std::intrinsics::copy_nonoverlapping( (*args).crypto_key.as_ptr() , crypto_key.as_ptr() as *mut u8, 16 );
   }
@@ -534,6 +537,7 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
       do_crypto: true,
       crypto_key: ckey,
       io_engine: io_engine,
+      no_direct: nodirect,
       ..Default::default()
     }
   );
@@ -604,8 +608,7 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
     // transfer. At this point we have not read any data from disk but have
     // configured the transfer endpoints.
 
-    let start = std::time::Instant::now();
-
+    let start    = std::time::Instant::now();
 
     let mut fi;
 
@@ -617,7 +620,7 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
       }
     }
 
-    let bytes_total = iterate_files( flags.source, safe_args, sin, dest.to_string() );
+    let bytes_total = iterate_files( flags.source, safe_args, sin, dest.to_string(), flags.quiet, &fi );
     debug!("Finished iterating files, total bytes={bytes_total}");
 
     loop {
@@ -774,10 +777,13 @@ fn iterate_file_worker(
   args:      dtn_args_wrapper) {
 
   let mode:i32 = 0;
-  let mut direct_mode = true;
+  let (mut direct_mode, mut recursive) = (true, false);
   let open;
 
+
   unsafe {
+    if (*args.args).nodirect  { direct_mode = false; }
+    if (*args.args).recursive { recursive   = true;  }
     open = (*(*args.args).fob).open.unwrap();
   }
 
@@ -838,8 +844,10 @@ fn iterate_file_worker(
       match st.st_mode & libc::S_IFMT {
 
         libc::S_IFDIR => {
-          let _ = GLOBAL_FILEOPEN_CLEANUP.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-          _ = dir_in.send((c_str.to_str().unwrap().to_string(), prefix, fd));
+          if recursive {
+            let _ = GLOBAL_FILEOPEN_CLEANUP.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            _ = dir_in.send((c_str.to_str().unwrap().to_string(), prefix, fd));
+          }
           continue;
         }
         libc::S_IFLNK => {
@@ -882,7 +890,7 @@ fn iterate_file_worker(
 }
 
 
-fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, mut sin: &std::fs::File, dest_path: String) -> i64 {
+fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, mut sin: &std::fs::File, dest_path: String, quiet: bool, mut sout: &std::fs::File ) -> i64 {
 
   // we use clean_path instead of path.canonicalize() because the engines are
   // responsible for implementing there own view of the file system and we can't
@@ -942,10 +950,21 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, mut sin: &std::fs
   let mut counter: i64;
   let mut vec;
 
+  let start = std::time::Instant::now();
+  let mut interval = std::time::Instant::now();
+
   loop {
     vec = Vec::new();
     did_init = false;
     counter=0;
+
+    if !quiet && (interval.elapsed().as_secs_f32() > 0.25) {
+      interval = std::time::Instant::now();
+      let l = format!("\rCalculating ... Files: {files_total:<8} Rate: {:5.0}/s ",
+                      files_total as f32/start.elapsed().as_secs_f32() );
+      _ = sout.write(l.as_bytes());
+      _ = sout.flush();
+    }
 
     loop {
 
@@ -1293,7 +1312,7 @@ struct EScp_Args {
    #[arg(short='i', long, default_value_t=String::from(""))]
    identity: String,
 
-   /// Limit transfer to <LIMIT> Kbit/s
+   /// Limit transfer to <LIMIT> Kbit/s ( Todo )
    #[arg(short, long, default_value_t=0)]
    limit: u64,
 
@@ -1301,7 +1320,7 @@ struct EScp_Args {
    #[arg(short, long, default_value_t=String::from(""))]
    option: String,
 
-   /// Preserve source attributes at destination
+   /// Preserve source attributes at destination ( Todo )
    #[arg(short, long, num_args=0)]
    preserve: bool,
 
@@ -1333,6 +1352,9 @@ struct EScp_Args {
 
    #[arg(long, help="Display speed in bits/s")]
    bits: bool,
+
+   #[arg(long, help="Don't enable direct mode")]
+   nodirect: bool,
 
    #[arg(short='L', long, help="Display License")]
    license: bool,
@@ -1516,8 +1538,10 @@ fn main() {
       }
 
 
-      if flags.verbose { verbose_logging += 1; }
-      if flags.quiet   { verbose_logging = 0; }
+      if flags.verbose   { verbose_logging += 1; }
+      if flags.quiet     { verbose_logging = 0; }
+      if flags.nodirect  { (*args).nodirect  = true; }
+      if flags.recursive { (*args).recursive = true; }
       (*args).window = 512*1024*1024;
       (*args).mtu=8204;
       (*args).thread_count = flags.threads as i32;
