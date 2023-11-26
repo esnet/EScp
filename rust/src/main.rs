@@ -152,7 +152,7 @@ fn start_receiver( args: dtn_args_wrapper ) {
   }
   if ret != 0 {
     error!("Failed to start receiver");
-    flush_logs();
+    thread::sleep(std::time::Duration::from_millis(200));
     process::exit(-1);
   }
 
@@ -263,7 +263,6 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
     }
 
     initialize_logging( "/tmp/escp.log.", safe_args);
-    debug!("GIT: {} on {} clean={}", build::SHORT_COMMIT, build::BUILD_TIME, shadow_rs::git_clean());
 
      debug!("Session init {:016X?}", helo.session_id());
   } else {
@@ -452,9 +451,7 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
   }
 
   initialize_logging("/tmp/escp.log.", safe_args);
-  debug!("GIT: {} on {} clean={}", build::SHORT_COMMIT,
-         build::BUILD_TIME, shadow_rs::git_clean());
-  debug!("Treansfer to host: {}, dest_files: {} ", host, dest );
+  debug!("Transfer to host: {}, dest_files: {} ", host, dest );
 
   let (mut sin, mut sout, mut serr, file, proc, stream, fd);
   if flags.mgmt.len() > 0 {
@@ -960,8 +957,15 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, mut sin: &std::fs
 
     if !quiet && (interval.elapsed().as_secs_f32() > 0.25) {
       interval = std::time::Instant::now();
-      let l = format!("\rCalculating ... Files: {files_total:<8} Rate: {:5.0}/s ",
-                      files_total as f32/start.elapsed().as_secs_f32() );
+
+      let a = unsafe { human_write( files_total, true )};
+      let b = unsafe { human_write(
+        (files_total as f32/start.elapsed().as_secs_f32()) as u64, true) };
+
+      let tot  = unsafe { CStr::from_ptr(a).to_str().unwrap() };
+      let rate = unsafe { CStr::from_ptr(b).to_str().unwrap() };
+
+      let l = format!("\rCalculating ... Files: {tot} Rate: {rate}/s ");
       _ = sout.write(l.as_bytes());
       _ = sout.flush();
     }

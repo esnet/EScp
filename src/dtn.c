@@ -380,7 +380,6 @@ void* rx_worker( void* arg ) {
 
   struct file_object* fob;
   struct file_info* fi;
-  // struct file_stat_type* fs=0;
   struct network_obj* knob=0;
 
   uint8_t read_buf[16];
@@ -471,8 +470,7 @@ void* rx_worker( void* arg ) {
         VRFY( file_no, "ASSERT: file_no != zero" );
 
         DBV("[%2d] FIHDR_SHORT: call file_wait for fn=%ld", id, file_no);
-        fs_ptr = file_wait( file_no );
-        memcpy( &fs, fs_ptr, sizeof(struct file_stat_type) );
+        fs_ptr = file_wait( file_no, &fs );
 
         DBG("[%2d] FIHDR_SHORT: file_wait returned fd=%d for fn=%ld", id, fs.fd, file_no);
         VRFY( fs.fd, "ASSERT: fd != zero" );
@@ -511,11 +509,11 @@ void* rx_worker( void* arg ) {
         }
 
         DBG("[%2d] FIHDR_SHORT written=%08ld/%08ld fn=%ld os=%zX sz=%d",
-            id, written, fs_ptr->bytes, file_no, offset, sz );
+            id, written, fs.bytes, file_no, offset, sz );
 
-        if ( fs_ptr->bytes && fs_ptr->bytes <= written  ) {
-          if (fs_ptr->bytes != written) {
-            fob->truncate(fob, fs_ptr->bytes);
+        if ( fs.bytes && fs.bytes <= written  ) {
+          if (fs.bytes != written) {
+            fob->truncate(fob, fs.bytes);
             DBG("[%2d] FIHDR_SHORT: close with truncate fn=%ld ", id, file_no);
           } else {
             DBG("[%2d] FIHDR_SHORT: close on fn=%ld ", id, file_no);

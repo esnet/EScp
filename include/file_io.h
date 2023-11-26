@@ -162,7 +162,8 @@ int32_t file_hash( void* block, int sz, int seed );
 
 struct file_stat_type* file_addfile(uint64_t fileno, int fd, uint32_t crc, int64_t);
 struct file_stat_type* file_next( int id );
-struct file_stat_type* file_wait( uint64_t fileno );
+struct file_stat_type* file_wait( uint64_t fileno, struct file_stat_type* );
+
 
 int64_t file_stat_getbytes( void *file_object, int fd );
 uint64_t  file_iow_remove( struct file_stat_type* fs, int id );

@@ -80,34 +80,33 @@ struct file_stat_type* file_addfile( uint64_t fileno, int fd, uint32_t crc,
   return( &file_stat[i] );
 }
 
-struct file_stat_type* file_wait( uint64_t fileno ) {
+struct file_stat_type* file_wait( uint64_t fileno, struct file_stat_type* test_fs ) {
 
-  struct file_stat_type test_fs;
   int i, k;
 
   while (1) {
     k = FILE_STAT_COUNT;
 
     for (i=0; i<=k; i++) {
-      memcpy( &test_fs, &file_stat[i], sizeof(struct file_stat_type) );
+      memcpy( test_fs, &file_stat[i], sizeof(struct file_stat_type) );
 
-      if (test_fs.file_no != fileno)
+      if (test_fs->file_no != fileno)
         continue;
 
-      if ( (test_fs.state == FS_INIT) && (__sync_val_compare_and_swap(
+      if ( (test_fs->state == FS_INIT) && (__sync_val_compare_and_swap(
         &file_stat[i].state, FS_INIT, FS_COMPLETE|FS_IO) == FS_INIT ) )
       {
         DBV("NEW writer on fn=%ld", file_stat[i].file_no);
-        return &file_stat[i]; // Fist worker on file
+        return &file_stat[i];
       }
 
-      if (test_fs.state & FS_IO) {
-        DBV("ADD writer on fn=%ld", file_stat[i].file_no);
-        return &file_stat[i]; // Added worker to file
+      if (test_fs->state & FS_IO) {
+        DBV("ADD writer to fn=%ld", file_stat[i].file_no);
+        return &file_stat[i];
       }
     }
 
-    usleep(10);
+    usleep(100);
   }
 }
 

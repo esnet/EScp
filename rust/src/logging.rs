@@ -35,18 +35,16 @@ fn initialize_logging( base_path: &str, args: dtn_args_wrapper ) {
 
     log4rs::init_config(config).unwrap();
 
-    log::info!("Starting {} {}",
+    log::info!("Starting {} {}. GIT {} {} dirty={}",
       env!("CARGO_PKG_NAME"),
-      env!("CARGO_PKG_VERSION") );
+      env!("CARGO_PKG_VERSION"),
+      build::SHORT_COMMIT,
+      build::BUILD_TIME,
+      shadow_rs::git_clean()
+    );
 
     _ = thread::Builder::new().name("logr".to_string()).spawn(move ||
           initialize_clog() );
-
-}
-
-
-fn flush_logs() {
-  thread::sleep(std::time::Duration::from_millis(250));
 }
 
 fn initialize_clog() {
