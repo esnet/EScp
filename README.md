@@ -62,49 +62,35 @@ COMPILING
 =========
 
 ```
-  # First build C "DTN" library:
+# Install system dependencies
+apt install cmake libtool g++ libnuma-dev nasm
 
-  # apt install cmake libtool g++ libnuma-dev nasm
 
-  git clone git@github.com:esnet/EScp.git
-  mkdir EScp/Build
-  cd EScp/build
-  cmake ..
-  make -j 24
+# Get rust
+curl https://sh.rustup.rs -sSf | sh
+. "$HOME/.cargo/env"
 
-  # Make will pull in libnuma and isa-l_crypto dependencies
-  # to which the application will be statically linked.
+# Build escp (This also build libdtn.a using build_libdtn.sh script)
+cargo build
 
-  # FIXME (currently broken): make package # Create DEB/RPM/TGZ packages
+# You now need to install escp, the suggested path is to create an RPM/DEB
+cargo install cargo-deb
+cargo deb
 
-  # Now compile escp/dtn programs
+# or
 
-  cd ../rust
+cargo install cargo-rpm
+cargo rpm init
+cargo rpm build
 
-  # This needs a relatively new vesion of cargo; If you get compile
-  # errors from system cargo/rust, then grab a new version using:
+# Then install as
+sudo dpkg -i target/debian/escp_0.7.0_amd64.deb
 
-  curl https://sh.rustup.rs -sSf | sh
-  # Follow prompts then add something like below to .bashrc
-  . "$HOME/.cargo/env"
+# For development
+cargo install bindgen-cli --version 0.68.1
+bindgen ../include/dtn.h -o bindings.rs --use-core  --generate-cstr
 
-  cargo build
-  # or
-  # cargo build --release
-
-  # dtn and escp executables at target/{release,debug}/{escp,dtn}
-
-  # Typically escp wants to live in a system path:
-  cargo install --path . --root /usr/local --force
-
-  # DEVELOPMENT TOOLS:
-
-  cargo install bindgen-cli # bindgen at version 0.68.1
-  # and flatbuffers-compiler
-  apt  install flatbuffers-compiler # flatc at version 23.5.26
-
-  # + GDB, valgrind,
-
+# You probably also want gdb/valgrind/whatever your favorite debug tools are
 
 ```
 
@@ -144,7 +130,7 @@ node using /etc/escp.conf. As an example:
   # escp/scripts/config_tool.py eno1 > /etc/escp.conf
 ```
 
-This will pin EScp to the netork card eno1. The `config_tool` is misleading 
+This will pin EScp to the netork card eno1. The `config_tool` is misleading
 because you really want EScp to run on the NUMA node that *isn't* where your
 network card is. So for instance, if we are running a transfer utilizing eth0,
 you would need to find a network card that is on a different NUMA domain from

@@ -636,6 +636,11 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
     let bytes_total = iterate_files( flags.source, safe_args, sin, dest.to_string(), flags.quiet, &fi );
     debug!("Finished iterating files, total bytes={bytes_total}");
 
+    if bytes_total <= 0 {
+      eprintln!("Nothing to transfer, exiting.");
+      process::exit(1);
+    }
+
     loop {
       if flags.quiet {
         break;
@@ -843,6 +848,8 @@ fn iterate_file_worker(
       if fd == -1 {
         error!("trying to open {:?} {:?}", c_str,
                  std::io::Error::last_os_error() );
+        eprintln!("trying to open {:?} {:?}", c_str,
+                   std::io::Error::last_os_error() );
         continue;
       }
 
@@ -860,17 +867,23 @@ fn iterate_file_worker(
           if recursive {
             let _ = GLOBAL_FILEOPEN_CLEANUP.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             _ = dir_in.send((c_str.to_str().unwrap().to_string(), prefix, fd));
+          } else {
+            info!("Ignoring directory {f}");
+            eprintln!("Ignoring directory {f}");
+            _ = ((*(*args.args).fob).close_fd.unwrap())( fd );
           }
           continue;
         }
         libc::S_IFLNK => {
           info!("Ignoring link {f}");
+            eprintln!("Ignoring link {f}");
           _ = ((*(*args.args).fob).close_fd.unwrap())( fd );
           continue;
         }
         libc::S_IFREG => { /* add */ }
         _             => {
           info!("Ignoring {:#X} {f}", st.st_mode & libc::S_IFMT);
+          eprintln!("Ignoring {:#X} {f}", st.st_mode & libc::S_IFMT);
           _ = ((*(*args.args).fob).close_fd.unwrap())( fd );
           continue;
         }

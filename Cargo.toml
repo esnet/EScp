@@ -3,7 +3,10 @@ name = "escp"
 version = "0.7.0"
 edition = "2018"
 author = "Charles Shiflett <cshiflett@ESnet>"
+authors = [ "Charles Shiflett" ]
 about = "Energy Sciences Network transfer tool (EScp)"
+description = "Energy Sciences Network transfer tool (EScp)"
+license = "BSD-3-Clause"
 
 build = "src/build.rs"
 
@@ -36,3 +39,12 @@ panic = 'abort'     # Abort on panic
 strip = true        # Strip symbols from binary*
 
 
+
+[package.metadata.rpm]
+package = "escp"
+
+[package.metadata.rpm.cargo]
+buildflags = ["--release"]
+
+[package.metadata.rpm.targets]
+escp = { path = "/usr/bin/escp" }
