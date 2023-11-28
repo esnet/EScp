@@ -1,5 +1,4 @@
 fn main() -> shadow_rs::SdResult<()>  {
-
     println!("cargo:rustc-link-arg-bins=../build/libdtn.a");
     println!("cargo:rustc-link-arg-bins=../build/isal/lib/libisal_crypto.a");
     println!("cargo:rustc-link-arg-bins=-lrt");
