@@ -63,7 +63,7 @@ COMPILING
 
 ```
 # Install system dependencies
-apt install cmake libtool g++ libnuma-dev nasm
+apt install cmake libtool g++ libnuma-dev nasm autoconf automake
 
 
 # Get rust

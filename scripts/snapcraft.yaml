@@ -1,0 +1,56 @@
+title: EScp
+name: escp
+base: core22
+version: '0.7-preview'
+summary: Energy Sciences Transfer Tool
+license: BSD-3-Clause-LBNL
+source-code: https://github.com/ESnet/EScp
+description: |
+  EScp is an in development transfer tool that has a similar syntax to scp, but
+  has better performance and offers additional functionality.  EScp uses SSH for
+  authentication but data transfer defaults to port 1232 using AES128-GCM. EScp
+  has been shown to transfer across the WAN at 200gbit/s, limited only by the
+  interface speed.
+
+  EScp is an acronym for "Energy Sciences Transfer Tool" and was created as a
+  side project by Charles Shiflett at ESnet. ESnet (https://es.net) is apart of
+  the US Department of Energy. More information and the source code for EScp is
+  available at https://github.com.
+
+grade: devel # must be 'stable' to release into candidate/stable channels
+#confinement: devmode # use 'strict' once you have the right plugs and slots
+
+confinement: strict
+
+
+#  - network-bind
+#  - network
+#  - personal-files
+#  - ssh-keys
+#  - home
+#  - removable-media
+#  - hardware-random-observe
+
+
+parts:
+
+  rust-deps:
+    plugin: nil
+    build-packages:
+      - curl
+    override-pull: |
+      curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+  escp:
+    plugin: rust
+    source: https://github.com/esnet/EScp.git
+    after: [rust-deps]
+    build-packages:
+      - cmake
+      - libtool
+      - g++
+      - nasm
+      - autoconf
+      - libnuma-dev
+      - automake
+    stage-packages:
+      - libnuma1
