@@ -50,10 +50,12 @@ struct file_stat_type* file_addfile( uint64_t fileno, int fd, uint32_t crc,
   DBV("Entered file_addfile fn=%ld, fd=%d crc=%X",
       fileno, fd, crc);
 
+  VRFY(fileno, "Assert: File number!=0");
+
   while (1) {
 
     if ( (iterations++ % FILE_STAT_COUNT) == (FILE_STAT_COUNT-1) )
-      usleep(1);
+      usleep(10000);
 
     if ( file_stat[i].fd != 0 ) {
       i = (i+1) % FILE_STAT_COUNT;
@@ -106,19 +108,18 @@ struct file_stat_type* file_wait( uint64_t fileno, struct file_stat_type* test_f
       }
     }
 
-    usleep(100);
+    usleep(1000);
   }
 }
 
 
-struct file_stat_type* file_next( int id ) {
+struct file_stat_type* file_next( int id, struct file_stat_type* test_fs ) {
 
   // Generic function to fetch the next file, may return FD to multiple
   // threads depending on work load / incomming file stream.
   //
   DBV("[%2d] Enter file_next", id);
 
-  struct file_stat_type test_fs;
   int i, j, k, did_iteration=0, do_exit=0, active_file;
 
 
@@ -128,26 +129,26 @@ struct file_stat_type* file_next( int id ) {
 
     for (i=1; i<=k; i++) {
       j = (FILE_STAT_COUNT + i) % FILE_STAT_COUNT;
-      memcpy( &test_fs, &file_stat[j], sizeof(struct file_stat_type) );
+      memcpy( test_fs, &file_stat[j], sizeof(struct file_stat_type) );
 
-      if (test_fs.file_no == ~0UL) {
+      if (test_fs->file_no == ~0UL) {
         do_exit=1;
         continue;
       }
 
-      if (test_fs.fd == 0)
+      if (test_fs->fd == 0)
         continue;
 
       active_file=1;
-      if ( (test_fs.state == FS_INIT) && (__sync_val_compare_and_swap(
+      if ( (test_fs->state == FS_INIT) && (__sync_val_compare_and_swap(
         &file_stat[j].state, FS_INIT, FS_COMPLETE|FS_IO|(1<<id) ) == FS_INIT ) )
       {
         DBV("[%2d] NEW IOW on fn=%ld, slot=%d/%016lx", id, file_stat[j].file_no, j, (uint64_t) &file_stat[j]);
         return &file_stat[j]; // Fist worker on file
       }
 
-      uint64_t st = test_fs.state;
-      if ( (test_fs.state & FS_IO) && (__sync_val_compare_and_swap(
+      uint64_t st = test_fs->state;
+      if ( (test_fs->state & FS_IO) && (__sync_val_compare_and_swap(
         &file_stat[j].state, st, st| (1<<id) ) == st) ) {
 
         DBV("[%2d] ADD IOW on fn=%ld", id, file_stat[j].file_no);
@@ -286,6 +287,7 @@ void file_prng( void* buf, int sz ) {
 
 void* file_ioworker( void* arg ) {
   struct file_stat_type* fs=0;
+  struct file_stat_type fs_lcl;
   struct dtn_args* dtn = arg;
   struct file_object* fob;
   int id = __sync_fetch_and_add(&dtn->thread_id, 1);
@@ -315,7 +317,7 @@ void* file_ioworker( void* arg ) {
 
     if (!fs) {
 
-      fs = file_next( fob->id );
+      fs = file_next( fob->id, &fs_lcl );
 
       if (!fs) {
         DBV("[%2d] no more work, exit work loop", id);
@@ -368,13 +370,9 @@ void* file_ioworker( void* arg ) {
 
       if (sz<1) {
 
-        XLOG("file_ioworker: queue_flush");
-
         while ( (token = fob->submit(fob, &sz, &res)) ) {
           fob->complete(fob, token);
         }
-
-        XLOG("file_ioworker: flush complete");
 
         if (file_iow_remove( fs, id ) == FS_COMPLETE) {
           DBV("[%2d] Close on file_no: %ld, fd=%d", id, fs->file_no, fs->fd);

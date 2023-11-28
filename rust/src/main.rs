@@ -366,33 +366,49 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
           let mut fd;
 
           let fp = CString::new( full_path.clone() ).unwrap();
-          if direct_mode {
-            fd = open( fp.as_ptr(), (*args).flags | libc::O_DIRECT, 0o644 );
-            if (fd == -1) && (*libc::__errno_location() == 22) {
-              direct_mode = false;
+
+
+          for _ in 1..3 { 
+            if direct_mode {
+              fd = open( fp.as_ptr(), (*args).flags | libc::O_DIRECT, 0o644 );
+              if (fd == -1) && (*libc::__errno_location() == 22) {
+                direct_mode = false;
+                continue;
+              }
+            } else {
               fd = open( fp.as_ptr(), (*args).flags, 0o644 );
             }
-          } else {
-            fd = open( fp.as_ptr(), (*args).flags, 0o644 );
+
+
+            if entry.sz() < 1 {
+              debug!("Closed and ignoring {fino} because 0 sz", fino=entry.fino());
+              close(fd);
+              break;
+            }
+
+            if fd < 1 {
+              let err = io::Error::last_os_error();
+              if err.kind() == std::io::ErrorKind::NotFound {
+
+                let path = std::path::Path::new(full_path.as_str());
+                let _ = fs::create_dir_all(path.parent().unwrap());
+
+                debug!("Create directory {path:?}");
+                continue;
+              }
+              info!("Got an error opening file {:?} {:?}",
+                    filename, err);
+              return;
+            }
+
+            debug!("Add file {full_path}:{fino} with {:#X} sz={sz} fd={fd}",
+                   (*args).flags, fino=entry.fino(), sz=entry.sz() );
+
+            file_addfile( entry.fino(), fd, 0, entry.sz() );
+            filecount += 1;
+
+            break;
           }
-
-
-          debug!("Add file {full_path}:{fino} with {:#X} sz={sz} fd={fd}",
-                 (*args).flags, fino=entry.fino(), sz=entry.sz() );
-
-          if entry.sz() < 1 {
-            debug!("Closed and ignoring {fino} because 0 sz", fino=entry.fino());
-            close(fd);
-            continue;
-          }
-
-          if fd < 1 {
-            info!("Got an error opening file {:?} {:?}",
-                  filename, io::Error::last_os_error() );
-            return;
-          }
-          file_addfile( entry.fino(), fd, 0, entry.sz() );
-          filecount += 1;
         }
       }
 
@@ -733,7 +749,7 @@ fn iterate_dir_worker(  dir_out:  crossbeam_channel::Receiver<(String, String, i
       Err(_) => { debug!("iterate_dir_worker: !dir_out, worker end."); return; }
     }
 
-    debug!("iterate_dir_worker: open {filename}, fd={fd}");
+    // debug!("iterate_dir_worker: open {filename}, fd={fd}");
     let dir = unsafe { fdopendir( fd ) };
 
     loop {
@@ -762,7 +778,7 @@ fn iterate_dir_worker(  dir_out:  crossbeam_channel::Receiver<(String, String, i
     }
 
     let _ = GLOBAL_FILEOPEN_TAIL.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    debug!("iterate_dir_worker: Iterated {filename}, close fd={fd}");
+    debug!("iterate_dir_worker: Finished traversing {filename}, close fd={fd}");
     unsafe{ close(fd) };
   }
 }
@@ -995,7 +1011,6 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, mut sin: &std::fs
         }
       }
 
-      debug!( "File: {} {}", fi, fino);
       files_total += 1;
       bytes_total += st.st_size;
 

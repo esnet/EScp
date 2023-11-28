@@ -473,7 +473,8 @@ void* rx_worker( void* arg ) {
         fs_ptr = file_wait( file_no, &fs );
 
         DBG("[%2d] FIHDR_SHORT: file_wait returned fd=%d for fn=%ld", id, fs.fd, file_no);
-        VRFY( fs.fd, "ASSERT: fd != zero" );
+        VRFY( fs.fd, "[%2d] ASSERT: fd != zero, fn=%ld/%ld", id, fs.file_no, file_no );
+        VRFY( fs.file_no == file_no, "[%2d] ASSERT: fs.file_no == file_no, fn=%ld != %ld", id, fs.file_no, file_no );
 
         file_cur = file_no;
         fd = fs.fd;
@@ -496,8 +497,14 @@ void* rx_worker( void* arg ) {
         //      For instance when UIO is added back.
 
         int64_t written;
-        VRFY(sz > 0, "[%2d] write error, fd=%zd fn=%ld", id,
-             (uint64_t)fob->get(knob->token, FOB_FD), file_no);
+
+        if ( (sz <= 0) && (errno == EBADF) ) {
+         NFO("[%2d] repeating write call. fn=%ld. fd=%d", id, file_no, fs.fd);
+         usleep(5000000);
+         knob->token = fob->submit(fob, &sz, &res);
+        }
+
+        VRFY(sz > 0, "[%2d] write error, fd=%d fn=%ld", id, fs.fd, file_no);
         fob->complete(fob, knob->token);
         written = __sync_add_and_fetch( &fs_ptr->bytes_total, sz );
         __sync_fetch_and_add( &dtn->bytes_io, 1 );
@@ -543,6 +550,7 @@ void* tx_worker( void* args ) {
   int sock=0, id; // , file_no=-1;
   uint64_t offset;
   int32_t bytes_read;
+  struct file_stat_type fs_lcl;
   struct file_stat_type* fs=0;
 
   int protocol = 0;
@@ -630,7 +638,7 @@ void* tx_worker( void* args ) {
   while (1) {
 
     if (!fs) {
-      fs = file_next( id );
+      fs = file_next( id, &fs_lcl );
 
       if ( !fs ) {
         DBG("[%2d] Finished reading file(s), exiting...", id );
@@ -641,7 +649,7 @@ void* tx_worker( void* args ) {
       // crc= 0;
     }
 
-    if (!fs->fd) {
+    if (!fs_lcl.fd) {
       DBG("[%2d] tx_worker exiting because fd provided is zero", id );
       break;
     }
@@ -657,12 +665,12 @@ void* tx_worker( void* args ) {
 
       fob->set(token, FOB_OFFSET, offset);
       fob->set(token, FOB_SZ, dtn->block);
-      fob->set(token, FOB_FD, fs->fd);
+      fob->set(token, FOB_FD, fs_lcl.fd);
     }
 
     token = fob->submit( fob, &bytes_read, &offset );
     if (!token) {
-      NFO("[%2d] fob->submit resulted in an emptry result fn=%ld", id, fs->file_no);
+      NFO("[%2d] fob->submit resulted in an emptry result fn=%ld", id, fs_lcl.file_no);
       continue;
     }
 
@@ -674,11 +682,11 @@ void* tx_worker( void* args ) {
         if (file_iow_remove( fs, id ) == (1UL << 62)) {
           fob->close( fob );
           int64_t res = __sync_add_and_fetch( &tx_filesclosed, 1 );
-          DBG("[%2d] Worker finished with fn=%ld files_closed=%ld; closing",
-              id, fs->file_no, res);
+          DBG("[%2d] Worker finished with fn=%ld files_closed=%ld; closing fd=%d",
+              id, fs_lcl.file_no, res, fs_lcl.fd);
           wipe ++;
         } else {
-          DBG("[%2d] Worker finished with fn=%ld", id, fs->file_no);
+          DBG("[%2d] Worker finished with fn=%ld", id, fs_lcl.file_no);
         }
 
         while ( (token=fob->submit( fob, &bytes_read, &offset )) ) {
@@ -687,18 +695,15 @@ void* tx_worker( void* args ) {
         };
 
         if (wipe) {
-          uint64_t res;
-          DBV("[%2d] Wiping fn=%ld", id, fs->file_no);
-          memset((void*) (((uint64_t) fs)+64), 0, sizeof(struct file_stat_type)-64 );
-          res = __sync_val_compare_and_swap(&fs->state, 1UL << 62, 0);
-          VRFY (res == (1UL << 62), "[%2d] Bad swap %lX", id, res);
+          DBV("[%2d] Wiping fn=%ld", id, fs_lcl.file_no);
+          memset((void*) fs, 0, sizeof(struct file_stat_type) );
         }
 
         fs = 0;
         continue;
       }
 
-      VRFY( bytes_read >= 0, "[%2d] Read Error fd=%d fn=%ld offset=%ld", id, fs->fd, fs->file_no, offset );
+      VRFY( bytes_read >= 0, "[%2d] Read Error fd=%d fn=%ld offset=%ld", id, fs_lcl.fd, fs_lcl.file_no, offset );
       return (void*) -1; // Not reached
     }
 
@@ -707,7 +712,7 @@ void* tx_worker( void* args ) {
       struct file_info fi = {0};
       int bytes_sent;
 
-      fi.file_no_packed = fs->file_no << 8ULL;
+      fi.file_no_packed = fs_lcl.file_no << 8ULL;
       if ( __builtin_popcount (bytes_read) > 1 ) {
         // clz == count leading zeroes; an analogue for log(2)
         fi.block_sz_packed = 32 - __builtin_clz( bytes_read | 1 );
@@ -724,7 +729,9 @@ void* tx_worker( void* args ) {
 #endif
 
       DBG("[%2d] FI_HDR sent with fn=%ld offset=%lX, bytes_read=%d, bytes_sent=%d, packed=%d",
-          id, fs->file_no, offset, bytes_read, bytes_sent, fi.block_sz_packed);
+          id, fs_lcl.file_no, offset, bytes_read, bytes_sent, fi.block_sz_packed);
+
+      VRFY(fi.file_no_packed >> 8, "[%2d] ASSERT: file_no != 0, fn=%ld", id, fs_lcl.file_no);
 
       VRFY( network_send(knob, &fi, 16, 16+bytes_sent, true) > 0, );
       VRFY( network_send(knob, buf, bytes_sent, 16+bytes_sent, false) > 0, );

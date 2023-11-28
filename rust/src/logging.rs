@@ -35,12 +35,11 @@ fn initialize_logging( base_path: &str, args: dtn_args_wrapper ) {
 
     log4rs::init_config(config).unwrap();
 
-    log::info!("Starting {} {}. GIT {} {} dirty={}",
+    log::info!("Starting {} {}. GIT {} {}",
       env!("CARGO_PKG_NAME"),
       env!("CARGO_PKG_VERSION"),
       build::SHORT_COMMIT,
       build::BUILD_TIME,
-      shadow_rs::git_clean()
     );
 
     _ = thread::Builder::new().name("logr".to_string()).spawn(move ||
@@ -54,9 +53,7 @@ fn initialize_clog() {
   loop {
     let mut did_work = false;
 
-    unsafe {
-      ret = dtn_log_getnext();
-    }
+    ret = unsafe { dtn_log_getnext() };
 
     if !ret.is_null()  {
       did_work = true;
@@ -64,9 +61,7 @@ fn initialize_clog() {
       debug!("[C] {} ", c_str.to_str().unwrap().trim() );
     }
 
-    unsafe {
-      ret = dtn_err_getnext();
-    }
+    ret = unsafe { dtn_err_getnext() };
 
     if !ret.is_null()  {
       did_work = true;

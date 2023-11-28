@@ -74,7 +74,7 @@ ExternalProject_Add(isa-l_crypto_project
   URL https://github.com/intel/isa-l_crypto/archive/refs/tags/v2.24.0.zip
   URL_HASH SHA256=653c13e46b3923d0f04021604d6c70e445335c9b54fd62bf5303860de7904d89
   CONFIGURE_COMMAND ./autogen.sh && ./configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/isal
-  BUILD_COMMAND     ${CMAKE_CURRENT_SOURCE_DIR}/scripts/build_isa-l.sh ${CMAKE_CURRENT_BINARY_DIR}
+  BUILD_COMMAND     make -j 24
   INSTALL_COMMAND   make install
   BUILD_BYPRODUCTS  libisal_crypto.a
   BUILD_IN_SOURCE   1

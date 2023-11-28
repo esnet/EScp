@@ -11,10 +11,12 @@ except:
 
 
 try: 
-  for i in range(1024*128):
-    with open( "/tmp/test_src_1k/test_%06d" % i, "wb") as fi:
-      sz = random.randint( 0, 8192 )
-      fi.write( os.urandom(sz) )
+  for j in range(8):
+    os.mkdir("/tmp/test_src_1k/%d" % j)
+    for i in range(1024*128):
+      with open( "/tmp/test_src_1k/%d/test_%07d" % (j, i), "wb") as fi:
+        sz = random.randint( 1, 8192 )
+        fi.write( os.urandom(sz) )
 finally: 
   pass
 

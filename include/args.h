@@ -20,38 +20,6 @@
 
 extern uint64_t verbose_logging;
 
-/*
-static inline void dtn_log2( char* msg ) {
-  int len = strlen(msg);
-
-  if (dtn_logfile) {
-    char buf[2300];
-
-    struct timeval tv;
-    gettimeofday(&tv,NULL);
-    uint64_t tim = tv.tv_sec * 1000000 + tv.tv_usec;
-
-    len = sprintf ( buf, "%zX %s", tim, msg );
-    if (write( dtn_logfile, buf, len ));
-  }
-  return;
-}
-*/
-
-
-#ifdef EBUG_VERBOSE
-// Debug, Verbose. For all those pesky debug statements that really
-// shouldn't exist in normal code.  (eXtra LOG)
-#warning "Excessive logging is configured"
-#define XLOG(x, ...) {                                    \
-    char bu[2200];                                       \
-    snprintf( bu, 2100, "[XLG] " x "\n", ##__VA_ARGS__ );\
-    dtn_log( bu );                                       \
-  }
-#else
-#define XLOG(x, ...) {}
-#endif
-
 #define DBV(x, ...) {}
 // #define DBV DBG
 
@@ -151,9 +119,6 @@ static inline void dtn_log( char* msg ) {
 
   strncpy ( (char*) &ESCP_DTN_ARGS->debug_buf[log_idx], msg, ESCP_MSG_SZ );
   (&ESCP_DTN_ARGS->debug_buf[log_idx])[ESCP_MSG_SZ-1]=0;
-  // write( STDERR_FILENO, msg, strnlen(msg, ESCP_MSG_SZ) );
-
-  // XXX: Increment shouldn't occur until (debug_count-1) == debug_claim
 
   __sync_fetch_and_add( &ESCP_DTN_ARGS->debug_count, 1 );
   return;
@@ -171,8 +136,6 @@ static inline void dtn_error( char* msg ) {
   (&ESCP_DTN_ARGS->msg_buf[log_idx])[ESCP_MSG_SZ-1]=0;
 
   write( STDERR_FILENO, msg, strnlen(msg, ESCP_MSG_SZ) );
-
-  // XXX: Increment shouldn't occur until (debug_count-1) == debug_claim
 
   __sync_fetch_and_add( &ESCP_DTN_ARGS->msg_count, 1 );
   return;
