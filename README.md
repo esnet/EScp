@@ -20,10 +20,10 @@ framework. Some features include:
   * Block based interface to transfering data
   * Checksums, Direct I/O, API's.
 
-EScp is tested on Linux and it has successfully transferred PBs of data
-and millions of files. That being said, this software is under active
-development and YMMV. Please reach out to the EScp with any success or
-failure stories.
+EScp is tested on Linux and it has successfully transferred PBs of data and
+millions of files. That being said, this software is under active development
+and YMMV. Please reach out to the EScp developers with any success or failure
+stories.
 
 
 Usage
@@ -52,7 +52,7 @@ Options:
 
 Example:
 
-# Transfe file1 and file2 to server host using SSH
+# Transfer file1 and file2 to server host using SSH
 escp file1 file2 host:/remoteDirectory
 
 
