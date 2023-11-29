@@ -15,7 +15,7 @@ try:
     os.mkdir("/tmp/test_src_1k/%d" % j)
     for i in range(1024*128):
       with open( "/tmp/test_src_1k/%d/test_%07d" % (j, i), "wb") as fi:
-        sz = random.randint( 1, 8192 )
+        sz = random.randint( 1, 1024 )
         fi.write( os.urandom(sz) )
 finally: 
   pass

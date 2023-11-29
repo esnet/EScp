@@ -1,76 +1,17 @@
-** This tool still exists, but this documentation needs to be
-   updated. This is purely a placeholder and most of this may not apply
-   to the current version of DTN.
 
+When this software was originally written, a 'dtn' tool existed which
+was used to perform I/O and data transfers. This tool sort of morphed
+into escp, although some support may still exist for the dtn tool. To
+use it, make a link from escp to 'dtn',  and then run 'dtn'. You will
+get a interface similar to the original dtn tool.
 
-DTN is a Linux tool to transfer files as quickly as possible using
-traditional API's. It is NUMA aware and tries to set reasonable
-defaults for transferring a file quickly.
+While the tool more-or-less doesn't exist, EScp uses the guts of this
+'dtn' tool, with the library becoming the useful component instead of
+the command line interface. This writing was written for the original
+tool; I removed the sections that described specific details and this
+is what was left.
 
-In most cases,  the default configuration should transfer files at line
-rate, however, if they don't you should tune the application per TUNING
-below. DTN can also be used to benchmark system storage and network.
-
-DTN is a standalone tool for benchmarking performance. If you are interested
-in transferring a file, the escp script provides this in an easier to use
-package.
-
-OPTIONS:
-=======
-
-```
-   -b block       I/O block sz for network transfer and disk
-   -c host/port   Connect to host, can specify multiple times
-   -h, --help     Display help
-   -f file        read/write from file, specify multiple times
-   -s             Run as server
-   -t thread      Number of worker threads
-   -D             Queue Depth (for supported engines, i.e. URING)
-   -X [sz]        Only do file I/O; Specify sz to write file; omit to read
-   --cpumask msk  Run on msk CPU's, hex
-   --engine ngen  I/O engine: Posix, uring, dummy
-   --managed      Enable managed mode
-   --memnode msk  Use memory msk matching node, hex
-   --mtu     sz   Request sz Maximum TCP Segment
-   --nodirect     Disable direct mode
-   --quiet        Disable messages
-   --verbose      Display verbose/debug messages
-   --version      Display version
-   --window  sz   Request sz TCP Window
-```
-
-
-BUILDING:
-========
-
-DTN uses cmake for dependency management and building. Typically one would
-build it doing something like:
-
-```
-  mkdir dtn/build
-  cd dtn/build
-  cmake ..
-  make -j 24
-```
-
-
-For debug builds, do something like:
-
-```
-  cmake -DCMAKE_BUILD_TYPE=Debug ..
-  make clean
-  make VERBOSE=1 -j 24
-```
-
-You can also generate RPMs/DEBs/.tar.gz as below; If you intend to use that
-package to distribute the DTN binary, check the compile options and ensure
-you are building a portable build.
-
-`  make package`
-
-Lastly, you can run tests using the ctest framework
-
-`  ctest -V`
+** NONE OF THE COMMAND LINE EXAMPLES BELOW ARE VALID, DO NOT USE THEM **
 
 DTN NOTES:
 ==========

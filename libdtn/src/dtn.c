@@ -242,13 +242,13 @@ int64_t network_recv( struct network_obj* knob, void* aad ) {
       __sync_fetch_and_add( &did_session_init, 0 );
     }
     memcpy( &s, &sess, sizeof(sess) );
-    knob->dtn->block  = s.block_sz;
-    knob->block       = knob->dtn->block;
-
+    knob->block = knob->dtn->block  = s.block_sz;
     knob->dtn->thread_count = s.thread_count;
+
     knob->fob = file_memoryinit( knob->dtn, knob->id );
     (void*) __sync_val_compare_and_swap ( &knob->dtn->fob, 0, (void*) knob->fob );
     __sync_fetch_and_add(&meminit, 1);
+
     did_init=true;
     DBG("[%2d] Init IO mem ", knob->id );
   }
@@ -260,7 +260,7 @@ int64_t network_recv( struct network_obj* knob, void* aad ) {
     bytes_read += 1 << fi->block_sz_packed  ;
 
     VRFY( (knob->token=knob->fob->fetch(knob->fob)) != 0,
-          "IO Queue full. XXX: I should wait for it to empty");
+          "IO Queue full. XXX: I should wait for it to empty?");
 
     /* XXX: UIO needs something like this:
     while ( (knob->token=knob->fob->fetch(knob->fob)) == 0 ) {

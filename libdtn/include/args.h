@@ -54,6 +54,7 @@ extern uint64_t verbose_logging;
   }                                                        \
   dtn_error(b);                                            \
   usleep(100);                                             \
+  abort();                            \
   if (verbose_logging) abort();                            \
   exit(-1);                                                \
 }

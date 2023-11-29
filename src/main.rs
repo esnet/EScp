@@ -882,21 +882,21 @@ fn iterate_file_worker(
             _ = dir_in.send((c_str.to_str().unwrap().to_string(), prefix, fd));
           } else {
             info!("Ignoring directory {f}");
-            eprintln!("Ignoring directory {f}");
+            eprintln!("\rIgnoring directory {f}");
             _ = ((*(*args.args).fob).close_fd.unwrap())( fd );
           }
           continue;
         }
         libc::S_IFLNK => {
           info!("Ignoring link {f}");
-            eprintln!("Ignoring link {f}");
+          eprintln!("\rIgnoring link {f}");
           _ = ((*(*args.args).fob).close_fd.unwrap())( fd );
           continue;
         }
         libc::S_IFREG => { /* add */ }
         _             => {
           info!("Ignoring {:#X} {f}", st.st_mode & libc::S_IFMT);
-          eprintln!("Ignoring {:#X} {f}", st.st_mode & libc::S_IFMT);
+          eprintln!("\rIgnoring {:#X} {f}", st.st_mode & libc::S_IFMT);
           _ = ((*(*args.args).fob).close_fd.unwrap())( fd );
           continue;
         }
