@@ -27,6 +27,7 @@ impl<'a> flatbuffers::Follow<'a> for ESCP_file_list<'a> {
 impl<'a> ESCP_file_list<'a> {
   pub const VT_ROOT: flatbuffers::VOffsetT = 4;
   pub const VT_FILES: flatbuffers::VOffsetT = 6;
+  pub const VT_COMPLETE: flatbuffers::VOffsetT = 8;
 
   #[inline]
   pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
@@ -40,6 +41,7 @@ impl<'a> ESCP_file_list<'a> {
     let mut builder = ESCP_file_listBuilder::new(_fbb);
     if let Some(x) = args.files { builder.add_files(x); }
     if let Some(x) = args.root { builder.add_root(x); }
+    builder.add_complete(args.complete);
     builder.finish()
   }
 
@@ -58,6 +60,13 @@ impl<'a> ESCP_file_list<'a> {
     // which contains a valid value in this slot
     unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<File>>>>(ESCP_file_list::VT_FILES, None)}
   }
+  #[inline]
+  pub fn complete(&self) -> bool {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<bool>(ESCP_file_list::VT_COMPLETE, Some(false)).unwrap()}
+  }
 }
 
 impl flatbuffers::Verifiable for ESCP_file_list<'_> {
@@ -69,6 +78,7 @@ impl flatbuffers::Verifiable for ESCP_file_list<'_> {
     v.visit_table(pos)?
      .visit_field::<flatbuffers::ForwardsUOffset<&str>>("root", Self::VT_ROOT, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<File>>>>("files", Self::VT_FILES, false)?
+     .visit_field::<bool>("complete", Self::VT_COMPLETE, false)?
      .finish();
     Ok(())
   }
@@ -76,6 +86,7 @@ impl flatbuffers::Verifiable for ESCP_file_list<'_> {
 pub struct ESCP_file_listArgs<'a> {
     pub root: Option<flatbuffers::WIPOffset<&'a str>>,
     pub files: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<File<'a>>>>>,
+    pub complete: bool,
 }
 impl<'a> Default for ESCP_file_listArgs<'a> {
   #[inline]
@@ -83,6 +94,7 @@ impl<'a> Default for ESCP_file_listArgs<'a> {
     ESCP_file_listArgs {
       root: None,
       files: None,
+      complete: false,
     }
   }
 }
@@ -99,6 +111,10 @@ impl<'a: 'b, 'b> ESCP_file_listBuilder<'a, 'b> {
   #[inline]
   pub fn add_files(&mut self, files: flatbuffers::WIPOffset<flatbuffers::Vector<'b , flatbuffers::ForwardsUOffset<File<'b >>>>) {
     self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(ESCP_file_list::VT_FILES, files);
+  }
+  #[inline]
+  pub fn add_complete(&mut self, complete: bool) {
+    self.fbb_.push_slot::<bool>(ESCP_file_list::VT_COMPLETE, complete, false);
   }
   #[inline]
   pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a>) -> ESCP_file_listBuilder<'a, 'b> {
@@ -120,6 +136,7 @@ impl core::fmt::Debug for ESCP_file_list<'_> {
     let mut ds = f.debug_struct("ESCP_file_list");
       ds.field("root", &self.root());
       ds.field("files", &self.files());
+      ds.field("complete", &self.complete());
       ds.finish()
   }
 }

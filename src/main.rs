@@ -351,7 +351,7 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
       debug!("Root set to: {}", root);
 
       for entry in fs.files().unwrap() {
-        let full_path;
+        let mut full_path;
 
         unsafe{
           let filename = entry.name().unwrap();
@@ -361,6 +361,19 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
             full_path = format!("{}", filename);
           }
 
+          if fs.complete() && (filecount==0) && (fs.files().unwrap().len()==1 &&
+             (root.len() > 0) ) {
+
+            // If src is a single file and dest is not a directory, we
+            // use dest as name for file on remote system
+
+            let path = std::path::Path::new(root);
+            if !path.is_dir() {
+              full_path = root.to_string();
+            }
+
+          }
+
           let open  = (*(*args).fob).open.unwrap();
           let close = (*(*args).fob).close_fd.unwrap();
           let mut fd;
@@ -368,7 +381,7 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
           let fp = CString::new( full_path.clone() ).unwrap();
 
 
-          for _ in 1..3 { 
+          for _ in 1..3 {
             if direct_mode {
               fd = open( fp.as_ptr(), (*args).flags | libc::O_DIRECT, 0o644 );
               if (fd == -1) && (*libc::__errno_location() == 22) {
@@ -811,7 +824,7 @@ fn iterate_file_worker(
   loop {
 
 
-    match files_out.recv_timeout(std::time::Duration::from_millis(100)) {
+    match files_out.recv_timeout(std::time::Duration::from_millis(10)) {
       Ok((value, p)) => { (filename, prefix) = (value, p); }
       Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
 
@@ -1009,7 +1022,7 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, mut sin: &std::fs
 
       let (fi, fino, st);
 
-      match msg_out.recv_timeout(std::time::Duration::from_millis(10)) {
+      match msg_out.recv_timeout(std::time::Duration::from_millis(50)) {
         Ok((a,b,c)) => { (fi, fino, st) = (a,b,c); }
         Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
           if counter > 0 {
@@ -1019,7 +1032,7 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, mut sin: &std::fs
           continue;
         }
         Err(_) => {
-          debug!("msg_out.recv returned an error, probably EOQ");
+          debug!("Got an abnormal from msg_out.recv, assuming EOQ");
           do_break = true; break
         }
       }
@@ -1051,6 +1064,7 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, mut sin: &std::fs
         &mut builder, &file_spec::ESCP_file_listArgs{
           root: root,
           files: fi,
+          complete: do_break,
           ..Default::default()
         }
 

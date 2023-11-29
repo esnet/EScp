@@ -33,6 +33,7 @@ assuming the user specified the correct flags.
 table ESCP_file_list { 
   root: string;        // Ideally root path for files
   files: [File];
+  complete: bool;
 }
 
 table File {
