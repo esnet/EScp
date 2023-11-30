@@ -1218,7 +1218,7 @@ fn do_dtn( args: *mut dtn_args, flags: DTN_Args) {
     // io_engines must be initialized before any other IO
 
     if (*args).disable_io >= 0 {
-      file_iotest( args as *mut ::std::os::raw::c_void );
+      // file_iotest( args as *mut ::std::os::raw::c_void );
       // println!("io_test is finished");
     } else if (*args).do_server {
       rx_start (args);
@@ -1263,7 +1263,7 @@ fn do_dtn( args: *mut dtn_args, flags: DTN_Args) {
 
   unsafe {
     if (*args).disable_io >= 0 {
-      file_iotest_finish();
+      // file_iotest_finish();
     } else {
       finish_transfer( args as *mut dtn_args, 0 );
     }

@@ -453,11 +453,9 @@ void* rx_worker( void* arg ) {
       fob->set( knob->token, FOB_OFFSET, offset );
       fob->set( knob->token, FOB_SZ, sz );
 
-      // if ( (fob->io_flags & O_DIRECT) && (sz < 4096) ) {
       if ( sz < 4096 )  {
-
-        // XXX: io_flags & O_DIRECT doesn't get set anymore because we
-        //      always try to do direct mode... 
+        // Note: io_flags & O_DIRECT doesn't get set anymore because we always
+        //       try to do direct mode... so we always just pad to 4k
 
         // Always read in at least 4K of data
         fob->set( knob->token, FOB_SZ,  4096 );
@@ -473,6 +471,8 @@ void* rx_worker( void* arg ) {
         fs_ptr = file_wait( file_no, &fs );
 
         DBG("[%2d] FIHDR_SHORT: file_wait returned fd=%d for fn=%ld", id, fs.fd, file_no);
+
+        // XXX: VRFY's aren't neccesarily needed here, will fail later anyway.
         VRFY( fs.fd, "[%2d] ASSERT: fd != zero, fn=%ld/%ld", id, fs.file_no, file_no );
         VRFY( fs.file_no == file_no, "[%2d] ASSERT: fs.file_no == file_no, fn=%ld != %ld", id, fs.file_no, file_no );
 
@@ -679,7 +679,7 @@ void* tx_worker( void* args ) {
 
         int wipe = 0;
 
-        if (file_iow_remove( fs, id ) == (1UL << 62)) {
+        if (file_iow_remove( fs, id ) == (1UL << 30)) {
           fob->close( fob );
           int64_t res = __sync_add_and_fetch( &tx_filesclosed, 1 );
           DBG("[%2d] Worker finished with fn=%ld files_closed=%ld; closing fd=%d",
@@ -703,7 +703,7 @@ void* tx_worker( void* args ) {
         continue;
       }
 
-      VRFY( bytes_read >= 0, "[%2d] Read Error fd=%d fn=%ld offset=%ld", id, fs_lcl.fd, fs_lcl.file_no, offset );
+      VRFY( bytes_read >= 0, "[%2d] Read Error fd=%d fn=%ld offset=%ld %lX/%lX", id, fs_lcl.fd, fs_lcl.file_no, offset, fs_lcl.state, fs->state );
       return (void*) -1; // Not reached
     }
 

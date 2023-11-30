@@ -25,25 +25,15 @@
 // FD limit.
 
 #define FILE_STAT_COUNT 800
-#define FS_INIT        0x1cafc886
-#define FS_IO          (1UL << 63)
-#define FS_COMPLETE    (1UL << 62)
-#define FS_RECYCLE     0xc15ca978
+#define FS_INIT        0xBAEBEEUL
+#define FS_IO          (1UL << 31)
+#define FS_COMPLETE    (1UL << 30)
 
 struct file_stat_type file_stat[FILE_STAT_COUNT]={0};
 
-uint64_t rand_seed=0;      // for Dummy IO
-uint64_t bytes_written=0;  // for Dummy IO
-
-bool file_persist_state = false;
-
-uint64_t file_count = 0;
-uint64_t file_completed = 0;
-uint64_t file_wanted __attribute__ ((aligned(64))) = 0;
-
 struct file_stat_type* file_addfile( uint64_t fileno, int fd, uint32_t crc,
                                      int64_t file_sz ) {
-  struct file_stat_type fs= {0};
+  struct file_stat_type fs;
   int i=fileno % FILE_STAT_COUNT;
   uint64_t iterations=0;
 
@@ -57,23 +47,31 @@ struct file_stat_type* file_addfile( uint64_t fileno, int fd, uint32_t crc,
     if ( (iterations++ % FILE_STAT_COUNT) == (FILE_STAT_COUNT-1) )
       usleep(10000);
 
-    if ( file_stat[i].fd != 0 ) {
+    memcpy ( &fs, &file_stat[i], sizeof(struct file_stat_type) );
+
+    if ( fs.state != 0UL ) {
       i = (i+1) % FILE_STAT_COUNT;
       continue;
     }
 
-    if ( __sync_val_compare_and_swap( &file_stat[i].state, 0, 0xBedFace0 ) ) {
+    if ( __sync_val_compare_and_swap( &file_stat[i].state, 0, 0xBedFaceUL ) ) {
       i = (i+1) % FILE_STAT_COUNT;
       continue;
     }
+
+    memset ( &fs, 0, sizeof(struct file_stat_type) );
 
     // Got an empty file_stat structure
 
+    VRFY ( fd > 0, "bad arguments to file_addfile, fd <= 0" );
+    VRFY ( fileno  > 0, "bad arguments to file_addfile, fileno <= 0" );
+
     fs.state = FS_INIT;
     fs.fd = fd;
-    // fs.given_crc = crc;
     fs.file_no = fileno;
     fs.bytes = file_sz;
+    fs.position = i;
+    fs.poison = 0xFEEDC0DE;
 
     break;
   }
@@ -95,15 +93,18 @@ struct file_stat_type* file_wait( uint64_t fileno, struct file_stat_type* test_f
       if (test_fs->file_no != fileno)
         continue;
 
+      if ( test_fs->poison != 0xFEEDC0DE )
+        continue;
+
       if ( (test_fs->state == FS_INIT) && (__sync_val_compare_and_swap(
         &file_stat[i].state, FS_INIT, FS_COMPLETE|FS_IO) == FS_INIT ) )
       {
-        DBV("NEW writer on fn=%ld", file_stat[i].file_no);
+        DBV("NEW writer on fn=%ld", test_fs->file_no);
         return &file_stat[i];
       }
 
       if (test_fs->state & FS_IO) {
-        DBV("ADD writer to fn=%ld", file_stat[i].file_no);
+        DBV("ADD writer to fn=%ld", test_fs->file_no);
         return &file_stat[i];
       }
     }
@@ -143,17 +144,18 @@ struct file_stat_type* file_next( int id, struct file_stat_type* test_fs ) {
       if ( (test_fs->state == FS_INIT) && (__sync_val_compare_and_swap(
         &file_stat[j].state, FS_INIT, FS_COMPLETE|FS_IO|(1<<id) ) == FS_INIT ) )
       {
-        DBV("[%2d] NEW IOW on fn=%ld, slot=%d/%016lx", id, file_stat[j].file_no, j, (uint64_t) &file_stat[j]);
+        VRFY ( test_fs->poison == 0xFEEDC0DE, "Bad poison" );
+        DBV("[%2d] NEW IOW on fn=%ld, slot=%d", id, test_fs->file_no, j);
         return &file_stat[j]; // Fist worker on file
       }
 
       uint64_t st = test_fs->state;
       if ( (test_fs->state & FS_IO) && (__sync_val_compare_and_swap(
-        &file_stat[j].state, st, st| (1<<id) ) == st) ) {
-
-        DBV("[%2d] ADD IOW on fn=%ld", id, file_stat[j].file_no);
+        &file_stat[j].state, st, st| (1<<id) ) == st) )
+      {
+        VRFY ( test_fs->poison == 0xFEEDC0DE, "Bad poison" );
+        DBV("[%2d] ADD IOW on fn=%ld", id, test_fs->file_no);
         return &file_stat[j]; // Added worker to file
-
       }
 
     }
@@ -284,203 +286,12 @@ void file_prng( void* buf, int sz ) {
   }
 }
 
-
-void* file_ioworker( void* arg ) {
-  struct file_stat_type* fs=0;
-  struct file_stat_type fs_lcl;
-  struct dtn_args* dtn = arg;
-  struct file_object* fob;
-  int id = __sync_fetch_and_add(&dtn->thread_id, 1);
-  uint64_t s = rand_seed;
-
-  uint8_t* buffer;
-  uint64_t res;
-  void* token;
-  int32_t sz;
-  uint32_t crc=0;
-
-  affinity_set( dtn );
-  fob = file_memoryinit( dtn, id );
-  (void*) __sync_val_compare_and_swap ( &dtn->fob, 0, (void*) fob );
-
-  if (s) {
-    // Seed S differently for each thread
-    s ^= 0x94D049BB133111EBUL * id;
-  }
-
-  fob->id = id;
-  DBV("[%2d] Start worker", id);
-
-  while (1) {
-    uint64_t offset;
-    int64_t io_sz=1;
-
-    if (!fs) {
-
-      fs = file_next( fob->id, &fs_lcl );
-
-      if (!fs) {
-        DBV("[%2d] no more work, exit work loop", id);
-        break;
-      } else {
-        DBV("[%2d] IOW attached to fn: %ld, fd: %d", id, fs->file_no, fs->fd);
-      }
-      crc= 0;
-
-    }
-
-
-    while ( (token=fob->fetch(fob)) ) {
-
-      offset = __sync_fetch_and_add( &fs->block_offset, 1 );
-      offset *= dtn->block;
-      fob->set(token, FOB_OFFSET, offset);
-      fob->set(token, FOB_FD, fs->fd);
-
-      if ( dtn->flags & O_WRONLY ) {
-        io_sz = dtn->disable_io - offset;
-
-        if ( io_sz > dtn->block )
-          io_sz = dtn->block;
-      } else {
-        io_sz = dtn->block;
-      }
-
-      if (io_sz <= 0) {
-        fob->set( token, FOB_SZ, 0 );
-        break;
-      }
-
-      fob->set( token, FOB_SZ, io_sz );
-
-      buffer = fob->get(token, FOB_BUF );
-
-      if (s) {
-        int i,j;
-        for (i=0; i<dtn->block; i+=4096)
-          for (j=0; j<4096; j+=8)
-            ((uint64_t*)(buffer+i+j))[0] = xorshift64s(&s);
-      }
-
-    }
-
-    sz = dtn->block;
-    if ( (token=fob->submit(fob, &sz, &res)) ) {
-      VRFY ( sz >= 0, "IO Error");
-
-      if (sz<1) {
-
-        while ( (token = fob->submit(fob, &sz, &res)) ) {
-          fob->complete(fob, token);
-        }
-
-        if (file_iow_remove( fs, id ) == FS_COMPLETE) {
-          DBV("[%2d] Close on file_no: %ld, fd=%d", id, fs->file_no, fs->fd);
-          fob->close( fob );
-          bzero( fs, sizeof( struct file_stat_type ) );
-        }
-
-        fs= 0;
-        continue;
-      }
-
-      offset = (uint64_t) fob->get( token, FOB_OFFSET );
-      buffer = fob->get( token, FOB_BUF );
-
-      crc ^= file_hash( buffer, sz, (offset+dtn->block-1LL)/dtn->block );
-      fob->complete(fob, token);
-
-      __sync_fetch_and_add( &fs->bytes_total, sz );
-    }
-  }
-
-  while ( (token=fob->submit(fob, &sz, &res)) ) {
-    fob->complete(fob, token);
-    VRFY ( sz >= 0 , "IO Error");
-    __sync_fetch_and_add( &bytes_written, sz );
-  }
-
-  DBV("[%2d] worker finished", id);
-  return 0;
-}
-
 void file_randrd( void* buf, int count ) {
     int fd = open("/dev/urandom", O_RDONLY);
     VRFY( fd > 0, );
     VRFY( count == read(fd, buf, count), );
     close(fd);
 }
-
-pthread_t file_iotest_thread[THREAD_COUNT];
-uint64_t file_iotest_start_time;
-int file_iotest_tc=0;
-
-void file_iotest( void* args ) {
-  int i=0;
-  struct dtn_args* dtn = args;
-  pthread_attr_t attr;
-  pthread_attr_init(&attr);
-
-  struct timeval t;
-
-  if (dtn->disable_io > 11) {
-    file_randrd( &rand_seed, 8 );
-  }
-
-  gettimeofday( &t, NULL );
-  file_iotest_start_time = t.tv_sec * 1000000 + t.tv_usec;
-
-  for ( i=0; i< dtn->thread_count; i++ ) {
-    file_iotest_tc++;
-    if ( pthread_create( &file_iotest_thread[i], &attr, &file_ioworker, dtn ) ) {
-      perror("pthread");
-      exit(-1);
-    }
-  }
-}
-
-void file_iotest_finish() {
-  int i;
-
-  for ( i=0; i< file_iotest_tc; i++ )
-    pthread_join( file_iotest_thread[i], NULL );
-
-  /*
-  uint64_t now_time;
-  float duration;
-  struct timeval t;
-
-  gettimeofday( &t, NULL );
-  now_time = t.tv_sec * 1000000 + t.tv_usec ;
-  duration = (now_time - file_iotest_start_time) / 1000000.0;
-
-  NFO(
-      "%siB, Elapsed= %.2fs, %sbit/s %siB/s",
-      human_write(bytes_written, true),
-      duration, human_write(bytes_written/duration,false),
-      human_write(bytes_written/duration,true)
-  );
-
-  MMSG("Bytes: %sbit/s %s",
-       human_write(bytes_written/duration,false),
-       human_write(bytes_written,true)  );
-
-  */
-}
-
-int64_t file_stat_getbytes( void *file_object, int fd ) {
-  struct file_object* fob = file_object;
-  struct stat st;
-  int res;
-
-  res = fob->fstat( fd, &st );
-
-  if (res)
-    return -1;
-
-  return st.st_size;
-}
-
 
 /* Note: These queues are non-blocking; If they are full, they will overrun
          data.  We try to mitigate the effects of an overrun by by copying
