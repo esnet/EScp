@@ -921,7 +921,9 @@ fn iterate_file_worker(
       debug!("got fino={fino}, {f}, {prefix} {:?}", res);
 
       _ = msg_in.send( (res.to_str().unwrap().to_string(), fino, st) );
-      file_addfile( fino, fd, 0, st.st_size );
+      if st.st_size > 0 {
+        file_addfile( fino, fd, 0, st.st_size );
+      }
     }
   }
 

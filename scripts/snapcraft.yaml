@@ -17,23 +17,24 @@ description: |
   the US Department of Energy. More information and the source code for EScp is
   available at https://github.com.
 
-grade: devel # must be 'stable' to release into candidate/stable channels
-#confinement: devmode # use 'strict' once you have the right plugs and slots
+grade: devel
+confinement: devmode
 
-confinement: strict
+apps:
+  escp:
+    command: bin/escp
 
-
-#  - network-bind
-#  - network
-#  - personal-files
-#  - ssh-keys
-#  - home
-#  - removable-media
-#  - hardware-random-observe
-
+#    plugs:
+#      - network-bind
+#      - network
+#      - personal-files
+#      - ssh-public-keys
+#      - home
+#      - removable-media
+#      - hardware-observe
+#      - shared-memory
 
 parts:
-
   rust-deps:
     plugin: nil
     build-packages:
