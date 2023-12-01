@@ -53,7 +53,7 @@ extern uint64_t verbose_logging;
       ##__VA_ARGS__, __FILE__, __LINE__);                  \
   }                                                        \
   dtn_error(b);                                            \
-  usleep(100);                                             \
+  usleep(100000);                                          \
   abort();                            \
   if (verbose_logging) abort();                            \
   exit(-1);                                                \

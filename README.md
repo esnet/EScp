@@ -1,7 +1,18 @@
 EScp 0.7
 ========
 
-*This is the development branch of EScp 0.7. Check tags to see if there are any release candidates.*
+*This is the development branch of EScp 0.7. Release candidates will be tagged once ready.*
+
+While usable, this release is waiting on these items:
+
+  * Crypto keys not passed to threads correctly ( No longer uses CINIT ).
+    While encryption is occuring it likely isn't secure as AES-GCM must not
+    reuse IV and no validation has been done to verify this isn't happening.
+  * Block sz parameter to be changed.
+  * Transfer control information should be over EScp port rather than SSH/UDS
+  * Fix file underflow/overflow (if file changes) during transport
+  * Better consistency on error messages
+  * Pass all tests
 
 ESCP 0.7 is the second major relase of EScp; EScp 0.6 was based on Python
 and C. EScp 0.7 is a re-write of the Python component in RUST, which
@@ -58,13 +69,30 @@ escp file1 file2 host:/remoteDirectory
 
 ```
 
+INSTALL
+=======
+
+The recommended approach to using EScp is by compiling it yourself and then to
+use the resultant RPM/DEB file to install on your systems.
+
+On ubuntu, you can also try the EScp snap:
+
+```
+snap install escp --channel beta --devmode
+```
+
+AFAIK, Snaps do not interact with ssh-agent and may have weird issues where
+they don't have visibility into your file system (they are made more for
+applications than system utilities). Currently the Snap on Ubuntu snap repo
+is a development version, like the code available here, only older.
+
+
 COMPILING
 =========
 
 ```
 # Install system dependencies
 apt install cmake libtool g++ libnuma-dev nasm autoconf automake
-
 
 # Get rust
 curl https://sh.rustup.rs -sSf | sh

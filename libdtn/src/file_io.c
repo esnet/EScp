@@ -71,7 +71,7 @@ struct file_stat_type* file_addfile( uint64_t fileno, int fd, uint32_t crc,
     fs.file_no = fileno;
     fs.bytes = file_sz;
     fs.position = i;
-    fs.poison = 0xFEEDC0DE;
+    fs.poison = 0xC0DEB10C;
 
     break;
   }
@@ -82,35 +82,35 @@ struct file_stat_type* file_addfile( uint64_t fileno, int fd, uint32_t crc,
 
 struct file_stat_type* file_wait( uint64_t fileno, struct file_stat_type* test_fs ) {
 
-  int i, k;
+  int i;
 
   while (1) {
-    k = FILE_STAT_COUNT;
 
-    for (i=0; i<=k; i++) {
+    for (i=0; i<FILE_STAT_COUNT; i++) {
       memcpy( test_fs, &file_stat[i], sizeof(struct file_stat_type) );
 
       if (test_fs->file_no != fileno)
-        continue;
-
-      if ( test_fs->poison != 0xFEEDC0DE )
         continue;
 
       if ( (test_fs->state == FS_INIT) && (__sync_val_compare_and_swap(
         &file_stat[i].state, FS_INIT, FS_COMPLETE|FS_IO) == FS_INIT ) )
       {
         DBV("NEW writer on fn=%ld", test_fs->file_no);
-        return &file_stat[i];
+        goto file_wait_complete;
       }
 
       if (test_fs->state & FS_IO) {
         DBV("ADD writer to fn=%ld", test_fs->file_no);
-        return &file_stat[i];
+        goto file_wait_complete;
       }
     }
 
     usleep(1000);
   }
+
+file_wait_complete:
+  memcpy( test_fs, &file_stat[i], sizeof(struct file_stat_type) );
+  return &file_stat[i];
 }
 
 
@@ -121,16 +121,14 @@ struct file_stat_type* file_next( int id, struct file_stat_type* test_fs ) {
   //
   DBV("[%2d] Enter file_next", id);
 
-  int i, j, k, did_iteration=0, do_exit=0, active_file;
+  int i, do_exit=0, queue_empty;
 
 
   while (1) {
-    k = FILE_STAT_COUNT;
-    active_file=0;
+    queue_empty=1;
 
-    for (i=1; i<=k; i++) {
-      j = (FILE_STAT_COUNT + i) % FILE_STAT_COUNT;
-      memcpy( test_fs, &file_stat[j], sizeof(struct file_stat_type) );
+    for (i=0; i<FILE_STAT_COUNT; i++) {
+      memcpy( test_fs, &file_stat[i], sizeof(struct file_stat_type) );
 
       if (test_fs->file_no == ~0UL) {
         do_exit=1;
@@ -140,38 +138,35 @@ struct file_stat_type* file_next( int id, struct file_stat_type* test_fs ) {
       if (test_fs->fd == 0)
         continue;
 
-      active_file=1;
+      queue_empty=0;
       if ( (test_fs->state == FS_INIT) && (__sync_val_compare_and_swap(
-        &file_stat[j].state, FS_INIT, FS_COMPLETE|FS_IO|(1<<id) ) == FS_INIT ) )
+        &file_stat[i].state, FS_INIT, FS_COMPLETE|FS_IO|(1<<id) ) == FS_INIT ) )
       {
-        VRFY ( test_fs->poison == 0xFEEDC0DE, "Bad poison" );
-        DBV("[%2d] NEW IOW on fn=%ld, slot=%d", id, test_fs->file_no, j);
-        return &file_stat[j]; // Fist worker on file
+        DBV("[%2d] NEW IOW on fn=%ld, slot=%d", id, test_fs->file_no, i);
+        goto file_next_complete;
       }
 
       uint64_t st = test_fs->state;
       if ( (test_fs->state & FS_IO) && (__sync_val_compare_and_swap(
-        &file_stat[j].state, st, st| (1<<id) ) == st) )
+        &file_stat[i].state, st, st| (1<<id) ) == st) )
       {
-        VRFY ( test_fs->poison == 0xFEEDC0DE, "Bad poison" );
         DBV("[%2d] ADD IOW on fn=%ld", id, test_fs->file_no);
-        return &file_stat[j]; // Added worker to file
+        goto file_next_complete;
       }
 
     }
 
-    if ( !active_file  && do_exit ) {
+    if ( queue_empty && do_exit ) {
       DBV("file_next: exit criteria is reached");
       return NULL;
     }
 
-    if (!did_iteration) {
-      did_iteration=1;
-      continue;
-    }
     usleep(1000);
   }
 
+file_next_complete:
+  memcpy( test_fs, &file_stat[i], sizeof(struct file_stat_type) );
+  return &file_stat[i]; // Fist worker on file
 }
 
 uint64_t  file_iow_remove( struct file_stat_type* fs, int id ) {

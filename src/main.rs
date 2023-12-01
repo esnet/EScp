@@ -484,7 +484,8 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
 
   let (mut sin, mut sout, mut serr, file, proc, stream, fd);
   if flags.mgmt.len() > 0 {
-    stream = UnixStream::connect(flags.mgmt).unwrap();
+    stream = UnixStream::connect(flags.mgmt)
+            .expect("Unable to open mgmt connection");
     fd = stream.as_raw_fd();
 
     unsafe {

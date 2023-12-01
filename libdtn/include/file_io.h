@@ -118,6 +118,7 @@ struct file_stat_type {
 
   // CAS to become owner of region
   uint64_t state        __attribute__ ((aligned(64)));
+  uint64_t crc          __attribute__ ((aligned(64)));
   uint64_t file_no;
 
   uint64_t bytes;      // Typically file total XXX: Delete ?
@@ -136,7 +137,6 @@ struct file_stat_type {
 
   /*
   // Atomic XOR of block file_hash
-  uint64_t crc          __attribute__ ((aligned(64)));
   */
 
 }__attribute__ ((packed)) ;

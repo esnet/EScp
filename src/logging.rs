@@ -51,29 +51,30 @@ fn initialize_clog() {
   debug!("Start C logging thread");
 
   loop {
-    let mut did_work = false;
-
     ret = unsafe { dtn_log_getnext() };
 
     if !ret.is_null()  {
-      did_work = true;
       let c_str: &CStr = unsafe { CStr::from_ptr(ret) };
-      debug!("[C] {} ", c_str.to_str().unwrap().trim() );
+      let s = format!( "[C] {} ", c_str.to_str().unwrap().trim() );
+      if s.contains("[DBG]") {
+        debug!("{}", s)
+      } else {
+        info!("{}", s)
+      }
+      continue;
     }
 
     ret = unsafe { dtn_err_getnext() };
 
     if !ret.is_null()  {
-      did_work = true;
       let c_str: &CStr = unsafe { CStr::from_ptr(ret) };
       let msg = c_str.to_str().unwrap().trim() ;
       error!("[C] {} ", msg );
       eprintln!("ERROR: {}", msg );
+      continue;
     }
 
-    if !did_work {
-      thread::sleep(std::time::Duration::from_millis(1));
-    }
+    thread::sleep(std::time::Duration::from_micros(10));
   }
 
 }

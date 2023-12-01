@@ -470,7 +470,7 @@ void* rx_worker( void* arg ) {
         DBV("[%2d] FIHDR_SHORT: call file_wait for fn=%ld", id, file_no);
         fs_ptr = file_wait( file_no, &fs );
 
-        DBG("[%2d] FIHDR_SHORT: file_wait returned fd=%d for fn=%ld", id, fs.fd, file_no);
+        NFO("[%2d] FIHDR_SHORT: file_wait returned fd=%d for fn=%ld", id, fs.fd, file_no);
 
         // XXX: VRFY's aren't neccesarily needed here, will fail later anyway.
         VRFY( fs.fd, "[%2d] ASSERT: fd != zero, fn=%ld/%ld", id, fs.file_no, file_no );
@@ -498,11 +498,13 @@ void* rx_worker( void* arg ) {
 
         int64_t written;
 
+        /*
         if ( (sz <= 0) && (errno == EBADF) ) {
          NFO("[%2d] repeating write call. fn=%ld. fd=%d", id, file_no, fs.fd);
          usleep(5000000);
          knob->token = fob->submit(fob, &sz, &res);
         }
+        */
 
         VRFY(sz > 0, "[%2d] write error, fd=%d fn=%ld", id, fs.fd, file_no);
         fob->complete(fob, knob->token);
@@ -515,15 +517,15 @@ void* rx_worker( void* arg ) {
               id, sz, sz_orig);
         }
 
-        DBG("[%2d] FIHDR_SHORT written=%08ld/%08ld fn=%ld os=%zX sz=%d",
+        NFO("[%2d] FIHDR_SHORT written=%08ld/%08ld fn=%ld os=%zX sz=%d",
             id, written, fs.bytes, file_no, offset, sz );
 
         if ( fs.bytes && fs.bytes <= written  ) {
           if (fs.bytes != written) {
             fob->truncate(fob, fs.bytes);
-            DBG("[%2d] FIHDR_SHORT: close with truncate fn=%ld ", id, file_no);
+            NFO("[%2d] FIHDR_SHORT: close with truncate fn=%ld ", id, file_no);
           } else {
-            DBG("[%2d] FIHDR_SHORT: close on fn=%ld ", id, file_no);
+            NFO("[%2d] FIHDR_SHORT: close on fn=%ld ", id, file_no);
           }
           fob->close(fob);
           memset( fs_ptr, 0, sizeof(fs) );
