@@ -5,10 +5,6 @@ EScp 0.7
 
 While usable, this release is waiting on these items:
 
-  * Crypto keys not passed to threads correctly ( No longer uses CINIT ).
-    While encryption is occuring it likely isn't secure as AES-GCM must not
-    reuse IV and no validation has been done to verify this isn't happening.
-  * Block sz parameter to be changed.
   * Transfer control information should be over EScp port rather than SSH/UDS
   * Fix file underflow/overflow (if file changes) during transport
   * Better consistency on error messages

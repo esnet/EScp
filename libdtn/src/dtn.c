@@ -78,7 +78,7 @@ struct network_obj {
   void* token;
   struct file_object* fob;
 
-  uint8_t buf[2048];
+  uint8_t buf[2048] __attribute ((aligned(64)));
 };
 
 struct crypto_session_init {
@@ -97,6 +97,22 @@ struct crypto_hdr {
 } __attribute__ ((packed)) ;
 
 uint64_t global_iv=0;
+
+int u64_2flo( uint64_t* target ) {
+  int exponent = 64 - __builtin_clzl( *target );
+
+  if (exponent <= 16)
+    return 0;
+
+  exponent = exponent - 16;
+  *target >>= exponent;
+
+  return exponent;
+}
+
+uint64_t flo2_u64( int significand, int exponent ) {
+  return (uint64_t) significand << (uint64_t) exponent;
+}
 
 static inline int io_fixed(
     int fd, void* buf, int sz, ssize_t (*func) (int, void*, size_t) )
@@ -208,7 +224,7 @@ struct network_obj* network_initrx ( int socket,
   return &knob;
 }
 
-int64_t network_recv( struct network_obj* knob, void* aad ) {
+int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader ) {
 
   struct crypto_hdr* chdr = (struct crypto_hdr*) aad;
   struct file_info* fi = (struct file_info*) knob->buf;
@@ -221,6 +237,8 @@ int64_t network_recv( struct network_obj* knob, void* aad ) {
       return -1;
     }
 
+    *subheader = chdr->magic;
+
     knob->iv_incr = chdr->iv;
 
     aes_gcm_init_128( &knob->gkey, &knob->gctx, knob->iv, aad, 16 );
@@ -229,10 +247,12 @@ int64_t network_recv( struct network_obj* knob, void* aad ) {
 
     aes_gcm_dec_128_update(&knob->gkey, &knob->gctx, knob->buf, knob->buf, 16);
   } else {
-    memcpy( knob->buf, aad, 16 );
+    memcpy( subheader,  aad, 2 );
+    memcpy( knob->buf, aad+2, 14 );
+    VRFY(read_fixed( knob->socket, knob->buf+14, 2 ) == 2, );
   }
 
-  if ( !did_init && (fi->hdr_type ==  FIHDR_SHORT) ) {
+  if ( !did_init && (*subheader ==  FIHDR_SHORT) ) {
     static struct sess_info s;
     int loop_count=0;
 
@@ -253,11 +273,13 @@ int64_t network_recv( struct network_obj* knob, void* aad ) {
     DBG("[%2d] Init IO mem ", knob->id );
   }
 
-  if ( fi->hdr_type == FIHDR_SHORT ) {
+  if ( *subheader == FIHDR_SHORT ) {
     // Read into buffer from storage I/O
     uint8_t* buffer;
 
-    bytes_read += 1 << fi->block_sz_packed  ;
+    uint64_t block_sz = flo2_u64( fi->block_sz_significand, fi->block_sz_exponent );
+
+    bytes_read += block_sz;
 
     VRFY( (knob->token=knob->fob->fetch(knob->fob)) != 0,
           "IO Queue full. XXX: I should wait for it to empty?");
@@ -273,15 +295,15 @@ int64_t network_recv( struct network_obj* knob, void* aad ) {
 
     buffer = knob->fob->get( knob->token, FOB_BUF );
 
-    DBV("[%2d] Read of %d sz", knob->id, 1 << fi->block_sz_packed);
-    if (read_fixed(knob->socket, buffer, 1 << fi->block_sz_packed )<1) {
+    DBV("[%2d] Read of %d sz", knob->id, block_sz);
+    if (read_fixed(knob->socket, buffer, block_sz) != block_sz) {
       DBG("[%2d] Returning 0 from network_recv because ... ", knob->id);
       return 0;
     }
 
     if ( knob->do_crypto ) {
        aes_gcm_dec_128_update( &knob->gkey, &knob->gctx,
-         buffer, buffer, 1 << fi->block_sz_packed );
+         buffer, buffer, block_sz );
     }
   }
 
@@ -295,7 +317,7 @@ int64_t network_recv( struct network_obj* knob, void* aad ) {
       return 0;
     }
     VRFY( memcmp(computed_hash, actual_hash, 16) == 0,
-      "Bad auth tag hdr=%d", fi->hdr_type  );
+      "Bad auth tag hdr=%d", *subheader );
     bytes_read += 16;
   }
 
@@ -304,7 +326,7 @@ int64_t network_recv( struct network_obj* knob, void* aad ) {
 
 
 int64_t network_send (
-  struct network_obj* knob, void* buf, int sz, int total, bool partial
+  struct network_obj* knob, void* buf, int sz, int total, bool partial, uint16_t subheader
   ) {
 
   struct crypto_hdr hdr;
@@ -315,7 +337,7 @@ int64_t network_send (
   if (knob->do_crypto) {
     if ( !did_header ) {
       hdr.hdr_type = FIHDR_CRYPT;
-      hdr.magic = 0xa7be;
+      hdr.magic = subheader;
       knob->iv_incr ++;
       hdr.iv = knob->iv_incr;
       hdr.hdr_sz = total + 32;
@@ -354,9 +376,20 @@ int64_t network_send (
     }
 
   } else {
+    if (!did_header) {
+      sent =  write_fixed( knob->socket, &subheader, 2 );
+      did_header = true;
+    }
+
     sent =  write_fixed( knob->socket, buf, sz );
     if (sent < 1)
       return sent;
+
+    if ( !partial )
+      did_header = false;
+
+
+
   }
 
   return sent;
@@ -373,7 +406,6 @@ void dtn_waituntilready( void* arg ) {
 void* rx_worker( void* arg ) {
   struct rx_args* rx = arg;
   struct dtn_args* dtn = rx->dtn;
-  int fd=0;
   uint32_t id=0, rbuf; // , crc=0;
 
   uint64_t file_cur=0;
@@ -386,6 +418,7 @@ void* rx_worker( void* arg ) {
 
   struct file_stat_type  fs;
   struct file_stat_type* fs_ptr=0;
+  uint16_t fi_type;
 
   socklen_t rbuf_sz = sizeof(rbuf) ;
 
@@ -419,7 +452,7 @@ void* rx_worker( void* arg ) {
     // yet associated with a file descriptor. Read into buffer
     // only occurs if FIHDR_SHORT type is specified.
 
-    if ( (read_sz=network_recv(knob, read_buf)) < 1 ) {
+    if ( (read_sz=network_recv(knob, read_buf, &fi_type)) < 1 ) {
       NFO("[%2d] Bad read=%ld", id, read_sz);
       break;
     }
@@ -427,10 +460,12 @@ void* rx_worker( void* arg ) {
     fob = knob->fob;
 
     fi = (struct file_info*) knob->buf;
-    if ( fi->hdr_type== FIHDR_CINIT )
+    /*
+    if ( fi_type == FIHDR_CINIT )
       continue;
+     */
 
-    if ( fi->hdr_type == FIHDR_SESS ) {
+    if ( fi_type == FIHDR_SESS ) {
       memcpy( &sess, fi, sizeof(sess) );
       __sync_fetch_and_add( &did_session_init, 1 );
       DBG("[%2d] Establish session %016zx bs=%d tc=%d", id,
@@ -439,15 +474,15 @@ void* rx_worker( void* arg ) {
     }
 
 
-    if (fi->hdr_type != FIHDR_SHORT) {
-      VRFY(0, "Unkown header type %d", fi->hdr_type);
+    if (fi_type != FIHDR_SHORT) {
+      VRFY(0, "Unkown header type %d", fi_type);
     }
 
     { // Do FIHDR_SHORT
-      int sz = 1 << fi->block_sz_packed;
+      int sz = flo2_u64( fi->block_sz_significand, fi->block_sz_exponent );
       int sz_orig = sz;
       uint64_t file_no = fi->file_no_packed >> 8;
-      uint64_t offset = fi->offset >> 8;
+      uint64_t offset = fi->offset & ~(0xffffUL);
       uint64_t res=0;
 
       fob->set( knob->token, FOB_OFFSET, offset );
@@ -462,7 +497,7 @@ void* rx_worker( void* arg ) {
         sz_orig=4096;
       }
 
-      while ( !fd || (file_cur != file_no) ) {
+      while ( file_cur != file_no ) {
         // Fetch the file descriptor associated with block
 
         VRFY( file_no, "ASSERT: file_no != zero" );
@@ -477,10 +512,9 @@ void* rx_worker( void* arg ) {
         VRFY( fs.file_no == file_no, "[%2d] ASSERT: fs.file_no == file_no, fn=%ld != %ld", id, fs.file_no, file_no );
 
         file_cur = file_no;
-        fd = fs.fd;
       }
 
-      fob->set( knob->token, FOB_FD, fd );
+      fob->set( knob->token, FOB_FD, fs.fd );
       fob->flush( fob );
 
 #ifdef O_CRC
@@ -529,6 +563,7 @@ void* rx_worker( void* arg ) {
           }
           fob->close(fob);
           memset( fs_ptr, 0, sizeof(fs) );
+          memset( &knob->buf, 0, 64 ); // XXX: Debug code; remove.
           __sync_fetch_and_add( &dtn->files_closed, 1 );
         }
       }
@@ -578,7 +613,7 @@ void* tx_worker( void* args ) {
   (void*) __sync_val_compare_and_swap ( &dtn->fob, 0, (void*) fob );
 
 
-  DBG( "[%2d] tx_worker: thread start", id);
+  NFO( "[%2d] tx_worker: thread start", id);
 
   // Initialize network
   saddr = (struct sockaddr_in*) &dtn->sock_store[id % dtn->sock_store_count];
@@ -632,7 +667,7 @@ void* tx_worker( void* args ) {
 
     DBG("[%2d] Set session %016zx bs=%d tc=%d", id,
       s.session_id, s.block_sz, s.thread_count);
-    VRFY( network_send( knob, &s, 16, 16, false ) > 0, "" );
+    VRFY( network_send( knob, &s, 16, 16, false, FIHDR_SESS ) > 0, "" );
   }
 
 
@@ -684,11 +719,11 @@ void* tx_worker( void* args ) {
         if (file_iow_remove( fs, id ) == (1UL << 30)) {
           fob->close( fob );
           int64_t res = __sync_add_and_fetch( &tx_filesclosed, 1 );
-          DBG("[%2d] Worker finished with fn=%ld files_closed=%ld; closing fd=%d",
+          NFO("[%2d] Worker finished with fn=%ld files_closed=%ld; closing fd=%d",
               id, fs_lcl.file_no, res, fs_lcl.fd);
           wipe ++;
         } else {
-          DBG("[%2d] Worker finished with fn=%ld", id, fs_lcl.file_no);
+          NFO("[%2d] Worker finished with fn=%ld", id, fs_lcl.file_no);
         }
 
         while ( (token=fob->submit( fob, &bytes_read, &offset )) ) {
@@ -714,29 +749,28 @@ void* tx_worker( void* args ) {
       struct file_info fi = {0};
       int bytes_sent;
 
-      fi.file_no_packed = fs_lcl.file_no << 8ULL;
-      if ( __builtin_popcount (bytes_read) > 1 ) {
-        // clz == count leading zeroes; an analogue for log(2)
-        fi.block_sz_packed = 32 - __builtin_clz( bytes_read | 1 );
-      } else {
-        fi.block_sz_packed = 31 - __builtin_clz( bytes_read | 1 );
-      }
-      fi.offset = offset << 8ULL;
-      fi.hdr_type = FIHDR_SHORT;
+      uint64_t significand = bytes_read;
+      int exponent = u64_2flo(&significand);
 
-      bytes_sent = 1 << fi.block_sz_packed;
+      fi.file_no_packed = fs_lcl.file_no << 8ULL;
+      fi.block_sz_exponent = exponent;
+
+      fi.offset = offset;
+      fi.block_sz_significand = significand;
+
+      bytes_sent = flo2_u64( significand, exponent );
 
 #ifdef O_CRC
       crc ^= file_hash( buf, bytes_sent, offset );
 #endif
 
-      DBG("[%2d] FI_HDR sent with fn=%ld offset=%lX, bytes_read=%d, bytes_sent=%d, packed=%d",
-          id, fs_lcl.file_no, offset, bytes_read, bytes_sent, fi.block_sz_packed);
+      NFO("[%2d] FI_HDR sent with fn=%ld offset=%lX, bytes_read=%d, bytes_sent=%d",
+          id, fs_lcl.file_no, offset, bytes_read, bytes_sent);
 
       VRFY(fi.file_no_packed >> 8, "[%2d] ASSERT: file_no != 0, fn=%ld", id, fs_lcl.file_no);
 
-      VRFY( network_send(knob, &fi, 16, 16+bytes_sent, true) > 0, );
-      VRFY( network_send(knob, buf, bytes_sent, 16+bytes_sent, false) > 0, );
+      VRFY( network_send(knob, &fi, 16, 16+bytes_sent, true, FIHDR_SHORT) > 0, );
+      VRFY( network_send(knob, buf, bytes_sent, 16+bytes_sent, false, FIHDR_SHORT) > 0, );
 
       __sync_fetch_and_add( &fs->bytes_total, bytes_read );
       __sync_fetch_and_add( &dtn->bytes_io, bytes_read );
@@ -770,7 +804,7 @@ void finish_transfer( struct dtn_args* args, uint64_t filecount ) {
 
   while (filecount) {
     uint64_t files_closed = __sync_fetch_and_add( &args->files_closed, 0 );
-    j+=1; 
+    j+=1;
 
     if (files_closed >= filecount) {
       DBG("[--] finish_transfer complete");

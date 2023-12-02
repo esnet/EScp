@@ -96,11 +96,11 @@ struct sess_info {
 
 struct file_info {
   union {
-    uint8_t hdr_type;
+    uint16_t block_sz_significand;
     uint64_t offset;
   };
   union {
-    uint8_t block_sz_packed;
+    uint8_t block_sz_exponent;
     uint64_t file_no_packed;
   };
 } __attribute__ ((packed)) ;

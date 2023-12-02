@@ -13,9 +13,9 @@ except:
 try: 
   for j in range(8):
     os.mkdir("/tmp/test_src_1k/%d" % j)
-    for i in range(1024*128):
+    for i in range(1024*32):
       with open( "/tmp/test_src_1k/%d/test_%07d" % (j, i), "wb") as fi:
-        sz = random.randint( 1, 1024 )
+        sz = random.randint( 0, 4096 )
         fi.write( os.urandom(sz) )
 finally: 
   pass
