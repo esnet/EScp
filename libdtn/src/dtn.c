@@ -562,8 +562,7 @@ void* rx_worker( void* arg ) {
             NFO("[%2d] FIHDR_SHORT: close on fn=%ld ", id, file_no);
           }
           fob->close(fob);
-          memset( fs_ptr, 0, sizeof(fs) );
-          memset( &knob->buf, 0, 64 ); // XXX: Debug code; remove.
+          memset_avx( fs_ptr );
           __sync_fetch_and_add( &dtn->files_closed, 1 );
         }
       }
@@ -700,6 +699,8 @@ void* tx_worker( void* args ) {
       offset = __sync_fetch_and_add( &fs->block_offset, 1 );
       offset *= dtn->block;
 
+      NFO("[%2d] FIHDR offset: fn=%ld offset=%lX state=%lX", id, fs_lcl.file_no, offset, fs_lcl.state);
+
       fob->set(token, FOB_OFFSET, offset);
       fob->set(token, FOB_SZ, dtn->block);
       fob->set(token, FOB_FD, fs_lcl.fd);
@@ -719,11 +720,11 @@ void* tx_worker( void* args ) {
         if (file_iow_remove( fs, id ) == (1UL << 30)) {
           fob->close( fob );
           int64_t res = __sync_add_and_fetch( &tx_filesclosed, 1 );
-          NFO("[%2d] Worker finished with fn=%ld files_closed=%ld; closing fd=%d",
+          DBG("[%2d] Worker finished with fn=%ld files_closed=%ld; closing fd=%d",
               id, fs_lcl.file_no, res, fs_lcl.fd);
           wipe ++;
         } else {
-          NFO("[%2d] Worker finished with fn=%ld", id, fs_lcl.file_no);
+          DBG("[%2d] Worker finished with fn=%ld", id, fs_lcl.file_no);
         }
 
         while ( (token=fob->submit( fob, &bytes_read, &offset )) ) {
@@ -733,7 +734,7 @@ void* tx_worker( void* args ) {
 
         if (wipe) {
           DBV("[%2d] Wiping fn=%ld", id, fs_lcl.file_no);
-          memset((void*) fs, 0, sizeof(struct file_stat_type) );
+          memset_avx((void*) fs);
         }
 
         fs = 0;
