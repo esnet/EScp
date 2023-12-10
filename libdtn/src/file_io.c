@@ -46,7 +46,7 @@ void memset_avx( void* dst ) {
 
 // Soft limit on file descriptors, must at least 50 less than FD limit, and
 // much less than HSZ (which must be ^2 aligned).
-#define FILE_STAT_COUNT 700
+#define FILE_STAT_COUNT 650
 #define FILE_STAT_COUNT_HSZ 4096
 #define FILE_STAT_COUNT_CC 12
 
@@ -247,24 +247,29 @@ struct file_stat_type* file_next( int id, struct file_stat_type* test_fs ) {
 
   slot = ++fh;
 
-  for (i=0; i<FILE_STAT_COUNT_CC; i++) {
-    slot = xorshift64s(&slot);
+  while (1) {
 
-    memcpy_avx( test_fs, &file_stat[FS_MASK(slot)] );
-    if (test_fs->file_no != fh) {
-      continue; // This indicates we had a hash collision and need to fetch the next item
+    slot = fh;
+    for (i=0; i<FILE_STAT_COUNT_CC; i++) {
+      slot = xorshift64s(&slot);
+
+      memcpy_avx( test_fs, &file_stat[FS_MASK(slot)] );
+      if (test_fs->file_no != fh) {
+        continue; // This indicates we had a hash collision and need to fetch the next item
+      }
+
+      // XXX: Populate file_activefile
+
+      if ( (test_fs->state == FS_INIT) && (__sync_val_compare_and_swap(
+        &file_stat[FS_MASK(slot)].state, FS_INIT, FS_COMPLETE|FS_IO|(1<<id) ) == FS_INIT))
+      {
+        DBG("[%2d] NEW IOW on fn=%ld, slot=%ld", id, test_fs->file_no, FS_MASK(slot));
+        return &file_stat[FS_MASK(slot)]; // Fist worker on file
+      } else {
+        NFO("[%2d] Failed to convert fn=%ld, slot=%ld", id, test_fs->file_no, FS_MASK(slot));
+      }
     }
-
-    // XXX: Populate file_activefile
-
-    if ( (test_fs->state == FS_INIT) && (__sync_val_compare_and_swap(
-      &file_stat[FS_MASK(slot)].state, FS_INIT, FS_COMPLETE|FS_IO|(1<<id) ) == FS_INIT))
-    {
-      DBG("[%2d] NEW IOW on fn=%ld, slot=%ld", id, test_fs->file_no, FS_MASK(slot));
-      return &file_stat[FS_MASK(slot)]; // Fist worker on file
-    } else {
-      NFO("[%2d] Failrd to convert fn=%ld, slot=%ld", id, test_fs->file_no, FS_MASK(slot));
-    }
+    usleep(1);
   }
 
   VRFY( 0, "[%2d] Error claiming file fn=%ld", id, fh );
