@@ -175,6 +175,8 @@ uint64_t  file_iow_remove( struct file_stat_type* fs, int id );
 
 int file_get_activeport( void* args );
 void memset_avx( void* dst );
+void file_incrementtail();
+
 
 
 #endif

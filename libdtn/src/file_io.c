@@ -46,15 +46,18 @@ void memset_avx( void* dst ) {
 
 // Soft limit on file descriptors, must at least 50 less than FD limit, and
 // much less than HSZ (which must be ^2 aligned).
-#define FILE_STAT_COUNT 800
+#define FILE_STAT_COUNT 700
 #define FILE_STAT_COUNT_HSZ 4096
+#define FILE_STAT_COUNT_CC 12
 
 #define FS_INIT        0xBAEBEEUL
 #define FS_IO          (1UL << 31)
 #define FS_COMPLETE    (1UL << 30)
+#define FS_MASK(A)     (A & (FILE_STAT_COUNT_HSZ-1))
 
 struct file_stat_type file_stat[FILE_STAT_COUNT_HSZ]={0};
 
+uint64_t file_claim __attribute__ ((aligned(64)));
 uint64_t file_count __attribute__ ((aligned(64)));
 uint64_t file_head  __attribute__ ((aligned(64)));
 uint64_t file_tail  __attribute__ ((aligned(64)));
@@ -66,6 +69,36 @@ static inline uint64_t xorshift64s(uint64_t* x) {
   *x ^= *x << 25; // b
   *x ^= *x >> 27; // c
   return *x * 0x2545F4914F6CDD1DUL;
+}
+
+void file_incrementfilecount() {
+  uint64_t slot, cur, orig;
+  int i;
+  cur = orig = __sync_fetch_and_add( &file_count, 0);
+
+
+  while (1) {
+    slot = ++cur;
+
+    for (i=0; i<FILE_STAT_COUNT_CC; i++) {
+      slot = xorshift64s(&slot);
+      if ( __sync_fetch_and_add( &file_stat[FS_MASK(slot)].file_no, 0 ) == cur) {
+        break;
+      }
+    }
+
+    if (i >= FILE_STAT_COUNT_CC) {
+      break;
+    }
+
+  }
+
+  cur -= 1;
+
+  if (orig != cur) {
+    if (__sync_val_compare_and_swap( &file_count, orig, cur )) 
+      DBG("Increment file_count from %ld to %ld", orig, cur);
+  }
 }
 
 struct file_stat_type* file_addfile( uint64_t fileno, int fd, uint32_t crc,
@@ -81,40 +114,44 @@ struct file_stat_type* file_addfile( uint64_t fileno, int fd, uint32_t crc,
 
   while (1) {
     // If Queue full, idle
-    fc = __sync_fetch_and_add( &file_count, 0);
+    fc = __sync_fetch_and_add( &file_claim, 0);
     ft = __sync_fetch_and_add( &file_tail, 0);
 
     if ( (fc-ft) < FILE_STAT_COUNT )
       break;
 
+    if ( (fileno - ft) < (FILE_STAT_COUNT+50) )
+      break;
+
     usleep(10000);
   }
 
-  for (i=0; i<4; i++) {
-    slot &= FILE_STAT_COUNT_HSZ-1;
-    if ( __sync_val_compare_and_swap( &file_stat[slot].state, 0, 0xBedFaceUL ) ) {
+  for (i=0; i<FILE_STAT_COUNT_CC; i++) {
+    if ( __sync_val_compare_and_swap( &file_stat[FS_MASK(slot)].state, 0, 0xBedFaceUL ) ) {
       slot = xorshift64s(&slot);
       continue;
     }
     break;
   }
 
-  VRFY( i<4, "Hash table collision count exceeded. Please report this error.");
+  VRFY( i<FILE_STAT_COUNT_CC, "Hash table collision count exceeded. Please report this error.");
 
   fs.state = FS_INIT;
   fs.fd = fd;
   fs.file_no = fileno;
   fs.bytes = file_sz;
-  fs.position = slot;
+  fs.position = FS_MASK(slot);
   fs.poison = 0xC0DAB1E;
 
-  memcpy_avx( &file_stat[slot], &fs );
-  __sync_fetch_and_add( &file_count, 1 );
+  memcpy_avx( &file_stat[FS_MASK(slot)], &fs );
+  __sync_fetch_and_add( &file_claim, 1 );
 
   DBG("file_addfile fn=%ld, fd=%d crc=%X slot=%ld cc=%d",
-      fileno, fd, crc, slot, i);
+      fileno, fd, crc, FS_MASK(slot), i);
 
-  return( &file_stat[slot] );
+  file_incrementfilecount();
+
+  return( &file_stat[FS_MASK(slot)] );
 }
 
 struct file_stat_type* file_wait( uint64_t fileno, struct file_stat_type* test_fs ) {
@@ -136,24 +173,23 @@ struct file_stat_type* file_wait( uint64_t fileno, struct file_stat_type* test_f
 
   slot = fileno;
 
-  for (i=0; i<4; i++) {
+  for (i=0; i<FILE_STAT_COUNT_CC; i++) {
     slot = xorshift64s(&slot);
-    slot &= FILE_STAT_COUNT_HSZ-1;
 
-    memcpy_avx( test_fs, &file_stat[slot] );
+    memcpy_avx( test_fs, &file_stat[FS_MASK(slot)] );
     if (test_fs->file_no != fileno)
       continue;
 
     if ( (test_fs->state == FS_INIT) && (__sync_val_compare_and_swap(
-      &file_stat[slot].state, FS_INIT, FS_COMPLETE|FS_IO) == FS_INIT ) )
+      &file_stat[FS_MASK(slot)].state, FS_INIT, FS_COMPLETE|FS_IO) == FS_INIT ) )
     {
-      DBG("NEW IOW on fn=%ld, slot=%d", test_fs->file_no, i);
-      return &file_stat[slot]; // Fist worker on file
+      DBG("NEW IOW on fn=%ld, slot=%ld", test_fs->file_no, FS_MASK(slot));
+      return &file_stat[FS_MASK(slot)]; // Fist worker on file
     }
 
     if (test_fs->state & FS_IO) {
       DBG("ADD writer to fn=%ld", test_fs->file_no);
-      return &file_stat[slot]; // Add worker to file
+      return &file_stat[FS_MASK(slot)]; // Add worker to file
     }
   }
 
@@ -211,25 +247,23 @@ struct file_stat_type* file_next( int id, struct file_stat_type* test_fs ) {
 
   slot = ++fh;
 
-  for (i=0; i<4; i++) {
+  for (i=0; i<FILE_STAT_COUNT_CC; i++) {
     slot = xorshift64s(&slot);
-    slot &= FILE_STAT_COUNT_HSZ-1;
 
-    memcpy_avx( test_fs, &file_stat[slot] );
+    memcpy_avx( test_fs, &file_stat[FS_MASK(slot)] );
     if (test_fs->file_no != fh) {
-      NFO("[%2d] Failed to convert fn=%ld, slot=%ld, fh=%ld", id, test_fs->file_no, slot, fh);
-      continue;
+      continue; // This indicates we had a hash collision and need to fetch the next item
     }
 
     // XXX: Populate file_activefile
 
     if ( (test_fs->state == FS_INIT) && (__sync_val_compare_and_swap(
-      &file_stat[slot].state, FS_INIT, FS_COMPLETE|FS_IO|(1<<id) ) == FS_INIT))
+      &file_stat[FS_MASK(slot)].state, FS_INIT, FS_COMPLETE|FS_IO|(1<<id) ) == FS_INIT))
     {
-      DBG("[%2d] NEW IOW on fn=%ld, slot=%ld", id, test_fs->file_no, slot);
-      return &file_stat[slot]; // Fist worker on file
+      DBG("[%2d] NEW IOW on fn=%ld, slot=%ld", id, test_fs->file_no, FS_MASK(slot));
+      return &file_stat[FS_MASK(slot)]; // Fist worker on file
     } else {
-      NFO("[%2d] Failrd to convert fn=%ld, slot=%ld", id, test_fs->file_no, slot);
+      NFO("[%2d] Failrd to convert fn=%ld, slot=%ld", id, test_fs->file_no, FS_MASK(slot));
     }
   }
 
@@ -248,6 +282,11 @@ uint64_t  file_iow_remove( struct file_stat_type* fs, int id ) {
 
   return res;
 }
+
+void file_incrementtail() {
+  __sync_fetch_and_add( &file_tail, 1 );
+}
+
 
 
 int file_get_activeport( void* args_raw ) {

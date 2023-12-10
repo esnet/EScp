@@ -505,7 +505,7 @@ void* rx_worker( void* arg ) {
         DBV("[%2d] FIHDR_SHORT: call file_wait for fn=%ld", id, file_no);
         fs_ptr = file_wait( file_no, &fs );
 
-        NFO("[%2d] FIHDR_SHORT: file_wait returned fd=%d for fn=%ld", id, fs.fd, file_no);
+        DBG("[%2d] FIHDR_SHORT: file_wait returned fd=%d for fn=%ld", id, fs.fd, file_no);
 
         // XXX: VRFY's aren't neccesarily needed here, will fail later anyway.
         VRFY( fs.fd, "[%2d] ASSERT: fd != zero, fn=%ld/%ld", id, fs.file_no, file_no );
@@ -551,16 +551,18 @@ void* rx_worker( void* arg ) {
               id, sz, sz_orig);
         }
 
-        NFO("[%2d] FIHDR_SHORT written=%08ld/%08ld fn=%ld os=%zX sz=%d",
+        DBG("[%2d] FIHDR_SHORT written=%08ld/%08ld fn=%ld os=%zX sz=%d",
             id, written, fs.bytes, file_no, offset, sz );
 
         if ( fs.bytes && fs.bytes <= written  ) {
           if (fs.bytes != written) {
             fob->truncate(fob, fs.bytes);
-            NFO("[%2d] FIHDR_SHORT: close with truncate fn=%ld ", id, file_no);
+            DBG("[%2d] FIHDR_SHORT: close with truncate fn=%ld ", id, file_no);
           } else {
-            NFO("[%2d] FIHDR_SHORT: close on fn=%ld ", id, file_no);
+            DBG("[%2d] FIHDR_SHORT: close on fn=%ld ", id, file_no);
           }
+
+          file_incrementtail();
           fob->close(fob);
           memset_avx( fs_ptr );
           __sync_fetch_and_add( &dtn->files_closed, 1 );
@@ -612,7 +614,7 @@ void* tx_worker( void* args ) {
   (void*) __sync_val_compare_and_swap ( &dtn->fob, 0, (void*) fob );
 
 
-  NFO( "[%2d] tx_worker: thread start", id);
+  DBG( "[%2d] tx_worker: thread start", id);
 
   // Initialize network
   saddr = (struct sockaddr_in*) &dtn->sock_store[id % dtn->sock_store_count];
@@ -699,7 +701,7 @@ void* tx_worker( void* args ) {
       offset = __sync_fetch_and_add( &fs->block_offset, 1 );
       offset *= dtn->block;
 
-      NFO("[%2d] FIHDR offset: fn=%ld offset=%lX state=%lX", id, fs_lcl.file_no, offset, fs_lcl.state);
+      DBG("[%2d] FIHDR offset: fn=%ld offset=%lX state=%lX", id, fs_lcl.file_no, offset, fs_lcl.state);
 
       fob->set(token, FOB_OFFSET, offset);
       fob->set(token, FOB_SZ, dtn->block);
@@ -765,7 +767,7 @@ void* tx_worker( void* args ) {
       crc ^= file_hash( buf, bytes_sent, offset );
 #endif
 
-      NFO("[%2d] FI_HDR sent with fn=%ld offset=%lX, bytes_read=%d, bytes_sent=%d",
+      DBG("[%2d] FI_HDR sent with fn=%ld offset=%lX, bytes_read=%d, bytes_sent=%d",
           id, fs_lcl.file_no, offset, bytes_read, bytes_sent);
 
       VRFY(fi.file_no_packed >> 8, "[%2d] ASSERT: file_no != 0, fn=%ld", id, fs_lcl.file_no);

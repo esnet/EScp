@@ -904,7 +904,6 @@ fn iterate_file_worker(
 
       }
 
-      let fino = 1+GLOBAL_FINO.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
       let res;
 
@@ -919,12 +918,18 @@ fn iterate_file_worker(
         res = f_path.strip_prefix(prefix).unwrap();
       }
 
-      debug!("got fino={fino}, {f}, {prefix} {:?}", res);
-
-      _ = msg_in.send( (res.to_str().unwrap().to_string(), fino, st) );
+      let fname = res.to_str().unwrap().to_string();
       if st.st_size > 0 {
+        let fino = 1+GLOBAL_FINO.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        debug!("addfile:  {fname}:{fino} sz={:?}", st.st_size);
+
+        _ = msg_in.send( (fname, fino, st) );
         file_addfile( fino, fd, 0, st.st_size );
+      } else {
+        debug!("addfile:  {fname}:NONE sz=NIL");
+        _ = msg_in.send( (fname, 0, st) );
       }
+
     }
   }
 
@@ -1025,7 +1030,7 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, mut sin: &std::fs
 
       let (fi, fino, st);
 
-      match msg_out.recv_timeout(std::time::Duration::from_millis(50)) {
+      match msg_out.recv_timeout(std::time::Duration::from_millis(2)) {
         Ok((a,b,c)) => { (fi, fino, st) = (a,b,c); }
         Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
           if counter > 0 {
@@ -1043,6 +1048,7 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, mut sin: &std::fs
       files_total += 1;
       bytes_total += st.st_size;
 
+      /*
       let name = Some(builder.create_string(fi.as_str()));
       vec.push(
       file_spec::File::create( &mut builder,
@@ -1052,17 +1058,34 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, mut sin: &std::fs
               sz: st.st_size,
               ..Default::default()
         }));
+      */
+      vec.push( (fino, fi, st.st_size ) );
 
-        counter += 1;
+      counter += 1;
 
-        if counter > 128 {
-          break;
-        }
+      if counter > 1024 {
+        break;
+      }
     }
 
     if counter > 0 {
+      vec.sort();
+      let mut v = Vec::new();
+
+      for (a,b,c) in vec {
+        let name = Some(builder.create_string(b.as_str()));
+        v.push(
+        file_spec::File::create( &mut builder,
+          &file_spec::FileArgs{
+                fino: a,
+                name: name,
+                sz: c,
+                ..Default::default()
+          }));
+      }
+
       let root = Some(builder.create_string((dest_path).as_str()));
-      let fi   = Some( builder.create_vector( &vec ) );
+      let fi   = Some( builder.create_vector( &v ) );
       let bu = file_spec::ESCP_file_list::create(
         &mut builder, &file_spec::ESCP_file_listArgs{
           root: root,
