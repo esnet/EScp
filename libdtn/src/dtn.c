@@ -841,11 +841,15 @@ DBG("tx_start spawning workers");
     args->thread_count=1;
 
   for (i=0; i < args->thread_count; i++)  {
+    char buf[16];
     tx_arg[i].dtn = args;
 
     VRFY(  0 == pthread_create(
           &DTN_THREAD[i], &attr, tx_worker, (void*) &tx_arg[i] ),
           "tx_start: Error spawining tx_worker" );
+
+    sprintf(buf, "TX_%d", i);
+    pthread_setname_np( DTN_THREAD[i], buf);
   }
 
   while ( __sync_fetch_and_add(&meminit, 0 ) != args->thread_count )
@@ -932,6 +936,7 @@ int rx_start( void* fn_arg ) {
   }
 
   while(1) {
+    char buf[16];
 
     pthread_attr_t attr;
     pthread_attr_init(&attr);
@@ -957,6 +962,9 @@ int rx_start( void* fn_arg ) {
       close(rx_arg[i].conn);
       continue;
     }
+
+    sprintf(buf, "RX_%d", i);
+    pthread_setname_np( DTN_THREAD[i], buf);
 
     i = (i+1) % THREAD_COUNT;
   }
