@@ -997,6 +997,7 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, mut sin: &std::fs
   let mut do_break = false;
   let mut did_init;
   let mut counter: i64;
+  let mut counter_max = 8;
   let mut vec;
 
   let start = std::time::Instant::now();
@@ -1065,7 +1066,8 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, mut sin: &std::fs
 
       counter += 1;
 
-      if counter > 1024 {
+      if counter > counter_max {
+        counter_max = 1000;
         break;
       }
     }
