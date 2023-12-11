@@ -85,6 +85,7 @@ fn int_from_human ( str: String  ) -> u64 {
                 1M -> 1048576
    */
   let re = Regex::new(r"[a-zA-Z]").unwrap();
+  let mut divisor = 1;
   let idx;
 
   match re.find(str.as_str()) {
@@ -115,9 +116,10 @@ fn int_from_human ( str: String  ) -> u64 {
   let mut multiplier: u64 = 1024;
   if u.contains("bit") {
     multiplier = 1000;
+    divisor = 8;
   }
 
-  return val * multiplier.pow(pow);
+  return val * multiplier.pow(pow) / divisor ;
 }
 
 /*
@@ -1384,9 +1386,9 @@ struct EScp_Args {
    #[arg(short='i', long, default_value_t=String::from(""))]
    identity: String,
 
-   /// Limit transfer to <LIMIT> Kbit/s ( Todo )
-   #[arg(short, long, default_value_t=0)]
-   limit: u64,
+   /// Limit transfer to <LIMIT> (bytes/sec)
+   #[arg(short, long, default_value_t = String::from("0"))]
+   limit: String,
 
    /// Pass <OPTION> SSH option to SSH
    #[arg(short, long, default_value_t=String::from(""))]
@@ -1460,7 +1462,6 @@ struct EScp_Args {
 }
 
 /* ToDo:
- *  - -l <limit> Limit Bandwidth to <limit> Kbit/s
  *  - -o <SSH_Option> Passed through
  *  - -p
  *
@@ -1614,6 +1615,8 @@ fn main() {
       if flags.quiet     { verbose_logging = 0; }
       if flags.nodirect  { (*args).nodirect  = true; }
       if flags.recursive { (*args).recursive = true; }
+
+      (*args).pacing = int_from_human(flags.limit.clone()) as u64;
       (*args).window = 512*1024*1024;
       (*args).mtu=8204;
       (*args).thread_count = flags.threads as i32;

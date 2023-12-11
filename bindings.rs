@@ -1767,6 +1767,7 @@ pub struct dtn_args {
     pub flags: ::core::ffi::c_int,
     pub QD: ::core::ffi::c_int,
     pub disable_io: i64,
+    pub pacing: u64,
     pub io_engine_name: *mut ::core::ffi::c_char,
     pub io_engine: ::core::ffi::c_int,
     pub window: ::core::ffi::c_uint,
@@ -1777,7 +1778,7 @@ pub struct dtn_args {
     pub cpumask_bytes: [u8; 32usize],
     pub nodemask: u64,
     pub sock_store_count: ::core::ffi::c_int,
-    pub __bindgen_padding_0: [u8; 60usize],
+    pub __bindgen_padding_0: [u8; 52usize],
     pub sock_store: [sockaddr_storage; 32usize],
     pub fob: *mut file_object,
     pub __bindgen_padding_1: [u32; 14usize],
@@ -1950,8 +1951,18 @@ fn bindgen_test_layout_dtn_args() {
         )
     );
     assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).io_engine_name) as usize - ptr as usize },
+        unsafe { ::core::ptr::addr_of!((*ptr).pacing) as usize - ptr as usize },
         40usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(dtn_args),
+            "::",
+            stringify!(pacing)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).io_engine_name) as usize - ptr as usize },
+        48usize,
         concat!(
             "Offset of field: ",
             stringify!(dtn_args),
@@ -1961,7 +1972,7 @@ fn bindgen_test_layout_dtn_args() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).io_engine) as usize - ptr as usize },
-        48usize,
+        56usize,
         concat!(
             "Offset of field: ",
             stringify!(dtn_args),
@@ -1971,7 +1982,7 @@ fn bindgen_test_layout_dtn_args() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).window) as usize - ptr as usize },
-        52usize,
+        60usize,
         concat!(
             "Offset of field: ",
             stringify!(dtn_args),
@@ -1981,7 +1992,7 @@ fn bindgen_test_layout_dtn_args() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).session_id) as usize - ptr as usize },
-        56usize,
+        64usize,
         concat!(
             "Offset of field: ",
             stringify!(dtn_args),
@@ -1991,7 +2002,7 @@ fn bindgen_test_layout_dtn_args() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).crypto_key) as usize - ptr as usize },
-        64usize,
+        72usize,
         concat!(
             "Offset of field: ",
             stringify!(dtn_args),
@@ -2001,7 +2012,7 @@ fn bindgen_test_layout_dtn_args() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).do_affinity) as usize - ptr as usize },
-        80usize,
+        88usize,
         concat!(
             "Offset of field: ",
             stringify!(dtn_args),
@@ -2011,7 +2022,7 @@ fn bindgen_test_layout_dtn_args() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).cpumask_len) as usize - ptr as usize },
-        84usize,
+        92usize,
         concat!(
             "Offset of field: ",
             stringify!(dtn_args),
@@ -2021,7 +2032,7 @@ fn bindgen_test_layout_dtn_args() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).cpumask_bytes) as usize - ptr as usize },
-        88usize,
+        96usize,
         concat!(
             "Offset of field: ",
             stringify!(dtn_args),
@@ -2031,7 +2042,7 @@ fn bindgen_test_layout_dtn_args() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).nodemask) as usize - ptr as usize },
-        120usize,
+        128usize,
         concat!(
             "Offset of field: ",
             stringify!(dtn_args),
@@ -2041,7 +2052,7 @@ fn bindgen_test_layout_dtn_args() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).sock_store_count) as usize - ptr as usize },
-        128usize,
+        136usize,
         concat!(
             "Offset of field: ",
             stringify!(dtn_args),

@@ -635,6 +635,10 @@ void* tx_worker( void* args ) {
   VRFY(setsockopt(sock, SOL_SOCKET, SO_SNDBUF, &sbuf, sbuf_sz) != -1,);
   VRFY(getsockopt(sock, SOL_SOCKET, SO_SNDBUF, &sbuf, &sbuf_sz) != -1,);
 
+  if (dtn->pacing) {
+    VRFY(setsockopt(sock, SOL_SOCKET, SO_MAX_PACING_RATE, &dtn->pacing, sizeof(dtn->pacing)) != -1,);
+  }
+
   if (sbuf != dtn->window) {
     NFO("[%d] Requested TCP window size of %d, but got %d bytes",
         id, dtn->window, sbuf );

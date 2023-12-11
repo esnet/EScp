@@ -112,7 +112,7 @@ sudo dpkg -i target/debian/escp_0.7.0_amd64.deb
 
 # For development
 cargo install bindgen-cli --version 0.68.1
-bindgen ../include/dtn.h -o bindings.rs --use-core  --generate-cstr
+bindgen libdtn/include/dtn.h -o bindings.rs --use-core  --generate-cstr
 
 # You probably also want gdb/valgrind/whatever your favorite debug tools are
 
@@ -199,10 +199,9 @@ SECURITY
 ========
 
 EScp works by establishing an SSH session to a remote host (using system SSH
-binary), and then starting the DTN receiver. Once the receiver has initialized,
-the sender attempts to connect to the receiver using the DTN port, through an
-AES-128 GCM encrypted session using a shared randomly generated secret key
-(shared through the SSH session).
+binary) and then starting EScp on the receiver. After exchanging session
+information through the SSH channel, the sender connects the DATA channel
+using the port specified by the receiver. All data encrypted with AES128-GCM.
 
 The on-the-wire format consists of a series of tags with 16 bytes identifying
 what the data is, followed by a payload, followed by a 16 byte HMAC, as shown
@@ -217,7 +216,10 @@ below:
    */
 ```
 
-For implementation see network_ family of functions in src/dtn.c.
+This is a custom implementation of AES-GCM using `ISA-L_crypto`. The
+implementation follows NIST 800-38D, but it has not been externally
+validated. Each stream uses it's own key, negotiated through the
+CINIT header.
 
 
 AUTHOR

@@ -19,8 +19,8 @@ execute_process(
 #set(CMAKE_C_FLAGS_RELEASE "-g -march=sandybridge -O3 -pthread")
 #set(CMAKE_C_FLAGS_DEBUG "-g -march=sandybridge -O3 -pthread")
 
-set(CMAKE_C_FLAGS_RELEASE "-g -march=skylake-avx512 -pthread")
-set(CMAKE_C_FLAGS_DEBUG "-g -march=skylake-avx512 -pthread")
+set(CMAKE_C_FLAGS_RELEASE "-g -march=skylake-avx512 -O3 -pthread")
+set(CMAKE_C_FLAGS_DEBUG "-g -march=skylake-avx512 -O3 -pthread")
 
 add_definitions("-Wall -Wno-unused-result -Wno-stringop-truncation -DO_VERSION=\\\"${ver}\\\"")
 

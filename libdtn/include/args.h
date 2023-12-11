@@ -74,6 +74,7 @@ struct dtn_args {
   int flags;
   int QD;
   int64_t disable_io;
+  uint64_t pacing;
 
   char* io_engine_name;
   int io_engine;
