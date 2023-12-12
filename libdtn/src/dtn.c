@@ -32,6 +32,8 @@
 
 #include <isa-l_crypto.h>
 
+#include <stdatomic.h>
+
 #include "file_io.h"
 #include "args.h"
 
@@ -160,7 +162,7 @@ struct network_obj* network_inittx ( int socket, struct dtn_args* dtn ) {
   csi.hdr_sz = sizeof( struct crypto_session_init );
 
   ((uint32_t*) csi.iv)[0] = (uint32_t) dtn->session_id ;
-  ((uint64_t*) (&csi.iv[4])) [0] = __sync_fetch_and_add (&global_iv, 1 );
+  ((uint64_t*) (&csi.iv[4])) [0] = atomic_fetch_add(&global_iv, 1);
 
   memcpy( iv, csi.iv, 12 );
   ((uint32_t*) (&iv[12])) [0] = 1;
@@ -259,15 +261,15 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
     while (!did_session_init) {
       if ( loop_count++ )
         usleep(1000);
-      __sync_fetch_and_add( &did_session_init, 0 );
+      atomic_fetch_add( &did_session_init, 0 );
     }
     memcpy( &s, &sess, sizeof(sess) );
     knob->block = knob->dtn->block  = s.block_sz;
     knob->dtn->thread_count = s.thread_count;
 
     knob->fob = file_memoryinit( knob->dtn, knob->id );
-    (void*) __sync_val_compare_and_swap ( &knob->dtn->fob, 0, (void*) knob->fob );
-    __sync_fetch_and_add(&meminit, 1);
+    atomic_store( &knob->dtn->fob, (void*) knob->fob );
+    atomic_fetch_add(&meminit, 1);
 
     did_init=true;
     DBG("[%2d] Init IO mem ", knob->id );
@@ -398,7 +400,7 @@ int64_t network_send (
 
 void dtn_waituntilready( void* arg ) {
   struct dtn_args* dtn = arg;
-  while ( __sync_fetch_and_add(&dtn->fob, 0) == 0 )
+  while ( atomic_fetch_add(&dtn->fob, 0) == 0 )
     usleep(10);
 }
 
@@ -428,7 +430,7 @@ void* rx_worker( void* arg ) {
     NFO("rcvbuf sz mismatch %d (cur) != %d (ask)", rbuf, dtn->window);
   }
 
-  id = __sync_fetch_and_add(&dtn->thread_id, 1);
+  id = atomic_fetch_add(&dtn->thread_id, 1);
 
   DBG("[%2d] Accept connection", id);
 
@@ -467,7 +469,7 @@ void* rx_worker( void* arg ) {
 
     if ( fi_type == FIHDR_SESS ) {
       memcpy( &sess, fi, sizeof(sess) );
-      __sync_fetch_and_add( &did_session_init, 1 );
+      atomic_fetch_add( &did_session_init, 1);
       DBG("[%2d] Establish session %016zx bs=%d tc=%d", id,
         sess.session_id, sess.block_sz, sess.thread_count );
       continue;
@@ -542,8 +544,7 @@ void* rx_worker( void* arg ) {
 
         VRFY(sz > 0, "[%2d] write error, fd=%d fn=%ld", id, fs.fd, file_no);
         fob->complete(fob, knob->token);
-        written = __sync_add_and_fetch( &fs_ptr->bytes_total, sz );
-        __sync_fetch_and_add( &dtn->bytes_io, 1 );
+        written = atomic_fetch_add(&fs_ptr->bytes_total, sz) + sz;
 
         if ( sz != sz_orig ) {
           // XXX: This is probably a fatal error, and should not happen.
@@ -565,7 +566,7 @@ void* rx_worker( void* arg ) {
           file_incrementtail();
           fob->close(fob);
           memset_avx( fs_ptr );
-          __sync_fetch_and_add( &dtn->files_closed, 1 );
+          atomic_fetch_add( &dtn->files_closed, 1 );
         }
       }
     }
@@ -605,13 +606,12 @@ void* tx_worker( void* args ) {
 
   affinity_set( dtn );
 
-  id = __sync_fetch_and_add(&thread_id, 1);
+  id = atomic_fetch_add(&thread_id, 1);
   fob = file_memoryinit( dtn, id );
   fob->id = id;
 
-  __sync_fetch_and_add(&meminit, 1);
-
-  (void*) __sync_val_compare_and_swap ( &dtn->fob, 0, (void*) fob );
+  atomic_fetch_add( &meminit, 1 );
+  atomic_store( &dtn->fob, (void*) fob );
 
 
   DBG( "[%2d] tx_worker: thread start", id);
@@ -702,7 +702,7 @@ void* tx_worker( void* args ) {
       // and we will be able to read all of these. With small files
       // the extra I/O operations are superflus.
 
-      offset = __sync_fetch_and_add( &fs->block_offset, 1 );
+      offset = atomic_fetch_add( &fs->block_offset, 1 );
       offset *= dtn->block;
 
       DBG("[%2d] FIHDR offset: fn=%ld offset=%lX state=%lX", id, fs_lcl.file_no, offset, fs_lcl.state);
@@ -725,7 +725,7 @@ void* tx_worker( void* args ) {
 
         if (file_iow_remove( fs, id ) == (1UL << 30)) {
           fob->close( fob );
-          int64_t res = __sync_add_and_fetch( &tx_filesclosed, 1 );
+          int64_t res = atomic_fetch_add( &tx_filesclosed, 1 );
           DBG("[%2d] Worker finished with fn=%ld files_closed=%ld; closing fd=%d",
               id, fs_lcl.file_no, res, fs_lcl.fd);
           wipe ++;
@@ -779,8 +779,8 @@ void* tx_worker( void* args ) {
       VRFY( network_send(knob, &fi, 16, 16+bytes_sent, true, FIHDR_SHORT) > 0, );
       VRFY( network_send(knob, buf, bytes_sent, 16+bytes_sent, false, FIHDR_SHORT) > 0, );
 
-      __sync_fetch_and_add( &fs->bytes_total, bytes_read );
-      __sync_fetch_and_add( &dtn->bytes_io, bytes_read );
+      atomic_fetch_add( &fs->bytes_total, bytes_read );
+      atomic_fetch_add( &dtn->bytes_io, bytes_read );
 
       fob->complete(fob, token);
 
@@ -810,7 +810,7 @@ void finish_transfer( struct dtn_args* args, uint64_t filecount ) {
   int j = 0;
 
   while (filecount) {
-    uint64_t files_closed = __sync_fetch_and_add( &args->files_closed, 0 );
+    uint64_t files_closed = atomic_load( &args->files_closed );
     j+=1;
 
     if (files_closed >= filecount) {
@@ -852,7 +852,7 @@ DBG("tx_start spawning workers");
     pthread_setname_np( DTN_THREAD[i], buf);
   }
 
-  while ( __sync_fetch_and_add(&meminit, 0 ) != args->thread_count )
+  while ( atomic_load(&meminit) != args->thread_count )
     usleep(10);
 
   DBG("tx_start workers finished initializing structures");
@@ -860,7 +860,7 @@ DBG("tx_start spawning workers");
 }
 
 uint64_t tx_getclosed() {
-  return __sync_fetch_and_add( &tx_filesclosed, 0 );
+  return atomic_load( &tx_filesclosed );
 }
 
 int rx_start( void* fn_arg ) {
@@ -931,8 +931,8 @@ int rx_start( void* fn_arg ) {
     uint16_t new_port = ntohs(saddr->sin_port);
     uint16_t res;
 
-    res = __sync_val_compare_and_swap(&args->active_port, old_port, new_port);
-    VRFY( res == old_port, "Bad val in args->active_port");
+    res = atomic_compare_exchange_weak(&args->active_port, &old_port, new_port);
+    VRFY( res, "Bad val in args->active_port");
   }
 
   while(1) {
@@ -1006,7 +1006,7 @@ void print_args ( struct dtn_args* args ) {
 };
 
 int64_t get_bytes_io( struct dtn_args* dtn ) {
-  return __sync_fetch_and_add( &dtn->bytes_io, 0 );
+  return atomic_load( &dtn->bytes_io );
 }
 
 void tx_init( struct dtn_args* args ) {

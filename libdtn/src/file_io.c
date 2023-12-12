@@ -15,6 +15,7 @@
 #include <sys/mman.h>
 
 #include <immintrin.h>
+#include <stdatomic.h>
 
 #include "file_io.h"
 #include "args.h"
@@ -48,7 +49,7 @@ void memset_avx( void* dst ) {
 // much less than HSZ (which must be ^2 aligned).
 #define FILE_STAT_COUNT 650
 #define FILE_STAT_COUNT_HSZ 4096
-#define FILE_STAT_COUNT_CC 12
+#define FILE_STAT_COUNT_CC 8
 
 #define FS_INIT        0xBAEBEEUL
 #define FS_IO          (1UL << 31)
@@ -74,7 +75,7 @@ static inline uint64_t xorshift64s(uint64_t* x) {
 void file_incrementfilecount() {
   uint64_t slot, cur, orig;
   int i;
-  cur = orig = __sync_fetch_and_add( &file_count, 0);
+  cur = orig = atomic_load( &file_count );
 
 
   while (1) {
@@ -82,7 +83,7 @@ void file_incrementfilecount() {
 
     for (i=0; i<FILE_STAT_COUNT_CC; i++) {
       slot = xorshift64s(&slot);
-      if ( __sync_fetch_and_add( &file_stat[FS_MASK(slot)].file_no, 0 ) == cur) {
+      if ( atomic_load( &file_stat[FS_MASK(slot)].file_no ) == cur) {
         break;
       }
     }
@@ -96,7 +97,7 @@ void file_incrementfilecount() {
   cur -= 1;
 
   if (orig != cur) {
-    if (__sync_val_compare_and_swap( &file_count, orig, cur )) 
+    if (atomic_compare_exchange_weak( &file_count, &orig, cur )) 
       DBG("Increment file_count from %ld to %ld", orig, cur);
   }
 }
@@ -105,6 +106,7 @@ struct file_stat_type* file_addfile( uint64_t fileno, int fd, uint32_t crc,
                                      int64_t file_sz ) {
   struct file_stat_type fs = {0};
   int i;
+  uint64_t zero = 0;
 
   uint64_t slot = fileno;
   slot = xorshift64s(&slot);
@@ -114,8 +116,8 @@ struct file_stat_type* file_addfile( uint64_t fileno, int fd, uint32_t crc,
 
   while (1) {
     // If Queue full, idle
-    fc = __sync_fetch_and_add( &file_claim, 0);
-    ft = __sync_fetch_and_add( &file_tail, 0);
+    fc = atomic_load( &file_claim );
+    ft = atomic_load( &file_tail );
 
     if ( (fc-ft) < FILE_STAT_COUNT )
       break;
@@ -127,11 +129,11 @@ struct file_stat_type* file_addfile( uint64_t fileno, int fd, uint32_t crc,
   }
 
   for (i=0; i<FILE_STAT_COUNT_CC; i++) {
-    if ( __sync_val_compare_and_swap( &file_stat[FS_MASK(slot)].state, 0, 0xBedFaceUL ) ) {
-      slot = xorshift64s(&slot);
-      continue;
+    zero=0;
+    if ( atomic_compare_exchange_weak( &file_stat[FS_MASK(slot)].state, &zero, 0xBedFaceUL ) ) {
+      break;
     }
-    break;
+    slot = xorshift64s(&slot);
   }
 
   VRFY( i<FILE_STAT_COUNT_CC, "Hash table collision count exceeded. Please report this error.");
@@ -144,7 +146,7 @@ struct file_stat_type* file_addfile( uint64_t fileno, int fd, uint32_t crc,
   fs.poison = 0xC0DAB1E;
 
   memcpy_avx( &file_stat[FS_MASK(slot)], &fs );
-  __sync_fetch_and_add( &file_claim, 1 );
+  atomic_fetch_add( &file_claim, 1 );
 
   DBG("file_addfile fn=%ld, fd=%d crc=%X slot=%ld cc=%d",
       fileno, fd, crc, FS_MASK(slot), i);
@@ -157,12 +159,12 @@ struct file_stat_type* file_addfile( uint64_t fileno, int fd, uint32_t crc,
 struct file_stat_type* file_wait( uint64_t fileno, struct file_stat_type* test_fs ) {
 
   int i;
-  uint64_t fc, slot;
+  uint64_t fc, slot, fs_init;
 
   DBG("file_wait start fn=%ld", fileno);
 
   while (1) {
-    fc = __sync_fetch_and_add( &file_count, 0);
+    fc = atomic_load( &file_count );
     if (fileno <= fc) {
       break;;
     }
@@ -180,8 +182,9 @@ struct file_stat_type* file_wait( uint64_t fileno, struct file_stat_type* test_f
     if (test_fs->file_no != fileno)
       continue;
 
-    if ( (test_fs->state == FS_INIT) && (__sync_val_compare_and_swap(
-      &file_stat[FS_MASK(slot)].state, FS_INIT, FS_COMPLETE|FS_IO) == FS_INIT ) )
+    fs_init = FS_INIT;
+    if ( (test_fs->state == FS_INIT) && atomic_compare_exchange_weak(
+      &file_stat[FS_MASK(slot)].state, &fs_init, FS_COMPLETE|FS_IO) )
     {
       DBG("NEW IOW on fn=%ld, slot=%ld", test_fs->file_no, FS_MASK(slot));
       return &file_stat[FS_MASK(slot)]; // Fist worker on file
@@ -209,38 +212,42 @@ struct file_stat_type* file_next( int id, struct file_stat_type* test_fs ) {
   int i,j;
 
   while (1) {
-    fc = __sync_fetch_and_add( &file_count, 0);
-    fh = __sync_fetch_and_add( &file_head, 0);
+    fc = atomic_load( &file_count );
+    fh = atomic_load( &file_head );
 
     // First try to attach to a new file
+
     if ( (fc-fh) > THREAD_COUNT ) {
-      fh = __sync_fetch_and_add( &file_head, 1 );
+      // No worries about blasting past file_count, just grab and go
+      fh = atomic_fetch_add( &file_head, 1 );
       break;
     }
 
     if ( (fc-fh) > 0 ) {
-      if ( __sync_val_compare_and_swap( &file_head, fh, fh+1) == fh)
+      // Increment carefully
+      if ( atomic_compare_exchange_weak( &file_head, &fh, fh+1) )
         break;
       continue;
     }
 
     // No new files, see if we can attach to an existing file
+
     for (i=0; i< THREAD_COUNT; i++) {
       // Should iterate on actual thread count instead of max threads
-      j = __sync_fetch_and_add( &file_activefile[i].position, 0 );
+      j = atomic_load( &file_activefile[i].position );
       if (j) {
         uint64_t st;
         memcpy_avx( test_fs, &file_activefile[j] );
         st = test_fs->state;
-        if ( (test_fs->state & FS_IO) && (__sync_val_compare_and_swap(
-          &file_stat[test_fs->position].state, st, st| (1<<id) ) == st) ) {
+        if ( (test_fs->state & FS_IO) && atomic_compare_exchange_weak(
+          &file_stat[test_fs->position].state, &st, st| (1<<id) ) ) {
           return &file_stat[test_fs->position]; // Fist worker on file
         }
       }
     }
 
     // Got nothing, wait and try again later.
-    usleep(10000);
+    usleep(287);
   }
 
   // We got a file_no, now we need to translate it into a slot.
@@ -251,6 +258,7 @@ struct file_stat_type* file_next( int id, struct file_stat_type* test_fs ) {
 
     slot = fh;
     for (i=0; i<FILE_STAT_COUNT_CC; i++) {
+      uint64_t fs_init;
       slot = xorshift64s(&slot);
 
       memcpy_avx( test_fs, &file_stat[FS_MASK(slot)] );
@@ -260,8 +268,9 @@ struct file_stat_type* file_next( int id, struct file_stat_type* test_fs ) {
 
       // XXX: Populate file_activefile
 
-      if ( (test_fs->state == FS_INIT) && (__sync_val_compare_and_swap(
-        &file_stat[FS_MASK(slot)].state, FS_INIT, FS_COMPLETE|FS_IO|(1<<id) ) == FS_INIT))
+      fs_init = FS_INIT;
+      if ( (test_fs->state == FS_INIT) && atomic_compare_exchange_weak(
+        &file_stat[FS_MASK(slot)].state, &fs_init, FS_COMPLETE|FS_IO|(1<<id) ) )
       {
         DBG("[%2d] NEW IOW on fn=%ld, slot=%ld", id, test_fs->file_no, FS_MASK(slot));
         return &file_stat[FS_MASK(slot)]; // Fist worker on file
@@ -279,17 +288,19 @@ struct file_stat_type* file_next( int id, struct file_stat_type* test_fs ) {
 uint64_t  file_iow_remove( struct file_stat_type* fs, int id ) {
   DBV("[%2d] Release interest in file: fn=%ld state=%lX fd=%d", id, fs->file_no, fs->state, fs->fd);
 
-  uint64_t res = __sync_and_and_fetch( &fs->state, ~((1UL << id) | FS_IO) );
+  // uint64_t res = __sync_and_and_fetch( &fs->state, ~((1UL << id) | FS_IO) );
+  uint64_t res = atomic_fetch_and( &fs->state, ~((1UL << id) | FS_IO) );
+  res &= ~((1UL << id) | FS_IO) ;
 
   if (res == FS_COMPLETE) {
-    __sync_fetch_and_add( &file_tail, 1 );
+    atomic_fetch_add( &file_tail, 1 );
   }
 
   return res;
 }
 
 void file_incrementtail() {
-  __sync_fetch_and_add( &file_tail, 1 );
+  atomic_fetch_add( &file_tail, 1 );
 }
 
 
@@ -298,8 +309,8 @@ int file_get_activeport( void* args_raw ) {
   int res;
   struct dtn_args* args = (struct dtn_args*) args_raw;
 
-  while ( !(res= __sync_add_and_fetch(&args->active_port, 0) ) ) {
-    usleep(1000);
+  while ( !(res=atomic_load(&args->active_port)) ) {
+    usleep(10000);
   }
 
   return res;
@@ -419,7 +430,7 @@ char* dtn_log_getnext() {
   static __thread int64_t cursor=0;
   static __thread char msg[ESCP_MSG_SZ];
 
-  int64_t head = __sync_fetch_and_add( &ESCP_DTN_ARGS->debug_count, 0 );
+  int64_t head = atomic_load( &ESCP_DTN_ARGS->debug_count );
   char* ptr;
 
   if ( cursor >= head )
@@ -444,7 +455,7 @@ char* dtn_err_getnext() {
   static __thread int64_t cursor=0;
   static __thread char msg[ESCP_MSG_SZ];
 
-  int64_t head = __sync_fetch_and_add( &ESCP_DTN_ARGS->msg_count, 0 );
+  int64_t head = atomic_load( &ESCP_DTN_ARGS->msg_count );
   char* ptr;
 
   if ( cursor >= head )

@@ -1,4 +1,7 @@
 #/usr/bin/sh
+#
+# This gets called from the cargo build series of steps to make sure libdtn is built
+
 if [ ! -d "build" ]; then
   mkdir build
 fi
