@@ -45,13 +45,11 @@ uint64_t tx_filesclosed __attribute__ ((aligned(64))) = 0;
 
 pthread_t DTN_THREAD[THREAD_COUNT];
 
-int did_session_init __attribute ((aligned(64))) = false ;
-static struct sess_info sess;
-
 int crash_fd;
 
 struct tx_args {
   struct dtn_args* dtn;
+  bool is_meta;
 };
 
 struct rx_args {
@@ -255,17 +253,7 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
   }
 
   if ( !did_init && (*subheader ==  FIHDR_SHORT) ) {
-    static struct sess_info s;
-    int loop_count=0;
-
-    while (!did_session_init) {
-      if ( loop_count++ )
-        usleep(1000);
-      atomic_fetch_add( &did_session_init, 0 );
-    }
-    memcpy( &s, &sess, sizeof(sess) );
-    knob->block = knob->dtn->block  = s.block_sz;
-    knob->dtn->thread_count = s.thread_count;
+    knob->block = knob->dtn->block;
 
     knob->fob = file_memoryinit( knob->dtn, knob->id );
     atomic_store( &knob->dtn->fob, (void*) knob->fob );
@@ -467,6 +455,7 @@ void* rx_worker( void* arg ) {
       continue;
      */
 
+    /*
     if ( fi_type == FIHDR_SESS ) {
       memcpy( &sess, fi, sizeof(sess) );
       atomic_fetch_add( &did_session_init, 1);
@@ -474,6 +463,7 @@ void* rx_worker( void* arg ) {
         sess.session_id, sess.block_sz, sess.thread_count );
       continue;
     }
+    */
 
 
     if (fi_type != FIHDR_SHORT) {
@@ -660,21 +650,8 @@ void* tx_worker( void* args ) {
   // Finish netork init
   DBG("[%2d] tx_worker: connected and ready", id);
 
-  if (!id) {
-    // Worker ID==0; Send "session begin" message
-    // FUTURE: Remove this; handle at RUST layer
-    struct sess_info s;
-
-    s.hdr_type=FIHDR_SESS;
-    s.block_sz = dtn->block;
-    s.thread_count = dtn->thread_count;
-    s.session_id = dtn->session_id;
-
-    DBG("[%2d] Set session %016zx bs=%d tc=%d", id,
-      s.session_id, s.block_sz, s.thread_count);
-    VRFY( network_send( knob, &s, 16, 16, false, FIHDR_SESS ) > 0, "" );
-  }
-
+  if ( arg->is_meta )
+    return 0;
 
   // Start TX transfer session
   while (1) {
@@ -834,14 +811,18 @@ void tx_start(struct dtn_args* args ) {
 
   pthread_attr_t attr;
   pthread_attr_init(&attr);
+  char buf[16];
 
   static struct tx_args tx_arg[THREAD_COUNT] = {0};
 DBG("tx_start spawning workers");
   if (!args->thread_count)
     args->thread_count=1;
 
+  VRFY( args->thread_count < (THREAD_COUNT-1),
+    "thread_count %d > hardocoded limit %d",
+    args->thread_count, THREAD_COUNT-1 );
+
   for (i=0; i < args->thread_count; i++)  {
-    char buf[16];
     tx_arg[i].dtn = args;
 
     VRFY(  0 == pthread_create(
@@ -852,7 +833,16 @@ DBG("tx_start spawning workers");
     pthread_setname_np( DTN_THREAD[i], buf);
   }
 
-  while ( atomic_load(&meminit) != args->thread_count )
+
+  sprintf(buf, "META_%d", i);
+  tx_arg[i].dtn = args;
+  tx_arg[i].is_meta = true;
+  VRFY(  0 == pthread_create(
+        &DTN_THREAD[i], &attr, tx_worker, (void*) &tx_arg[i] ),
+        "tx_start: Error spawining tx_worker" );
+  pthread_setname_np( DTN_THREAD[i], buf);
+
+  while ( atomic_load(&meminit) != (args->thread_count+1) )
     usleep(10);
 
   DBG("tx_start workers finished initializing structures");

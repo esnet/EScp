@@ -86,14 +86,6 @@ struct file_object {
 
 };
 
-struct sess_info {
-  uint8_t hdr_type;
-  uint8_t pad;
-  uint64_t session_id;
-  uint16_t thread_count;
-  uint32_t block_sz;
-} __attribute__ ((packed)) ;
-
 struct file_info {
   union {
     uint16_t block_sz_significand;

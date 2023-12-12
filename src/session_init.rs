@@ -39,6 +39,8 @@ impl<'a> Session_Init<'a> {
   pub const VT_PORT_START: flatbuffers::VOffsetT = 26;
   pub const VT_PORT_END: flatbuffers::VOffsetT = 28;
   pub const VT_IO_ENGINE: flatbuffers::VOffsetT = 30;
+  pub const VT_THREAD_COUNT: flatbuffers::VOffsetT = 32;
+  pub const VT_BLOCK_SZ: flatbuffers::VOffsetT = 34;
 
   #[inline]
   pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
@@ -51,6 +53,8 @@ impl<'a> Session_Init<'a> {
   ) -> flatbuffers::WIPOffset<Session_Init<'bldr>> {
     let mut builder = Session_InitBuilder::new(_fbb);
     builder.add_session_id(args.session_id);
+    builder.add_block_sz(args.block_sz);
+    builder.add_thread_count(args.thread_count);
     builder.add_io_engine(args.io_engine);
     builder.add_port_end(args.port_end);
     builder.add_port_start(args.port_start);
@@ -166,6 +170,20 @@ impl<'a> Session_Init<'a> {
     // which contains a valid value in this slot
     unsafe { self._tab.get::<i32>(Session_Init::VT_IO_ENGINE, Some(0)).unwrap()}
   }
+  #[inline]
+  pub fn thread_count(&self) -> i32 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<i32>(Session_Init::VT_THREAD_COUNT, Some(0)).unwrap()}
+  }
+  #[inline]
+  pub fn block_sz(&self) -> i32 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<i32>(Session_Init::VT_BLOCK_SZ, Some(0)).unwrap()}
+  }
 }
 
 impl flatbuffers::Verifiable for Session_Init<'_> {
@@ -189,6 +207,8 @@ impl flatbuffers::Verifiable for Session_Init<'_> {
      .visit_field::<i32>("port_start", Self::VT_PORT_START, false)?
      .visit_field::<i32>("port_end", Self::VT_PORT_END, false)?
      .visit_field::<i32>("io_engine", Self::VT_IO_ENGINE, false)?
+     .visit_field::<i32>("thread_count", Self::VT_THREAD_COUNT, false)?
+     .visit_field::<i32>("block_sz", Self::VT_BLOCK_SZ, false)?
      .finish();
     Ok(())
   }
@@ -208,6 +228,8 @@ pub struct Session_InitArgs<'a> {
     pub port_start: i32,
     pub port_end: i32,
     pub io_engine: i32,
+    pub thread_count: i32,
+    pub block_sz: i32,
 }
 impl<'a> Default for Session_InitArgs<'a> {
   #[inline]
@@ -227,6 +249,8 @@ impl<'a> Default for Session_InitArgs<'a> {
       port_start: 0,
       port_end: 0,
       io_engine: 0,
+      thread_count: 0,
+      block_sz: 0,
     }
   }
 }
@@ -293,6 +317,14 @@ impl<'a: 'b, 'b> Session_InitBuilder<'a, 'b> {
     self.fbb_.push_slot::<i32>(Session_Init::VT_IO_ENGINE, io_engine, 0);
   }
   #[inline]
+  pub fn add_thread_count(&mut self, thread_count: i32) {
+    self.fbb_.push_slot::<i32>(Session_Init::VT_THREAD_COUNT, thread_count, 0);
+  }
+  #[inline]
+  pub fn add_block_sz(&mut self, block_sz: i32) {
+    self.fbb_.push_slot::<i32>(Session_Init::VT_BLOCK_SZ, block_sz, 0);
+  }
+  #[inline]
   pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a>) -> Session_InitBuilder<'a, 'b> {
     let start = _fbb.start_table();
     Session_InitBuilder {
@@ -324,6 +356,8 @@ impl core::fmt::Debug for Session_Init<'_> {
       ds.field("port_start", &self.port_start());
       ds.field("port_end", &self.port_end());
       ds.field("io_engine", &self.io_engine());
+      ds.field("thread_count", &self.thread_count());
+      ds.field("block_sz", &self.block_sz());
       ds.finish()
   }
 }

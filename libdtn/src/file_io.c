@@ -97,7 +97,7 @@ void file_incrementfilecount() {
   cur -= 1;
 
   if (orig != cur) {
-    if (atomic_compare_exchange_weak( &file_count, &orig, cur )) 
+    if (atomic_compare_exchange_weak( &file_count, &orig, cur ))
       DBG("Increment file_count from %ld to %ld", orig, cur);
   }
 }

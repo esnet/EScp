@@ -257,6 +257,11 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
       }
     }
 
+    unsafe {
+      (*args).block = helo.block_sz();
+      (*args).thread_count = helo.thread_count();
+    }
+
     if helo.no_direct() { direct_mode = false; }
 
     match helo.bind_interface() {
@@ -537,7 +542,7 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
     sout = proc.stdout.as_ref().unwrap();
     serr = proc.stderr.as_ref().unwrap();
   }
-  let (session_id, start_port, do_verbose, crypto_key, io_engine, nodirect);
+  let (session_id, start_port, do_verbose, crypto_key, io_engine, nodirect, thread_count, block_sz);
 
   crypto_key = vec![ 0i8; 16 ];
 
@@ -549,6 +554,8 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
     start_port = (*args).active_port;
     io_engine  = (*args).io_engine;
     nodirect  = (*args).nodirect;
+    thread_count = (*args).thread_count;
+    block_sz = (*args).block;
     do_verbose = verbose_logging  > 0;
     std::intrinsics::copy_nonoverlapping( (*args).crypto_key.as_ptr() , crypto_key.as_ptr() as *mut u8, 16 );
   }
@@ -567,6 +574,8 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
       crypto_key: ckey,
       io_engine: io_engine,
       no_direct: nodirect,
+      thread_count: thread_count,
+      block_sz: block_sz,
       ..Default::default()
     }
   );
