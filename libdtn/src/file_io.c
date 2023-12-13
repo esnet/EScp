@@ -27,6 +27,7 @@
 // to something below that maximum. It must always be set below the configured
 // FD limit.
 
+/*
 // The AVX routines are sort of stand-ins for atomically do something with
 // a cacheline of memory. Should be replaced with something less platform
 // dependant.
@@ -43,6 +44,29 @@ void memcpy_avx( void* dst, void* src ) {
 void memset_avx( void* dst ) {
           __m512i a = {0};
           _mm512_store_epi64( dst, a );
+}
+*/
+
+void memcpy_avx( void* dst, void* src ) {
+          __m128i a,b,c,d;
+
+          a = _mm_load_si128 ( src );
+          b = _mm_load_si128 ( (void*) (((uint64_t) src) +  16) );
+          c = _mm_load_si128 ( (void*) (((uint64_t) src) +  32) );
+          d = _mm_load_si128 ( (void*) (((uint64_t) src) +  48) );
+          _mm_store_si128( (void*) (((uint64_t) dst) +  48), d );
+          _mm_store_si128( (void*) (((uint64_t) dst) +  32), c );
+          _mm_store_si128( (void*) (((uint64_t) dst) +  16), b );
+          _mm_store_si128( dst, a );
+
+}
+
+void memset_avx( void* dst ) {
+          __m128i a = {0};
+          _mm_store_si128( (void*) (((uint64_t) dst) +  48), a );
+          _mm_store_si128( (void*) (((uint64_t) dst) +  32), a );
+          _mm_store_si128( (void*) (((uint64_t) dst) +  16), a );
+          _mm_store_si128( dst, a );
 }
 
 // Soft limit on file descriptors, must at least 50 less than FD limit, and
