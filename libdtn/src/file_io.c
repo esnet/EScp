@@ -261,11 +261,11 @@ struct file_stat_type* file_next( int id, struct file_stat_type* test_fs ) {
       j = atomic_load( &file_activefile[i].position );
       if (j) {
         uint64_t st;
-        memcpy_avx( test_fs, &file_activefile[j] );
+        memcpy_avx( test_fs, &file_stat[j] );
         st = test_fs->state;
         if ( (test_fs->state & FS_IO) && atomic_compare_exchange_weak(
-          &file_stat[test_fs->position].state, &st, st| (1<<id) ) ) {
-          return &file_stat[test_fs->position]; // Fist worker on file
+          &file_stat[j].state, &st, st| (1<<id) ) ) {
+          return &file_stat[j];
         }
       }
     }
@@ -290,13 +290,12 @@ struct file_stat_type* file_next( int id, struct file_stat_type* test_fs ) {
         continue; // This indicates we had a hash collision and need to fetch the next item
       }
 
-      // XXX: Populate file_activefile
-
       fs_init = FS_INIT;
       if ( (test_fs->state == FS_INIT) && atomic_compare_exchange_weak(
         &file_stat[FS_MASK(slot)].state, &fs_init, FS_COMPLETE|FS_IO|(1<<id) ) )
       {
         DBG("[%2d] NEW IOW on fn=%ld, slot=%ld", id, test_fs->file_no, FS_MASK(slot));
+        memcpy_avx( &file_activefile[id], test_fs );
         return &file_stat[FS_MASK(slot)]; // Fist worker on file
       } else {
         NFO("[%2d] Failed to convert fn=%ld, slot=%ld", id, test_fs->file_no, FS_MASK(slot));
