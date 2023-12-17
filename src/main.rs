@@ -23,6 +23,7 @@ use std::os::unix::net::{UnixStream,UnixListener};
 use std::os::fd::AsRawFd;
 use std::os::fd::FromRawFd;
 use std::fs;
+use std::collections::VecDeque;
 use hex;
 use crossbeam_channel;
 use clean_path;
@@ -995,28 +996,24 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, mut sin: &std::fs
     }
   }
 
-  let _ = GLOBAL_FILEOPEN_TAIL.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-
-
   let mut bytes_total=0;
   let mut files_total=0;
+  let mut files_sent=0;
+
+  let mut did_work = false;
 
   let mut builder = flatbuffers::FlatBufferBuilder::with_capacity(1);
 
   let mut do_break = false;
-  let mut did_init;
-  let mut counter: i64;
+  let mut did_init = false;
+  let mut counter: i64 = 0;
   let mut counter_max = 8;
-  let mut vec;
+  let mut vec = VecDeque::new();
 
   let start = std::time::Instant::now();
   let mut interval = std::time::Instant::now();
 
   loop {
-    vec = Vec::new();
-    did_init = false;
-    counter=0;
-
     if !quiet && (interval.elapsed().as_secs_f32() > 0.25) {
       interval = std::time::Instant::now();
 
@@ -1036,7 +1033,6 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, mut sin: &std::fs
 
       if !did_init {
         builder = flatbuffers::FlatBufferBuilder::with_capacity(8192);
-        vec = Vec::new();
         did_init = true;
       }
 
@@ -1052,29 +1048,18 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, mut sin: &std::fs
           continue;
         }
         Err(_) => {
-          debug!("Got an abnormal from msg_out.recv, assuming EOQ");
-          do_break = true; break
+          debug!("iterate_files: Got an abnormal from msg_out.recv, assuming EOQ");
+          do_break = true;
+          break;
         }
       }
 
       files_total += 1;
       bytes_total += st.st_size;
 
-      /*
-      let name = Some(builder.create_string(fi.as_str()));
-      vec.push(
-      file_spec::File::create( &mut builder,
-        &file_spec::FileArgs{
-              fino: fino,
-              name: name,
-              sz: st.st_size,
-              ..Default::default()
-        }));
-      */
-      vec.push( (fino, fi, st.st_size ) );
+      vec.push_back( (fino, fi, st.st_size ) );
 
       counter += 1;
-
       if counter > counter_max {
         counter_max = 1000;
         break;
@@ -1082,19 +1067,41 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, mut sin: &std::fs
     }
 
     if counter > 0 {
-      vec.sort();
-      let mut v = Vec::new();
+      vec.make_contiguous().sort();
 
-      for (a,b,c) in vec {
-        let name = Some(builder.create_string(b.as_str()));
+      let mut v = Vec::new();
+      let mut iterations = 0;
+
+      for (a,b,c) in &vec {
+        if (*a>0) && (*a != (files_sent+1)) {
+          break;
+        }
+
+        did_init = false;
+        iterations+=1;
+
+        if *a>0 {
+          files_sent+=1;
+        }
+
+
+        let name = Some(builder.create_string((*b).as_str()));
         v.push(
         file_spec::File::create( &mut builder,
           &file_spec::FileArgs{
-                fino: a,
+                fino: *a,
                 name: name,
-                sz: c,
+                sz: *c,
                 ..Default::default()
           }));
+      }
+
+      if iterations == 0 {
+        continue;
+      }
+
+      for _ in 0..iterations {
+        vec.pop_front();
       }
 
       let root = Some(builder.create_string((dest_path).as_str()));
@@ -1112,16 +1119,24 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, mut sin: &std::fs
 
       let buf = builder.finished_data();
 
-      debug!("Sending file meta data for {}/{}, size is {}", counter, files_total, buf.len());
+      debug!("iterate_files: Sending file meta data for {}/{}, size is {}", counter, files_total, buf.len());
       let mut hdr = to_header( buf.len() as u32, msg_file_spec );
       _ = sin.write( &mut hdr );
       _ = sin.write( buf );
       _ = sin.flush();
+
+      counter -= iterations;
+
+      if !did_work {
+        let _ = GLOBAL_FILEOPEN_TAIL.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        did_work = true;
+      }
     }
 
-
-    if do_break { break; }
-
+    if do_break {
+      debug!("iterate_files: do_break flagged");
+      break;
+    }
   }
 
 
@@ -1132,7 +1147,7 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, mut sin: &std::fs
   }
   */
 
-  debug!("file_iterate is finished");
+  debug!("iterate_files: is finished");
 
   return bytes_total;
 

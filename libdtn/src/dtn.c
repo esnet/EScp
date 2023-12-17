@@ -43,6 +43,13 @@ int      thread_id      __attribute__ ((aligned(64))) = 0;
 int      meminit     __attribute__ ((aligned(64))) = 0;
 uint64_t tx_filesclosed __attribute__ ((aligned(64))) = 0;
 
+uint64_t metahead __attribute__ ((aligned(64))) = 0;
+uint64_t metatail = 0;
+uint8_t* metabuf = NULL;
+struct   network_obj* metaknob = NULL;
+
+uint32_t metabuf_sz = 4 * 1024 * 1024;
+
 pthread_t DTN_THREAD[THREAD_COUNT];
 
 int crash_fd;
@@ -252,6 +259,15 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
     VRFY(read_fixed( knob->socket, knob->buf+14, 2 ) == 2, );
   }
 
+  if ( knob->block == 'meta' ) {
+    VRFY ( *subheader == FIHDR_META, "Bad FIHDR=%x on meta", *subheader );
+
+    uint64_t head = atomic_load ( &metahead );
+    uint64_t tail = atomic_load ( &metatail );
+
+    abort();
+  }
+
   if ( !did_init && (*subheader ==  FIHDR_SHORT) ) {
     knob->block = knob->dtn->block;
 
@@ -267,7 +283,7 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
     // Read into buffer from storage I/O
     uint8_t* buffer;
 
-    uint64_t block_sz = flo2_u64( fi->block_sz_significand, fi->block_sz_exponent );
+    uint64_t block_sz=flo2_u64(fi->block_sz_significand, fi->block_sz_exponent);
 
     bytes_read += block_sz;
 
@@ -392,6 +408,57 @@ void dtn_waituntilready( void* arg ) {
     usleep(10);
 }
 
+void meta_send( char* buf, char* hdr, int len ) {
+  uint8_t* mb;
+  struct network_obj* knob;
+  struct file_info fi;
+
+  while (1) {
+    // Wait until meta machinery is initialized
+    mb = atomic_load( &metabuf );
+    knob = atomic_load( &metaknob );
+
+    if ( mb && knob )
+      break;
+
+    usleep(1000);
+  }
+
+
+  VRFY( network_send(knob, hdr, 6, 6+len, false, FIHDR_META) > 0, );
+
+}
+
+void do_meta( struct network_obj* knob ) {
+  uint32_t read_sz;
+  uint8_t read_buf[16];
+  uint16_t magic;
+
+
+  // This routine reads from knob (network object) and writes data to metabuf
+
+  VRFY( metabuf == NULL, "do_meta should only be called once" );
+
+  atomic_store( &metaknob, knob );
+  metabuf = aligned_alloc( 64, metabuf_sz );
+  VRFY( metabuf != NULL, "do_meta alloc error" );
+
+  knob->block = 'meta';
+
+  // network_recv uses hardcoded size (above) + metahead to determine where to
+  // read data. returns size of data read. If not enough room for data, skip
+  // to head of queue and read there. meta I/O size must not exceed metabuf_sz/2
+
+  while (1) {
+    read_sz = network_recv( knob, read_buf, &magic );
+
+
+
+  }
+
+
+
+}
 
 void* rx_worker( void* arg ) {
   struct rx_args* rx = arg;
@@ -453,26 +520,12 @@ void* rx_worker( void* arg ) {
     /*
     if ( fi_type == FIHDR_CINIT )
       continue;
-     */
-
-    /*
-    if ( fi_type == FIHDR_SESS ) {
-      memcpy( &sess, fi, sizeof(sess) );
-      atomic_fetch_add( &did_session_init, 1);
-      DBG("[%2d] Establish session %016zx bs=%d tc=%d", id,
-        sess.session_id, sess.block_sz, sess.thread_count );
-      continue;
-    }
     */
 
-
-    if (fi_type != FIHDR_SHORT) {
-      VRFY(0, "Unkown header type %d", fi_type);
-    }
+    VRFY( fi_type == FIHDR_SHORT, "Unkown header type %d", fi_type);
 
     { // Do FIHDR_SHORT
       int sz = flo2_u64( fi->block_sz_significand, fi->block_sz_exponent );
-      int sz_orig = sz;
       uint64_t file_no = fi->file_no_packed >> 8;
       uint64_t offset = fi->offset & ~(0xffffUL);
       uint64_t res=0;
@@ -486,7 +539,6 @@ void* rx_worker( void* arg ) {
 
         // Always read in at least 4K of data
         fob->set( knob->token, FOB_SZ,  4096 );
-        sz_orig=4096;
       }
 
       while ( file_cur != file_no ) {
@@ -498,10 +550,6 @@ void* rx_worker( void* arg ) {
         fs_ptr = file_wait( file_no, &fs );
 
         DBG("[%2d] FIHDR_SHORT: file_wait returned fd=%d for fn=%ld", id, fs.fd, file_no);
-
-        // XXX: VRFY's aren't neccesarily needed here, will fail later anyway.
-        VRFY( fs.fd, "[%2d] ASSERT: fd != zero, fn=%ld/%ld", id, fs.file_no, file_no );
-        VRFY( fs.file_no == file_no, "[%2d] ASSERT: fs.file_no == file_no, fn=%ld != %ld", id, fs.file_no, file_no );
 
         file_cur = file_no;
       }
@@ -535,12 +583,6 @@ void* rx_worker( void* arg ) {
         VRFY(sz > 0, "[%2d] write error, fd=%d fn=%ld", id, fs.fd, file_no);
         fob->complete(fob, knob->token);
         written = atomic_fetch_add(&fs_ptr->bytes_total, sz) + sz;
-
-        if ( sz != sz_orig ) {
-          // XXX: This is probably a fatal error, and should not happen.
-          NFO("[%2d] *WARN* Write sz is undersized %d!=%d",
-              id, sz, sz_orig);
-        }
 
         DBG("[%2d] FIHDR_SHORT written=%08ld/%08ld fn=%ld os=%zX sz=%d",
             id, written, fs.bytes, file_no, offset, sz );
@@ -650,8 +692,8 @@ void* tx_worker( void* args ) {
   // Finish netork init
   DBG("[%2d] tx_worker: connected and ready", id);
 
-  if ( arg->is_meta )
-    return 0;
+  if (arg->is_meta)
+    do_meta(knob);
 
   // Start TX transfer session
   while (1) {

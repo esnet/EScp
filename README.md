@@ -125,6 +125,7 @@ KNOWNBUGS
     and check logs on sender (/tmp/escp.log.sender) and
     receiver (/tmp/escp.log.server on remote host).
   * Dummy engine is really only meant to be used with a few files
+  * You can't disable encryption
   * Check https://github.com/ESnet/EScp/issues
 
 

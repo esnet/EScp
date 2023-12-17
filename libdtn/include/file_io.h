@@ -7,15 +7,10 @@
 #ifndef __FILE_IO_DOT_H__
 #define __FILE_IO_DOT_H__
 
-#define FIHDR_SESS  1
-#define FIHDR_SHORT 2
-#define FIHDR_LONG  3
-#define FIHDR_END   4
-#define FIHDR_CINIT 5
-#define FIHDR_CRYPT 6
-
-#define FIEND_FILE 1
-#define FIEND_SESS 2
+#define FIHDR_SHORT 16
+#define FIHDR_CINIT 1
+#define FIHDR_CRYPT 2
+#define FIHDR_META  3
 
 #define FIIO_POSIX 1
 #define FIIO_URING 2

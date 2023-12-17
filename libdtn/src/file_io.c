@@ -71,7 +71,7 @@ void memset_avx( void* dst ) {
 
 // Soft limit on file descriptors, must at least 50 less than FD limit, and
 // much less than HSZ (which must be ^2 aligned).
-#define FILE_STAT_COUNT 650
+#define FILE_STAT_COUNT 700
 #define FILE_STAT_COUNT_HSZ 4096
 #define FILE_STAT_COUNT_CC 8
 
@@ -233,7 +233,7 @@ struct file_stat_type* file_next( int id, struct file_stat_type* test_fs ) {
   DBV("[%2d] Enter file_next", id);
 
   uint64_t fc,fh,slot;
-  int i,j;
+  int i,j,k=0;;
 
   while (1) {
     fc = atomic_load( &file_count );
@@ -255,7 +255,6 @@ struct file_stat_type* file_next( int id, struct file_stat_type* test_fs ) {
     }
 
     // No new files, see if we can attach to an existing file
-
     for (i=0; i< THREAD_COUNT; i++) {
       // Should iterate on actual thread count instead of max threads
       j = atomic_load( &file_activefile[i].position );
@@ -268,6 +267,13 @@ struct file_stat_type* file_next( int id, struct file_stat_type* test_fs ) {
           return &file_stat[j];
         }
       }
+    }
+
+    if ((k++&0xffff) == 0xffff) {
+      // We use CAS weak, which can fail sometimes. This is a workaround for
+      // that, although maybe we should just use CAS strong.
+      NFO("file_incrementfilecount");
+      file_incrementfilecount();
     }
 
     // Got nothing, wait and try again later.
