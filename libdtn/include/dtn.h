@@ -224,6 +224,7 @@ struct dtn_args {
 
 };
 
+void meta_send( char* buf, char* hdr, int len );
 void tx_start(struct dtn_args* args );
 int rx_start(struct dtn_args* args );
 void print_args ( struct dtn_args* args );

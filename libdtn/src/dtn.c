@@ -236,7 +236,6 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
   struct crypto_hdr* chdr = (struct crypto_hdr*) aad;
   struct file_info* fi = (struct file_info*) knob->buf;
 
-  static __thread bool did_init = false;
   int64_t bytes_read=16;
 
   if (knob->do_crypto) {
@@ -259,23 +258,57 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
     VRFY(read_fixed( knob->socket, knob->buf+14, 2 ) == 2, );
   }
 
-  if ( knob->block == 'meta' ) {
-    VRFY ( *subheader == FIHDR_META, "Bad FIHDR=%x on meta", *subheader );
+  if ( *subheader == FIHDR_META ) {
+
+    // Meta is intended to only have a single writer, thus we treat below as
+    // single threaded.
 
     uint64_t head = atomic_load ( &metahead );
     uint64_t tail = atomic_load ( &metatail );
+    uint8_t* buf  = atomic_load ( &metabuf  );
 
-    abort();
+    int h = ((head*64) % metabuf_sz)/64;
+    int t = ((tail*64) % metabuf_sz)/64;
+    uint32_t sz = ((uint32_t*)knob->buf)[0];
+    int increment;
+
+    if ( knob->block != 'meta' ) {
+      VRFY(read_fixed( knob->socket, &knob->buf, sz-10 ) == (sz-10), );
+      return sz+16;
+    }
+
+    sz = ntohl ( sz );
+    increment = (sz+6+63) / 64;
+
+    if ( (h + increment)*64 >= metabuf_sz ) {
+      // Head overflows metabuf, increment head to start of metabuf
+
+      ((uint32_t*) &buf[h*64])[0] = ~0;
+      head += (metabuf_sz/64) - h;
+      h = ((head*64) % metabuf_sz)/64;
+    }
+
+
+    while ( (h<t) && ((h+increment)>=t) ) {
+      // Not enough room for metadata, wait for queue to clear
+
+      usleep(10000);
+      tail = atomic_load ( &metatail );
+      t = (tail*64) % metabuf_sz;
+    }
+
+    memcpy ( &buf[h*64], knob->buf, 16 );
+    VRFY(read_fixed( knob->socket, &metabuf[(h*64)+16], sz-10 ) == (sz-10), );
+    atomic_store( &metahead, head+increment );
   }
 
-  if ( !did_init && (*subheader ==  FIHDR_SHORT) ) {
+  if ( !knob->fob && (*subheader ==  FIHDR_SHORT) ) {
     knob->block = knob->dtn->block;
 
     knob->fob = file_memoryinit( knob->dtn, knob->id );
     atomic_store( &knob->dtn->fob, (void*) knob->fob );
     atomic_fetch_add(&meminit, 1);
 
-    did_init=true;
     DBG("[%2d] Init IO mem ", knob->id );
   }
 
@@ -318,7 +351,7 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
     uint8_t actual_hash[16];
 
     aes_gcm_dec_128_finalize( &knob->gkey, &knob->gctx, computed_hash, 16 );
-    if (read_fixed(knob->socket, actual_hash, 16)<1) {
+    if (read_fixed(knob->socket, actual_hash, 16)!=16) {
       NFO("[%2d] Couldn't get auth tag... ", knob->id);
       return 0;
     }
@@ -329,7 +362,6 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
 
   return bytes_read;
 }
-
 
 int64_t network_send (
   struct network_obj* knob, void* buf, int sz, int total, bool partial, uint16_t subheader
@@ -408,10 +440,43 @@ void dtn_waituntilready( void* arg ) {
     usleep(10);
 }
 
+    // XXX:
+    //      reverse direction IV is incorrect and needs to be fixed.
+
+// All of the meta threads are designed to work correctly between threads, but
+// are not thread safe. For instance a thread can call the meta_recv function,
+// but it should be the only thread calling that function.
+
+uint8_t* meta_recv() {
+  uint64_t head = atomic_load( &metahead );
+  uint64_t tail = atomic_load( &metatail );
+  int t = ((tail*64) % metabuf_sz)/64;
+
+  if ( tail >= head )
+    return NULL;
+
+  uint32_t sz = atomic_load( (uint32_t*) &metabuf[metahead*64] );
+  if ( sz == ~0 ) {
+      tail += (metabuf_sz/64) - t;
+      t = ((tail*64) % metabuf_sz)/64;
+      atomic_store( &metatail, tail );
+  }
+
+  return &metabuf[t*64];
+}
+
+void meta_complete() {
+  uint64_t tail = atomic_load( &metatail );
+  uint32_t sz = atomic_load( (uint32_t*) &metabuf[tail*64] );
+  int increment = (sz + 63+6)/64;
+  atomic_fetch_add(&metatail, increment);
+}
+
 void meta_send( char* buf, char* hdr, int len ) {
   uint8_t* mb;
   struct network_obj* knob;
-  struct file_info fi;
+
+  VRFY(len > 9, "meta_send requires minimum length of 10");
 
   while (1) {
     // Wait until meta machinery is initialized
@@ -430,12 +495,13 @@ void meta_send( char* buf, char* hdr, int len ) {
 }
 
 void do_meta( struct network_obj* knob ) {
-  uint32_t read_sz;
   uint8_t read_buf[16];
   uint16_t magic;
 
 
   // This routine reads from knob (network object) and writes data to metabuf
+
+  NFO("[%2d] do_meta start\n", knob->id);
 
   VRFY( metabuf == NULL, "do_meta should only be called once" );
 
@@ -445,17 +511,9 @@ void do_meta( struct network_obj* knob ) {
 
   knob->block = 'meta';
 
-  // network_recv uses hardcoded size (above) + metahead to determine where to
-  // read data. returns size of data read. If not enough room for data, skip
-  // to head of queue and read there. meta I/O size must not exceed metabuf_sz/2
-
   while (1) {
-    read_sz = network_recv( knob, read_buf, &magic );
-
-
-
+    network_recv( knob, read_buf, &magic );
   }
-
 
 
 }
@@ -517,10 +575,6 @@ void* rx_worker( void* arg ) {
     fob = knob->fob;
 
     fi = (struct file_info*) knob->buf;
-    /*
-    if ( fi_type == FIHDR_CINIT )
-      continue;
-    */
 
     VRFY( fi_type == FIHDR_SHORT, "Unkown header type %d", fi_type);
 
@@ -604,7 +658,6 @@ void* rx_worker( void* arg ) {
     }
   }
 
-  // memcpy( &stat_cntr[id&THREAD_MASK], &local, sizeof(local) );
   if (rx->conn > 1)
     close( rx->conn );
 
@@ -688,6 +741,8 @@ void* tx_worker( void* args ) {
 
   knob = network_inittx( sock, dtn );
   VRFY (knob != NULL, );
+
+  knob->id = id;
 
   // Finish netork init
   DBG("[%2d] tx_worker: connected and ready", id);
@@ -808,10 +863,6 @@ void* tx_worker( void* args ) {
     }
 
   }
-
-  /*
-  memcpy( &stat_cntr[id&THREAD_MASK], &local, sizeof(local) );
-  */
 
   DBG("[%2d] Thread exited", id );
   return 0;

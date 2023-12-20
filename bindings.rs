@@ -219,14 +219,10 @@ pub const MAXNAMLEN: u32 = 255;
 pub const THREAD_COUNT: u32 = 32;
 pub const ESCP_MSG_COUNT: u32 = 16384;
 pub const ESCP_MSG_SZ: u32 = 128;
-pub const FIHDR_SESS: u32 = 1;
-pub const FIHDR_SHORT: u32 = 2;
-pub const FIHDR_LONG: u32 = 3;
-pub const FIHDR_END: u32 = 4;
-pub const FIHDR_CINIT: u32 = 5;
-pub const FIHDR_CRYPT: u32 = 6;
-pub const FIEND_FILE: u32 = 1;
-pub const FIEND_SESS: u32 = 2;
+pub const FIHDR_SHORT: u32 = 16;
+pub const FIHDR_CINIT: u32 = 1;
+pub const FIHDR_CRYPT: u32 = 2;
+pub const FIHDR_META: u32 = 3;
 pub const FIIO_POSIX: u32 = 1;
 pub const FIIO_URING: u32 = 2;
 pub const FIIO_DUMMY: u32 = 3;
@@ -2219,6 +2215,13 @@ fn bindgen_test_layout_dtn_args() {
             "::",
             stringify!(files_open)
         )
+    );
+}
+extern "C" {
+    pub fn meta_send(
+        buf: *mut ::core::ffi::c_char,
+        hdr: *mut ::core::ffi::c_char,
+        len: ::core::ffi::c_int,
     );
 }
 extern "C" {

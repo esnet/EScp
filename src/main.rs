@@ -342,6 +342,12 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
 
     let (sz, t) = from_header( buf.to_vec() );
 
+    /*
+    unsafe {
+      meta_send( "Koala bears".as_ptr() as *mut i8, buf.as_ptr() as *mut i8, 11 );
+    }
+    */
+
     if t == msg_file_spec {
       buf.resize( sz as usize, 0 );
       let res = sin.read_exact( &mut buf);
@@ -959,6 +965,7 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, mut sin: &std::fs
   let msg_out;
 
   {
+    // Spawn helper threads
     let (files_in, files_out) = crossbeam_channel::bounded(15000);
     let (dir_in, dir_out) = crossbeam_channel::bounded(10);
 
@@ -1121,9 +1128,15 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, mut sin: &std::fs
 
       debug!("iterate_files: Sending file meta data for {}/{}, size is {}", counter, files_total, buf.len());
       let mut hdr = to_header( buf.len() as u32, msg_file_spec );
+      /*
       _ = sin.write( &mut hdr );
       _ = sin.write( buf );
       _ = sin.flush();
+      */
+
+      unsafe {
+        meta_send( buf.as_ptr() as *mut i8, hdr.as_ptr() as *mut i8, 11 );
+      }
 
       counter -= iterations;
 
