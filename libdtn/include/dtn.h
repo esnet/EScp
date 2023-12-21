@@ -234,3 +234,6 @@ void tx_init( struct dtn_args* args );
 
 int64_t get_bytes_io( struct dtn_args* dtn );
 char* human_write(uint64_t number, bool is_bytes);
+
+uint8_t* meta_recv();
+void meta_complete();

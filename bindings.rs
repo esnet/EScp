@@ -2248,3 +2248,9 @@ extern "C" {
 extern "C" {
     pub fn human_write(number: u64, is_bytes: bool) -> *mut ::core::ffi::c_char;
 }
+extern "C" {
+    pub fn meta_recv() -> *mut u8;
+}
+extern "C" {
+    pub fn meta_complete();
+}

@@ -231,6 +231,13 @@ struct network_obj* network_initrx ( int socket,
   return &knob;
 }
 
+void meta_init( struct network_obj* knob ) {
+  atomic_store( &metaknob, knob );
+  atomic_store( &metabuf,  aligned_alloc( 64, metabuf_sz ));
+
+  knob->block = 'meta';
+}
+
 int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader ) {
 
   struct crypto_hdr* chdr = (struct crypto_hdr*) aad;
@@ -248,7 +255,9 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
     knob->iv_incr = chdr->iv;
 
     aes_gcm_init_128( &knob->gkey, &knob->gctx, knob->iv, aad, 16 );
-    VRFY(read_fixed( knob->socket, knob->buf, 16 )>1, );
+    if (read_fixed( knob->socket, knob->buf, 16 ) < 1) {
+      return -1;
+    }
     bytes_read += 16;
 
     aes_gcm_dec_128_update(&knob->gkey, &knob->gctx, knob->buf, knob->buf, 16);
@@ -263,33 +272,33 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
     // Meta is intended to only have a single writer, thus we treat below as
     // single threaded.
 
+    if ( knob->block != 'meta' ) {
+      meta_init(knob);
+    }
+
     uint64_t head = atomic_load ( &metahead );
     uint64_t tail = atomic_load ( &metatail );
     uint8_t* buf  = atomic_load ( &metabuf  );
 
+    VRFY ( buf != NULL, "bad alloc" );
+
     int h = ((head*64) % metabuf_sz)/64;
     int t = ((tail*64) % metabuf_sz)/64;
-    uint32_t sz = ((uint32_t*)knob->buf)[0];
     int increment;
 
-    if ( knob->block != 'meta' ) {
-      VRFY(read_fixed( knob->socket, &knob->buf, sz-10 ) == (sz-10), );
-      return sz+16;
-    }
-
-    sz = ntohl ( sz );
-    increment = (sz+6+63) / 64;
+    uint32_t sz = ((uint32_t*)knob->buf)[0];
+    sz = ntohl(sz);
+    increment = (sz+16+63) / 64;
 
     if ( (h + increment)*64 >= metabuf_sz ) {
-      // Head overflows metabuf, increment head to start of metabuf
+      // writing would overflow metabuf, increment head to start of metabuf
 
       ((uint32_t*) &buf[h*64])[0] = ~0;
       head += (metabuf_sz/64) - h;
       h = ((head*64) % metabuf_sz)/64;
     }
 
-
-    while ( (h<t) && ((h+increment)>=t) ) {
+   while ( (h<t) && ((h+increment)>=t) ) {
       // Not enough room for metadata, wait for queue to clear
 
       usleep(10000);
@@ -297,8 +306,16 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
       t = (tail*64) % metabuf_sz;
     }
 
+    NFO("[%2d] DO META", knob->id);
+
     memcpy ( &buf[h*64], knob->buf, 16 );
-    VRFY(read_fixed( knob->socket, &metabuf[(h*64)+16], sz-10 ) == (sz-10), );
+
+    VRFY( read_fixed(knob->socket, &buf[(h*64)+16], sz) == sz, );
+    if ( knob->do_crypto ) {
+       aes_gcm_dec_128_update( &knob->gkey, &knob->gctx,
+          &buf[(h*64)+16], &buf[(h*64)+16], sz );
+    }
+
     atomic_store( &metahead, head+increment );
   }
 
@@ -356,7 +373,10 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
       return 0;
     }
     VRFY( memcmp(computed_hash, actual_hash, 16) == 0,
-      "Bad auth tag hdr=%d", *subheader );
+          "Bad auth tag hdr=%d %x%x%x%x!=%x%x%x%x", *subheader,
+          actual_hash[0], actual_hash[1], actual_hash[2], actual_hash[3],
+          computed_hash[0], computed_hash[1], computed_hash[2], computed_hash[3]
+        );
     bytes_read += 16;
   }
 
@@ -366,6 +386,9 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
 int64_t network_send (
   struct network_obj* knob, void* buf, int sz, int total, bool partial, uint16_t subheader
   ) {
+
+  // sz must be modulo 16 if partial
+  // buf should be 16 byte aligned
 
   struct crypto_hdr hdr;
   uint8_t hash[16] = {0};
@@ -425,9 +448,6 @@ int64_t network_send (
 
     if ( !partial )
       did_header = false;
-
-
-
   }
 
   return sent;
@@ -467,8 +487,11 @@ uint8_t* meta_recv() {
 
 void meta_complete() {
   uint64_t tail = atomic_load( &metatail );
-  uint32_t sz = atomic_load( (uint32_t*) &metabuf[tail*64] );
-  int increment = (sz + 63+6)/64;
+  int t = ((tail*64) % metabuf_sz)/64;
+  uint32_t sz = atomic_load( (uint32_t*) &metabuf[t*64] );
+  sz = ntohl(sz);
+  NFO("Got sz=%d from t=%d", sz, t);
+  int increment = (sz + 63+16)/64;
   atomic_fetch_add(&metatail, increment);
 }
 
@@ -476,7 +499,7 @@ void meta_send( char* buf, char* hdr, int len ) {
   uint8_t* mb;
   struct network_obj* knob;
 
-  VRFY(len > 9, "meta_send requires minimum length of 10");
+  // buf should be 16 byte aligned and padded to 16 byte boundary
 
   while (1) {
     // Wait until meta machinery is initialized
@@ -488,10 +511,17 @@ void meta_send( char* buf, char* hdr, int len ) {
 
     usleep(1000);
   }
+  {
+    char b[16] __attribute__ ((aligned(16))) = {0};
+    memcpy( b, hdr, 6 );
 
-
-  VRFY( network_send(knob, hdr, 6, 6+len, false, FIHDR_META) > 0, );
-
+    if (buf) {
+      VRFY( network_send(knob, b,   16,  16+len, true,  FIHDR_META) > 0, );
+      VRFY( network_send(knob, buf, len, 16+len, false, FIHDR_META) > 0, );
+    } else {
+      VRFY( network_send(knob, b,   16,  16, false,  FIHDR_META) > 0, );
+    }
+  }
 }
 
 void do_meta( struct network_obj* knob ) {
@@ -504,18 +534,11 @@ void do_meta( struct network_obj* knob ) {
   NFO("[%2d] do_meta start\n", knob->id);
 
   VRFY( metabuf == NULL, "do_meta should only be called once" );
-
-  atomic_store( &metaknob, knob );
-  metabuf = aligned_alloc( 64, metabuf_sz );
-  VRFY( metabuf != NULL, "do_meta alloc error" );
-
-  knob->block = 'meta';
+  meta_init(knob);
 
   while (1) {
     network_recv( knob, read_buf, &magic );
   }
-
-
 }
 
 void* rx_worker( void* arg ) {
@@ -573,8 +596,10 @@ void* rx_worker( void* arg ) {
     }
 
     fob = knob->fob;
-
     fi = (struct file_info*) knob->buf;
+
+    if (fi_type == FIHDR_META)
+      continue;
 
     VRFY( fi_type == FIHDR_SHORT, "Unkown header type %d", fi_type);
 

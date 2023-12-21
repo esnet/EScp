@@ -24,6 +24,7 @@ use std::os::fd::AsRawFd;
 use std::os::fd::FromRawFd;
 use std::fs;
 use std::collections::VecDeque;
+use std::slice;
 use hex;
 use crossbeam_channel;
 use clean_path;
@@ -328,39 +329,22 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
 
   let mut filecount=0;
 
-
   loop {
-    let mut buf = vec![ 0u8; 6 ];
-    let res = sin.read_exact( &mut buf );
-    match res {
-      Ok (_) => {},
-      Err (error) => {
-        info!("Bad read from SSH {:?}", error);
-        return
-      }
+    let ptr = unsafe{ meta_recv() };
+
+    if ptr.is_null() {
+      let interval = std::time::Duration::from_millis(20);
+      thread::sleep(interval);
+      continue;
     }
 
-    let (sz, t) = from_header( buf.to_vec() );
-
-    /*
-    unsafe {
-      meta_send( "Koala bears".as_ptr() as *mut i8, buf.as_ptr() as *mut i8, 11 );
-    }
-    */
+    let b = unsafe { slice::from_raw_parts(ptr, 6).to_vec() };
+    let (sz, t) = from_header( b );
+    let c = unsafe { slice::from_raw_parts(ptr.add(16), sz as usize).to_vec() };
 
     if t == msg_file_spec {
-      buf.resize( sz as usize, 0 );
-      let res = sin.read_exact( &mut buf);
 
-      match res {
-        Ok (_) => {},
-        Err (error) => {
-          info!("Bad read from SSH {:?}", error);
-          return
-        }
-      }
-
-      let fs = flatbuffers::root::<file_spec::ESCP_file_list>(buf.as_slice()).unwrap();
+      let fs = flatbuffers::root::<file_spec::ESCP_file_list>(c.as_slice()).unwrap();
       let root = fs.root().unwrap();
       debug!("Root set to: {}", root);
 
@@ -439,6 +423,7 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
         }
       }
 
+      unsafe{ meta_complete() };
       continue;
     }
 
@@ -466,6 +451,13 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
   let mut hdr = to_header( 0, msg_session_complete );
   _ = sout.write( &mut hdr );
   _ = sout.flush();
+
+  /*
+  let hdr = to_header( 0, msg_session_complete );
+  unsafe {
+    meta_send( 0 as *mut i8, hdr.as_ptr() as *mut i8, 0 as i32 );
+  }
+  */
 
 
 }
@@ -665,7 +657,7 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
       }
     }
 
-    let bytes_total = iterate_files( flags.source, safe_args, sin, dest.to_string(), flags.quiet, &fi );
+    let bytes_total = iterate_files( flags.source, safe_args, dest.to_string(), flags.quiet, &fi );
     debug!("Finished iterating files, total bytes={bytes_total}");
 
     if bytes_total <= 0 {
@@ -741,10 +733,10 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
     }
 
     {
-      let mut hdr  = to_header( 0, msg_session_complete );
-
-      _ = sin.write( &mut hdr );
-      _ = sin.flush();
+      let hdr = to_header( 0, msg_session_complete );
+      unsafe {
+        meta_send( 0 as *mut i8, hdr.as_ptr() as *mut i8, 0 as i32 );
+      }
 
       let mut buf = vec![ 0u8; 6 ];
       let result = sout.read_exact( &mut buf );
@@ -955,7 +947,7 @@ fn iterate_file_worker(
 }
 
 
-fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, mut sin: &std::fs::File, dest_path: String, quiet: bool, mut sout: &std::fs::File ) -> i64 {
+fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, dest_path: String, quiet: bool, mut sout: &std::fs::File ) -> i64 {
 
   // we use clean_path instead of path.canonicalize() because the engines are
   // responsible for implementing there own view of the file system and we can't
@@ -1125,17 +1117,11 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, mut sin: &std::fs
       builder.finish( bu, None );
 
       let buf = builder.finished_data();
+      let hdr = to_header( buf.len() as u32, msg_file_spec );
 
       debug!("iterate_files: Sending file meta data for {}/{}, size is {}", counter, files_total, buf.len());
-      let mut hdr = to_header( buf.len() as u32, msg_file_spec );
-      /*
-      _ = sin.write( &mut hdr );
-      _ = sin.write( buf );
-      _ = sin.flush();
-      */
-
       unsafe {
-        meta_send( buf.as_ptr() as *mut i8, hdr.as_ptr() as *mut i8, 11 );
+        meta_send( buf.as_ptr() as *mut i8, hdr.as_ptr() as *mut i8, buf.len() as i32 );
       }
 
       counter -= iterations;
