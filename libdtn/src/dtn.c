@@ -475,7 +475,7 @@ uint8_t* meta_recv() {
   if ( tail >= head )
     return NULL;
 
-  uint32_t sz = atomic_load( (uint32_t*) &metabuf[metahead*64] );
+  uint32_t sz = atomic_load( (uint32_t*) &metabuf[t*64] );
   if ( sz == ~0 ) {
       tail += (metabuf_sz/64) - t;
       t = ((tail*64) % metabuf_sz)/64;
