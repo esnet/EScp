@@ -255,9 +255,7 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
     knob->iv_incr = chdr->iv;
 
     aes_gcm_init_128( &knob->gkey, &knob->gctx, knob->iv, aad, 16 );
-    if (read_fixed( knob->socket, knob->buf, 16 ) < 1) {
-      return -1;
-    }
+    VRFY (read_fixed( knob->socket, knob->buf, 16 ) > 1,);
     bytes_read += 16;
 
     aes_gcm_dec_128_update(&knob->gkey, &knob->gctx, knob->buf, knob->buf, 16);
@@ -266,6 +264,17 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
     memcpy( knob->buf, aad+2, 14 );
     VRFY(read_fixed( knob->socket, knob->buf+14, 2 ) == 2, );
   }
+
+  if ( !knob->fob && (*subheader ==  FIHDR_SHORT) ) {
+    knob->block = knob->dtn->block;
+
+    knob->fob = file_memoryinit( knob->dtn, knob->id );
+    atomic_store( &knob->dtn->fob, (void*) knob->fob );
+    atomic_fetch_add(&meminit, 1);
+
+    DBG("[%2d] Init IO mem ", knob->id );
+  }
+
 
   if ( *subheader == FIHDR_META ) {
 
@@ -306,8 +315,6 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
       t = (tail*64) % metabuf_sz;
     }
 
-    NFO("[%2d] DO META", knob->id);
-
     memcpy ( &buf[h*64], knob->buf, 16 );
 
     VRFY( read_fixed(knob->socket, &buf[(h*64)+16], sz) == sz, );
@@ -317,19 +324,7 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
     }
 
     atomic_store( &metahead, head+increment );
-  }
-
-  if ( !knob->fob && (*subheader ==  FIHDR_SHORT) ) {
-    knob->block = knob->dtn->block;
-
-    knob->fob = file_memoryinit( knob->dtn, knob->id );
-    atomic_store( &knob->dtn->fob, (void*) knob->fob );
-    atomic_fetch_add(&meminit, 1);
-
-    DBG("[%2d] Init IO mem ", knob->id );
-  }
-
-  if ( *subheader == FIHDR_SHORT ) {
+  } else if ( *subheader == FIHDR_SHORT ) {
     // Read into buffer from storage I/O
     uint8_t* buffer;
 
@@ -361,6 +356,9 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
        aes_gcm_dec_128_update( &knob->gkey, &knob->gctx,
          buffer, buffer, block_sz );
     }
+  } else {
+    VRFY( 0, "[%2d] network_recv: subheader %d not implemented",
+          knob->id, *subheader );
   }
 
   if ( knob->do_crypto ) {
@@ -399,9 +397,13 @@ int64_t network_send (
     if ( !did_header ) {
       hdr.hdr_type = FIHDR_CRYPT;
       hdr.magic = subheader;
-      knob->iv_incr ++;
-      hdr.iv = knob->iv_incr;
       hdr.hdr_sz = total + 32;
+
+      if (knob->dtn && knob->dtn->do_server) {
+        knob->iv_incr |= 1UL << 63;
+      }
+
+      hdr.iv = ++knob->iv_incr;
 
   /*  ---------+--------+----+----+--------------+----------\
    *  hdr_type | magic  | sz | IV | Payload      | HMAC     |
@@ -460,9 +462,6 @@ void dtn_waituntilready( void* arg ) {
     usleep(10);
 }
 
-    // XXX:
-    //      reverse direction IV is incorrect and needs to be fixed.
-
 // All of the meta threads are designed to work correctly between threads, but
 // are not thread safe. For instance a thread can call the meta_recv function,
 // but it should be the only thread calling that function.
@@ -490,7 +489,6 @@ void meta_complete() {
   int t = ((tail*64) % metabuf_sz)/64;
   uint32_t sz = atomic_load( (uint32_t*) &metabuf[t*64] );
   sz = ntohl(sz);
-  NFO("Got sz=%d from t=%d", sz, t);
   int increment = (sz + 63+16)/64;
   atomic_fetch_add(&metatail, increment);
 }
@@ -525,19 +523,20 @@ void meta_send( char* buf, char* hdr, int len ) {
 }
 
 void do_meta( struct network_obj* knob ) {
-  uint8_t read_buf[16];
+  uint8_t read_buf[16] __attribute__ ((aligned(16))) = {0};
   uint16_t magic;
 
 
   // This routine reads from knob (network object) and writes data to metabuf
 
-  NFO("[%2d] do_meta start\n", knob->id);
-
   VRFY( metabuf == NULL, "do_meta should only be called once" );
   meta_init(knob);
 
   while (1) {
-    network_recv( knob, read_buf, &magic );
+    if (read_fixed( knob->socket, read_buf, 16 )>1)
+      network_recv( knob, read_buf, &magic );
+    else
+      return;
   }
 }
 

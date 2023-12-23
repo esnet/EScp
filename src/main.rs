@@ -448,16 +448,10 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
 
   debug!("Transfer Complete. Sending Session Finished Message.");
 
-  let mut hdr = to_header( 0, msg_session_complete );
-  _ = sout.write( &mut hdr );
-  _ = sout.flush();
-
-  /*
   let hdr = to_header( 0, msg_session_complete );
   unsafe {
     meta_send( 0 as *mut i8, hdr.as_ptr() as *mut i8, 0 as i32 );
   }
-  */
 
 
 }
@@ -657,7 +651,8 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
       }
     }
 
-    let bytes_total = iterate_files( flags.source, safe_args, dest.to_string(), flags.quiet, &fi );
+    let bytes_total = iterate_files( flags.source, safe_args, dest.to_string(),
+                                     flags.quiet, &fi );
     debug!("Finished iterating files, total bytes={bytes_total}");
 
     if bytes_total <= 0 {
@@ -738,15 +733,17 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
         meta_send( 0 as *mut i8, hdr.as_ptr() as *mut i8, 0 as i32 );
       }
 
-      let mut buf = vec![ 0u8; 6 ];
-      let result = sout.read_exact( &mut buf );
-      match result {
-        Ok(_)  => { }
-        Err(error) => {
-          error!("Connection to receiver disconnected; {error}");
-          eprintln!("Connection to receiver disconnected; {error}");
-          return;
+      loop {
+        let ptr = unsafe{ meta_recv() };
+
+        if ptr.is_null() {
+          let interval = std::time::Duration::from_millis(20);
+          thread::sleep(interval);
+          continue;
         }
+
+        // This should be our loop for handling data from receiver
+        break;
       }
     }
   }
@@ -964,11 +961,10 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, dest_path: String
     let msg_in;
     (msg_in, msg_out) = crossbeam_channel::bounded(400);
 
-    let _ = GLOBAL_FILEOPEN_CLEANUP.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    _ = GLOBAL_FILEOPEN_CLEANUP.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
     for j in 0..GLOBAL_FILEOPEN_COUNT{
       let nam = format!("file_{}", j as i32);
-      // let rx = r.clone();
       let a = args.clone();
       let fo = files_out.clone();
       let di = dir_in.clone();
@@ -979,7 +975,6 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, dest_path: String
 
     for j in 0..GLOBAL_DIROPEN_COUNT{
       let nam = format!("dir_{}", j as i32);
-      // let rx = r.clone();
       let a = args.clone();
       let dir_o = dir_out.clone();
       let fi = files_in.clone();
@@ -1060,7 +1055,7 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, dest_path: String
 
       counter += 1;
       if counter > counter_max {
-        counter_max = 1000;
+        counter_max = 100;
         break;
       }
     }
@@ -1138,25 +1133,11 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, dest_path: String
     }
   }
 
-
-
-  /*
-  if file_list.len() > 0 {
-    sendmsg_files( &file_list, sin, &dest_path );
-  }
-  */
-
   debug!("iterate_files: is finished");
-
   return bytes_total;
-
 }
 
 fn fileopen( queue: std::sync::mpsc::Receiver<String>, args: dtn_args_wrapper ) {
-  // println!("Start fileopen thread!");
-  // unsafe { println!("{}", (*args.args).do_server ) };
-
-  // - Files opened in rust using threads and mpsc queue
   let mut i:u64 = 0;
 
   loop {
@@ -1168,8 +1149,6 @@ fn fileopen( queue: std::sync::mpsc::Receiver<String>, args: dtn_args_wrapper ) 
         mode = 0o644;
       }
     }
-
-
 
     if fi == "".to_string() {
       let val = GLOBAL_FILEOPEN_CLEANUP.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -1184,10 +1163,7 @@ fn fileopen( queue: std::sync::mpsc::Receiver<String>, args: dtn_args_wrapper ) 
     let fd;
     unsafe {
       let c_str = CString::new(fi).unwrap();
-      // let fd = (*(*(*args.args).fob).open)( fi, 0 );
       fd = ((*(*args.args).fob).open.unwrap())( c_str.as_ptr() as *const i8, (*args.args).flags, mode );
-
-      // println!( "RUST Thread opened FD: {}", fd );
 
       if fd == -1 {
         info!("RUST Got an error trying to open {:?} {}", c_str,
@@ -1209,7 +1185,6 @@ fn fileopen( queue: std::sync::mpsc::Receiver<String>, args: dtn_args_wrapper ) 
 
     }
     debug!( "opened fn: {} with fd: {}", i, fd );
-
   }
 }
 
