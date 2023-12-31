@@ -40,7 +40,7 @@
 #pragma GCC diagnostic ignored "-Wmultichar"
 
 int      thread_id      __attribute__ ((aligned(64))) = 0;
-int      meminit     __attribute__ ((aligned(64))) = 0;
+int      meminit        __attribute__ ((aligned(64))) = 0;
 uint64_t tx_filesclosed __attribute__ ((aligned(64))) = 0;
 
 uint64_t metahead __attribute__ ((aligned(64))) = 0;
@@ -50,9 +50,86 @@ struct   network_obj* metaknob = NULL;
 
 uint32_t metabuf_sz = 4 * 1024 * 1024;
 
-pthread_t DTN_THREAD[THREAD_COUNT];
+struct fc_info_struct {
+  uint64_t state;
+  uint64_t file_no;
+  uint64_t bytes;
+  uint32_t crc;
+  uint32_t pad;
+  uint64_t pad2[4];
+};
 
-int crash_fd;
+/* fc provides file completion information; It is primarily a many to one
+ * model where IOW adds to the queue and rust:dtn_complete pulls off the
+ * results. FIFO ring buffer. For in-flight stats, the file_stat table
+ * should be referenced. As a note; this duplicates information in file_stat,
+ * and an alternative implementation could be to add an additional state to
+ * file_stat. I think this implementation is easier because it makes the
+ * process of reading the file completion information less time critical
+ * and avoids the need to skip over or iterate the fs struct.
+ */ 
+
+struct fc_info_struct* fc_info;
+uint32_t fc_info_cnt = 16384;
+uint64_t fc_info_head  __attribute__ ((aligned(64))) = 0;
+uint64_t fc_info_tail  __attribute__ ((aligned(64))) = 0;
+
+void fc_push( uint64_t file_no, uint64_t bytes, uint32_t crc ) {
+  uint64_t head = atomic_fetch_add( &fc_info_head, 1 );
+  uint64_t tail = atomic_load( &fc_info_tail );
+  uint64_t h = head % fc_info_cnt;
+  struct fc_info_struct fc __attribute__ ((aligned(64))) = {0}; 
+
+  while ((tail + fc_info_cnt) <= head) {
+    // Wait until tail catches up
+    usleep(1000);
+    tail = atomic_load( &fc_info_tail );
+  }
+
+  while ( atomic_load( &fc_info[h].state ) ) {
+    // Wait until slot is clear
+    usleep(100);
+  }
+
+  fc.state= 1;
+  fc.file_no = file_no;
+  fc.bytes = bytes;
+  fc.crc = crc;
+
+  memcpy_avx( &fc_info[h], &fc );
+}
+
+struct fc_info_struct* fc_pop() {
+  uint64_t tail = atomic_fetch_add( &fc_info_tail, 1 );
+  uint64_t head = atomic_load( &fc_info_head );
+  uint64_t t = tail % fc_info_cnt;
+  static __thread struct fc_info_struct fc __attribute__ ((aligned(64))) = {0};
+
+  while (tail >= head) {
+    // Tail is past head, wait for head
+    usleep(100);
+    head = atomic_load( &fc_info_head );
+  }
+
+  while ( !atomic_load( &fc_info[t].state ) ) {
+    // Wait until IOW has marked fc as finished
+    usleep(100);
+  }
+
+  memcpy_avx( &fc, &fc_info[t] );
+  memset_avx( &fc_info[t] );
+
+  return &fc;
+}
+
+void dtn_init() {
+  fc_info = (struct fc_info_struct*) aligned_alloc( 64, fc_info_cnt*64 );
+  VRFY( fc_info, "bad alloc" );
+  VRFY( sizeof(struct file_stat_type) == 64, "ASSERT struct file_stat_type" );
+  VRFY( sizeof(struct fc_info_struct) == 64, "ASSERT struct fc_info_struct" );
+}
+
+pthread_t DTN_THREAD[THREAD_COUNT];
 
 struct tx_args {
   struct dtn_args* dtn;
@@ -299,6 +376,8 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
     sz = ntohl(sz);
     increment = (sz+16+63) / 64;
 
+    VRFY( sz < (metabuf_sz/2), "Invalid sz=%d on packet", sz );
+
     if ( (h + increment)*64 >= metabuf_sz ) {
       // writing would overflow metabuf, increment head to start of metabuf
 
@@ -329,6 +408,7 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
     uint8_t* buffer;
 
     uint64_t block_sz=flo2_u64(fi->block_sz_significand, fi->block_sz_exponent);
+    VRFY ( block_sz <= knob->block, "Invalid block_sz=%ld", block_sz);
 
     bytes_read += block_sz;
 
@@ -543,7 +623,7 @@ void do_meta( struct network_obj* knob ) {
 void* rx_worker( void* arg ) {
   struct rx_args* rx = arg;
   struct dtn_args* dtn = rx->dtn;
-  uint32_t id=0, rbuf; // , crc=0;
+  uint32_t id=0, rbuf;
 
   uint64_t file_cur=0;
 
@@ -635,12 +715,11 @@ void* rx_worker( void* arg ) {
       fob->set( knob->token, FOB_FD, fs.fd );
       fob->flush( fob );
 
-#ifdef O_CRC
-      {
+      if (dtn->do_hash) {
         uint8_t* buf = fob->get( knob->token, FOB_BUF );
-        crc ^= file_hash( buf, sz, offset/sess.block_sz );
+        int seed = offset/knob->block;
+        atomic_fetch_xor( &fs_ptr->crc, file_hash(buf, sz, seed) );
       }
-#endif
 
       DBV("[%2d] Do FIHDR_SHORT crc=%08x fn=%ld offset=%zX sz=%d", id, crc, file_no, offset, sz);
 
@@ -667,6 +746,8 @@ void* rx_worker( void* arg ) {
 
         if ( fs.bytes && fs.bytes <= written  ) {
           if (fs.bytes != written) {
+            if (dtn->do_hash)
+              fc_push( file_no, fs.bytes, atomic_load(&fs_ptr->crc) );
             fob->truncate(fob, fs.bytes);
             DBG("[%2d] FIHDR_SHORT: close with truncate fn=%ld ", id, file_no);
           } else {
@@ -709,9 +790,6 @@ void* tx_worker( void* args ) {
 
   struct network_obj* knob;
   void* token;
-
-  // uint32_t crc=0;
-
 
   affinity_set( dtn );
 
@@ -784,9 +862,6 @@ void* tx_worker( void* args ) {
         DBG("[%2d] Finished reading file(s), exiting...", id );
         break;
       }
-
-      // file_no = fs->file_no;
-      // crc= 0;
     }
 
     if (!fs_lcl.fd) {
@@ -865,9 +940,11 @@ void* tx_worker( void* args ) {
 
       bytes_sent = flo2_u64( significand, exponent );
 
-#ifdef O_CRC
-      crc ^= file_hash( buf, bytes_sent, offset );
-#endif
+      if ( dtn->do_hash ) {
+        atomic_fetch_xor( &fs->crc, file_hash(buf, bytes_sent, offset/dtn->block) );
+        // NFO("[%2d] CRC with fn=%ld offset=%lX, crc=%08X",
+        //   id, fs_lcl.file_no, offset, fs->crc);
+      }
 
       DBG("[%2d] FI_HDR sent with fn=%ld offset=%lX, bytes_read=%d, bytes_sent=%d",
           id, fs_lcl.file_no, offset, bytes_read, bytes_sent);
@@ -985,6 +1062,7 @@ int rx_start( void* fn_arg ) {
 
   DBG("Start: rx_start");
 
+  dtn_init();
   args->thread_count=0;
 
   port = ntohs(saddr->sin_port);
@@ -1117,6 +1195,8 @@ int64_t get_bytes_io( struct dtn_args* dtn ) {
 }
 
 void tx_init( struct dtn_args* args ) {
+  dtn_init();
+
   if (args->do_crypto) {
     int res = getrandom(args->crypto_key, 16, GRND_RANDOM);
     // XXX: We should handle the case of getting less than

@@ -109,12 +109,14 @@ struct file_stat_type {
   uint64_t file_no;
   uint64_t bytes;
 
-  uint64_t block_offset;
+  uint64_t block_offset; // 32
   uint64_t bytes_total;
 
   int32_t  fd;
   uint32_t position;
   uint32_t poison;
+  uint32_t crc; // 56
+  uint64_t pad;
 
   // Reader atomically increments this to find next read location
   // Future: Writer sets to sz from fi_end message.
@@ -161,6 +163,7 @@ int64_t file_stat_getbytes( void *file_object, int fd );
 uint64_t  file_iow_remove( struct file_stat_type* fs, int id );
 
 int file_get_activeport( void* args );
+void memcpy_avx( void* dst, void* src );
 void memset_avx( void* dst );
 void file_incrementtail();
 

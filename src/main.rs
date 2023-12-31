@@ -262,6 +262,7 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
     unsafe {
       (*args).block = helo.block_sz();
       (*args).thread_count = helo.thread_count();
+      (*args).do_hash = helo.do_hash();
     }
 
     if helo.no_direct() { direct_mode = false; }
@@ -503,6 +504,14 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
       ssh_args.extend(["-i", flags.identity.as_str()]);
     }
 
+    if flags.ssh_option.len() > 0 {
+      ssh_args.extend(["-o", flags.ssh_option.as_str()]);
+    }
+
+    if flags.batch_mode {
+      ssh_args.extend(["-o", "BatchMode=True"]);
+    }
+
     if flags.cipher.len() > 0 {
       ssh_args.extend(["-c", flags.cipher.as_str()]);
     }
@@ -535,7 +544,7 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
     sout = proc.stdout.as_ref().unwrap();
     serr = proc.stderr.as_ref().unwrap();
   }
-  let (session_id, start_port, do_verbose, crypto_key, io_engine, nodirect, thread_count, block_sz);
+  let (session_id, start_port, do_verbose, crypto_key, io_engine, nodirect, thread_count, block_sz, do_hash );
 
   crypto_key = vec![ 0i8; 16 ];
 
@@ -547,6 +556,7 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
     start_port = (*args).active_port;
     io_engine  = (*args).io_engine;
     nodirect  = (*args).nodirect;
+    do_hash = (*args).do_hash;
     thread_count = (*args).thread_count;
     block_sz = (*args).block;
     do_verbose = verbose_logging  > 0;
@@ -567,6 +577,7 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
       crypto_key: ckey,
       io_engine: io_engine,
       no_direct: nodirect,
+      do_hash: do_hash,
       thread_count: thread_count,
       block_sz: block_sz,
       ..Default::default()
@@ -1370,44 +1381,47 @@ struct EScp_Args {
    #[arg(short, long, num_args=0)]
    verbose: bool,
 
-   /// Quiet
    #[arg(short, long, num_args=0)]
    quiet: bool,
 
-   /// SSH Agent Forwarding
+   /// Enable SSH Agent Forwarding
    #[arg(short='A', long="agent")]
    agent: bool,
 
-   /// Pass <CIPHER> Cipher to SSH
+   /// CIPHER used by SSH
    #[arg(short, long, default_value_t=String::from(""))]
    cipher: String,
 
-   /// Use <IDENTITY> Key for SSH authentication
+   /// IDENTITY pubkey for SSH auth
    #[arg(short='i', long, default_value_t=String::from(""))]
    identity: String,
 
-   /// Limit transfer to <LIMIT> (bytes/sec)
+   /// LIMIT transfer to (bytes/sec)
    #[arg(short, long, default_value_t = String::from("0"))]
    limit: String,
 
-   /// Pass <OPTION> SSH option to SSH
-   #[arg(short, long, default_value_t=String::from(""))]
-   option: String,
-
-   /// Preserve source attributes at destination ( Todo )
+   /// Preserve source attributes (TODO)
    #[arg(short, long, num_args=0)]
    preserve: bool,
+
+   /// Compression (TODO)
+   #[arg(short='C', long)]
+   compression: bool,
 
    /// Copy recursively
    #[arg(short='r', long, num_args=0)]
    recursive: bool,
 
-   /// SSH binary for connecting to remote host
+   /// SSH_OPTION to SSH
+   #[arg(short='o', default_value_t=String::from(""))]
+   ssh_option: String,
+
+   /// SSH binary
    #[arg(short='S', long="ssh", default_value_t=String::from("ssh"))]
    ssh: String,
 
    /// EScp binary
-   #[arg(short='E', long="escp", default_value_t=String::from("escp"))]
+   #[arg(short='D', long="escp", default_value_t=String::from("escp"))]
    escp: String,
 
    #[arg(long="blocksize", default_value_t = String::from("1M"))]
@@ -1418,7 +1432,7 @@ struct EScp_Args {
    io_engine: String,
 
    /// # of EScp parallel threads
-   #[arg( long="parallel", default_value_t = 4 )]
+   #[arg(short='t', long="parallel", default_value_t = 4 )]
    threads: u32,
 
    #[arg(long, help="mgmt UDS/IPC connection", default_value_t=String::from(""))]
@@ -1430,6 +1444,9 @@ struct EScp_Args {
    #[arg(long, help="Don't enable direct mode")]
    nodirect: bool,
 
+   #[arg(long, help="Don't enable file checksum")]
+   nochecksum: bool,
+
    #[arg(short='L', long, help="Display License")]
    license: bool,
 
@@ -1437,18 +1454,21 @@ struct EScp_Args {
    #[arg(long, hide=true )]
    server: bool,
 
+   #[arg(short='O', hide=true )]
+   O: bool,
+
+   #[arg(short='B', hide=true )]
+   batch_mode: bool,
+
    /// Everything below here ignored; added for compatibility with SCP
    #[arg(short, hide=true)]
    s: bool,
 
-   #[arg(short='D', long="sftp", hide=true, default_value_t=String::from("escp"))]
-   D: String,
+   #[arg(short='F', long="sftp", hide=true, default_value_t=String::from("escp"))]
+   F: String,
 
    #[arg(short='T', hide=true)]
    strict_filename: bool,
-
-   #[arg(short='O', hide=true)]
-   O: bool,
 
    #[arg(short='4', hide=true)]
    ipv4: bool,
@@ -1462,12 +1482,9 @@ struct EScp_Args {
 }
 
 /* ToDo:
- *  - -o <SSH_Option> Passed through
- *  - -p
- *
  *  - 3
  *  - "-F" ssh_config
- *  - "-J" Like -3 ?
+ *  - "-J"
  *
  */
 
@@ -1610,11 +1627,11 @@ fn main() {
         process::exit(0);
       }
 
-
       if flags.verbose   { verbose_logging += 1; }
       if flags.quiet     { verbose_logging = 0; }
-      if flags.nodirect  { (*args).nodirect  = true; }
-      if flags.recursive { (*args).recursive = true; }
+      (*args).nodirect = flags.nodirect;
+      (*args).do_hash  = !flags.nochecksum;
+      if flags.recursive  { (*args).recursive = true; }
 
       (*args).pacing = int_from_human(flags.limit.clone()) as u64;
       (*args).window = 512*1024*1024;
