@@ -662,6 +662,18 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
       }
     }
 
+    /*
+    {
+      let nam = format!("fc_{}", j as i32);
+      let a = args.clone();
+      let dir_o = dir_out.clone();
+      let fi = files_in.clone();
+
+      thread::Builder::new().name(nam).spawn(move ||
+        iterate_dir_worker(dir_o, fi, a)).unwrap();
+    }
+    */
+
     let bytes_total = iterate_files( flags.source, safe_args, dest.to_string(),
                                      flags.quiet, &fi );
     debug!("Finished iterating files, total bytes={bytes_total}");
@@ -843,7 +855,7 @@ fn iterate_file_worker(
   loop {
 
 
-    match files_out.recv_timeout(std::time::Duration::from_millis(10)) {
+    match files_out.recv_timeout(std::time::Duration::from_millis(100)) {
       Ok((value, p)) => { (filename, prefix) = (value, p); }
       Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
 
@@ -1001,11 +1013,10 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, dest_path: String
     }
   }
 
+
   let mut bytes_total=0;
   let mut files_total=0;
   let mut files_sent=0;
-
-  let mut did_work = false;
 
   let mut builder = flatbuffers::FlatBufferBuilder::with_capacity(1);
 
@@ -1017,6 +1028,8 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, dest_path: String
 
   let start = std::time::Instant::now();
   let mut interval = std::time::Instant::now();
+
+  let _ = GLOBAL_FILEOPEN_TAIL.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
   loop {
     if !quiet && (interval.elapsed().as_secs_f32() > 0.25) {
@@ -1053,7 +1066,7 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, dest_path: String
           continue;
         }
         Err(_) => {
-          debug!("iterate_files: Got an abnormal from msg_out.recv, assuming EOQ");
+          debug!("iterate_files: Got an abnormal from msg_out.recv, assume EOQ");
           do_break = true;
           break;
         }
@@ -1132,10 +1145,6 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, dest_path: String
 
       counter -= iterations;
 
-      if !did_work {
-        let _ = GLOBAL_FILEOPEN_TAIL.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        did_work = true;
-      }
     }
 
     if do_break {
