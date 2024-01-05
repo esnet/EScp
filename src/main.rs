@@ -665,7 +665,8 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
     /*
     {
       let nam = format!("fc_{}", j as i32);
-      let a = args.clone();
+      let a = safe_args.clone();
+
       let dir_o = dir_out.clone();
       let fi = files_in.clone();
 
