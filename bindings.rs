@@ -2248,6 +2248,94 @@ extern "C" {
 extern "C" {
     pub fn human_write(number: u64, is_bytes: bool) -> *mut ::core::ffi::c_char;
 }
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct fc_info_struct {
+    pub state: u64,
+    pub file_no: u64,
+    pub bytes: u64,
+    pub crc: u32,
+    pub completion: u32,
+    pub pad2: [u64; 4usize],
+}
+#[test]
+fn bindgen_test_layout_fc_info_struct() {
+    const UNINIT: ::core::mem::MaybeUninit<fc_info_struct> = ::core::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::core::mem::size_of::<fc_info_struct>(),
+        64usize,
+        concat!("Size of: ", stringify!(fc_info_struct))
+    );
+    assert_eq!(
+        ::core::mem::align_of::<fc_info_struct>(),
+        8usize,
+        concat!("Alignment of ", stringify!(fc_info_struct))
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).state) as usize - ptr as usize },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(fc_info_struct),
+            "::",
+            stringify!(state)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).file_no) as usize - ptr as usize },
+        8usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(fc_info_struct),
+            "::",
+            stringify!(file_no)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).bytes) as usize - ptr as usize },
+        16usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(fc_info_struct),
+            "::",
+            stringify!(bytes)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).crc) as usize - ptr as usize },
+        24usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(fc_info_struct),
+            "::",
+            stringify!(crc)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).completion) as usize - ptr as usize },
+        28usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(fc_info_struct),
+            "::",
+            stringify!(completion)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).pad2) as usize - ptr as usize },
+        32usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(fc_info_struct),
+            "::",
+            stringify!(pad2)
+        )
+    );
+}
+extern "C" {
+    pub fn fc_pop() -> *mut fc_info_struct;
+}
 extern "C" {
     pub fn meta_recv() -> *mut u8;
 }

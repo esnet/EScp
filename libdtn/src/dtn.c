@@ -50,15 +50,6 @@ struct   network_obj* metaknob = NULL;
 
 uint32_t metabuf_sz = 4 * 1024 * 1024;
 
-struct fc_info_struct {
-  uint64_t state;
-  uint64_t file_no;
-  uint64_t bytes;
-  uint32_t crc;
-  uint32_t pad;
-  uint64_t pad2[4];
-};
-
 /* fc provides file completion information; It is primarily a many to one
  * model where IOW adds to the queue and rust:dtn_complete pulls off the
  * results. FIFO ring buffer. For in-flight stats, the file_stat table
@@ -107,13 +98,13 @@ struct fc_info_struct* fc_pop() {
 
   while (tail >= head) {
     // Tail is past head, wait for head
-    usleep(100);
+    ESCP_DELAY(1);
     head = atomic_load( &fc_info_head );
   }
 
   while ( !atomic_load( &fc_info[t].state ) ) {
     // Wait until IOW has marked fc as finished
-    usleep(100);
+    ESCP_DELAY(1);
   }
 
   memcpy_avx( &fc, &fc_info[t] );

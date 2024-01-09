@@ -176,12 +176,6 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
     listener = UnixListener::bind(flags.mgmt).unwrap();
     stream = listener.accept().unwrap().0 ;
 
-    /*
-    let mut response = String::new();
-    stream.read_to_string(&mut response);
-    eprintln!("Foo {:?}", response);
-    */
-
     let fd = stream.as_raw_fd();
     unsafe {
       file = std::fs::File::from_raw_fd(fd);
@@ -279,6 +273,16 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
     error!("Expected session init message");
     process::exit(-1);
   }
+
+  let (fc_in, fc_out) = crossbeam_channel::unbounded();
+  {
+    let nam = format!("fc_0");
+    let i = fc_in.clone();
+
+    thread::Builder::new().name(nam).spawn(move ||
+      fc_worker(i)).unwrap();
+  }
+
 
   let p = CString::new( port_start.to_string() ).unwrap();
 
@@ -662,18 +666,14 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
       }
     }
 
-    /*
+    let (fc_in, fc_out) = crossbeam_channel::unbounded();
     {
-      let nam = format!("fc_{}", j as i32);
-      let a = safe_args.clone();
-
-      let dir_o = dir_out.clone();
-      let fi = files_in.clone();
+      let nam = format!("fc_0");
+      let i = fc_in.clone();
 
       thread::Builder::new().name(nam).spawn(move ||
-        iterate_dir_worker(dir_o, fi, a)).unwrap();
+        fc_worker(i)).unwrap();
     }
-    */
 
     let bytes_total = iterate_files( flags.source, safe_args, dest.to_string(),
                                      flags.quiet, &fi );
@@ -779,6 +779,21 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
 #[ derive(Clone, Copy) ]
 struct dtn_args_wrapper {
   args: *mut dtn_args
+}
+
+fn fc_worker(fc_in: crossbeam_channel::Sender<(u64, u64, u32, u32)>) {
+
+  loop {
+    unsafe {
+      let fc = fc_pop();
+      
+      if fc == std::ptr::null_mut() {
+        continue;
+      }
+
+      _ = fc_in.send(((*fc).file_no, (*fc).bytes, (*fc).crc, (*fc).completion));
+    }
+  }
 }
 
 fn iterate_dir_worker(  dir_out:  crossbeam_channel::Receiver<(String, String, i32)>,

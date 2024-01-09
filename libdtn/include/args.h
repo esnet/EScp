@@ -14,6 +14,13 @@
 
 #include <syslog.h>
 
+// Generic delay for about 1ms
+#define ESCP_DELAY(x) {                                     \
+  struct timespec g = {0};                                  \
+  g.tv_nsec = x*1000*1000;                                  \
+  clock_nanosleep(CLOCK_MONOTONIC_COARSE, 0, &g, NULL);     \
+}
+
 #define THREAD_COUNT  32
 #define ESCP_MSG_COUNT 16384
 #define ESCP_MSG_SZ    128
@@ -56,6 +63,15 @@ extern uint64_t verbose_logging;
   if (verbose_logging) abort();                            \
   exit(-1);                                                \
 }
+
+struct fc_info_struct {
+  uint64_t state;
+  uint64_t file_no;
+  uint64_t bytes;
+  uint32_t crc;
+  uint32_t completion;
+  uint64_t pad2[4];
+};
 
 struct dtn_args {
   bool do_server;
@@ -141,6 +157,7 @@ static inline void dtn_error( char* msg ) {
   return;
 }
 
+struct fc_info_struct* fc_pop();
 
 struct dtn_args* args_new () ;
 void affinity_set ( struct dtn_args* args );

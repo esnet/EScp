@@ -235,5 +235,15 @@ void tx_init( struct dtn_args* args );
 int64_t get_bytes_io( struct dtn_args* dtn );
 char* human_write(uint64_t number, bool is_bytes);
 
+struct fc_info_struct {
+  uint64_t state;
+  uint64_t file_no;
+  uint64_t bytes;
+  uint32_t crc;
+  uint32_t completion;
+  uint64_t pad2[4];
+};
+struct fc_info_struct* fc_pop();
+
 uint8_t* meta_recv();
 void meta_complete();

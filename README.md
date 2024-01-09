@@ -94,8 +94,10 @@ apt install cmake libtool g++ libnuma-dev nasm autoconf automake
 curl https://sh.rustup.rs -sSf | sh
 . "$HOME/.cargo/env"
 
-# Build escp (This also build libdtn.a using build_libdtn.sh script)
+# Build escp
 cargo build
+# or directly call mk.sh script (needed if libdtn is modified)
+./mk.sh
 
 # You now need to install escp, the suggested path is to create an RPM/DEB
 cargo install cargo-deb
