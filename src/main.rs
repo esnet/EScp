@@ -46,10 +46,11 @@ mod session_init;
 include!("license.rs");
 include!("logging.rs");
 
-const msg_session_init:u16      =1;
-const msg_file_spec:u16         =2;
-const msg_session_complete:u16  =3;
-const msg_session_terminate:u16 =5;
+const msg_session_init:u16      = 8;
+const msg_file_spec:u16         =16;
+const msg_file_stat:u16         =17;
+const msg_session_complete:u16  = 1;
+const msg_session_terminate:u16 = 9;
 
 const config_items: [&str; 2]= [ "cpumask", "nodemask" ];
 
@@ -75,6 +76,7 @@ static GLOBAL_FILEOPEN_TAIL: std::sync::atomic::AtomicU64 = std::sync::atomic::A
 static GLOBAL_FILEOPEN_COUNT: usize = 4;
 static GLOBAL_DIROPEN_COUNT: usize = 2;
 static GLOBAL_FINO: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 
 fn _print_type_of<T>(_: &T) {
     println!("{}", std::any::type_name::<T>())
@@ -334,12 +336,74 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
 
   let mut filecount=0;
 
-  loop {
+  loop { // Until file transfer is finished
     let ptr = unsafe{ meta_recv() };
+    let mut v = Vec::new();
 
     if ptr.is_null() {
-      let interval = std::time::Duration::from_millis(20);
-      thread::sleep(interval);
+      let mut fct = 20;
+      let loop_start = std::time::Instant::now();
+      let mut did_init= false;
+      let mut builder = flatbuffers::FlatBufferBuilder::with_capacity(8192);
+
+      loop { // Check for file completion notices
+        let (mut file_no, mut bytes,mut crc,mut completion) = (0,0,0,0);
+        let mut finish_fc = false;
+
+        match fc_out.recv_timeout(std::time::Duration::from_millis(fct)) {
+          Ok((a,b,c,d)) => { (file_no,bytes,crc,completion) = (a,b,c,d); }
+          Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
+            finish_fc = true;
+          }
+          Err(_) => { error!("receive_main: error receiving file completion notifications"); return; }
+        }
+        fct = 1;
+
+        if !did_init && !finish_fc {
+          // debug!("fc: Setting did_init=true because data was received");
+          did_init = true;
+        }
+
+        if loop_start.elapsed().as_secs_f32() > 0.002 {
+          // debug!("fc: setting finish_fc because loop timeout is exceeded");
+          finish_fc = true;
+        }
+
+        if did_init && !finish_fc {
+          // debug!("fc: Adding file {}", file_no);
+          v.push(
+            file_spec::File::create( &mut builder,
+              &file_spec::FileArgs{
+                fino:     file_no,
+                sz:       bytes as i64,
+                crc:      crc,
+                complete: completion,
+                ..Default::default()
+              }));
+        }
+
+        if did_init && finish_fc {
+          let fi   = Some( builder.create_vector( &v ) );
+          let bu = file_spec::ESCP_file_list::create(
+            &mut builder, &file_spec::ESCP_file_listArgs{
+              files: fi,
+              fc_stat: true,
+              ..Default::default()
+            });
+          builder.finish( bu, None );
+          let buf = builder.finished_data();
+          let hdr = to_header( buf.len() as u32, msg_file_stat );
+          debug!("fc: Sending fc_state data for {} files, size is {}", v.len(), buf.len());
+          unsafe {
+            meta_send( buf.as_ptr() as *mut i8, hdr.as_ptr() as *mut i8, buf.len() as i32 );
+          }
+        }
+
+        if finish_fc {
+          break;
+        }
+      }
+
       continue;
     }
 
@@ -383,15 +447,15 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
 
           let fp = CString::new( full_path.clone() ).unwrap();
 
-
           for _ in 1..3 {
             if direct_mode {
               fd = open( fp.as_ptr(), (*args).flags | libc::O_DIRECT, 0o644 );
               if (fd == -1) && (*libc::__errno_location() == 22) {
+                debug!("Couldn't open '{}' using O_DIRECT; disabling direct mode", filename);
                 direct_mode = false;
                 continue;
               }
-            } else {
+            } else { 
               fd = open( fp.as_ptr(), (*args).flags, 0o644 );
             }
 
@@ -460,6 +524,8 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
 
 
 }
+
+
 
 fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
   let (host,dest_tmp,dest);
@@ -756,9 +822,14 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
       unsafe {
         meta_send( 0 as *mut i8, hdr.as_ptr() as *mut i8, 0 as i32 );
       }
+    }
 
+    while unsafe{ meta_recv() }.is_null() == true {
+      thread::sleep(std::time::Duration::from_millis(20));
+    }
+      /*
       loop {
-        let ptr = unsafe{ meta_recv() };
+        let ptr = 
 
         if ptr.is_null() {
           let interval = std::time::Duration::from_millis(20);
@@ -769,7 +840,7 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
         // This should be our loop for handling data from receiver
         break;
       }
-    }
+      */
   }
 
   debug!("Finished transfer");

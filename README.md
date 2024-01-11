@@ -116,6 +116,10 @@ sudo dpkg -i target/debian/escp_0.7.0_amd64.deb
 cargo install bindgen-cli --version 0.68.1
 bindgen libdtn/include/dtn.h -o bindings.rs --use-core  --generate-cstr
 
+# flatc version 23.5.26
+# < howto install flatc/flatbuffers >
+
+
 # You probably also want gdb/valgrind/whatever your favorite debug tools are
 
 ```

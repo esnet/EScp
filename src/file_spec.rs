@@ -28,6 +28,7 @@ impl<'a> ESCP_file_list<'a> {
   pub const VT_ROOT: flatbuffers::VOffsetT = 4;
   pub const VT_FILES: flatbuffers::VOffsetT = 6;
   pub const VT_COMPLETE: flatbuffers::VOffsetT = 8;
+  pub const VT_FC_STAT: flatbuffers::VOffsetT = 10;
 
   #[inline]
   pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
@@ -41,6 +42,7 @@ impl<'a> ESCP_file_list<'a> {
     let mut builder = ESCP_file_listBuilder::new(_fbb);
     if let Some(x) = args.files { builder.add_files(x); }
     if let Some(x) = args.root { builder.add_root(x); }
+    builder.add_fc_stat(args.fc_stat);
     builder.add_complete(args.complete);
     builder.finish()
   }
@@ -67,6 +69,13 @@ impl<'a> ESCP_file_list<'a> {
     // which contains a valid value in this slot
     unsafe { self._tab.get::<bool>(ESCP_file_list::VT_COMPLETE, Some(false)).unwrap()}
   }
+  #[inline]
+  pub fn fc_stat(&self) -> bool {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<bool>(ESCP_file_list::VT_FC_STAT, Some(false)).unwrap()}
+  }
 }
 
 impl flatbuffers::Verifiable for ESCP_file_list<'_> {
@@ -79,6 +88,7 @@ impl flatbuffers::Verifiable for ESCP_file_list<'_> {
      .visit_field::<flatbuffers::ForwardsUOffset<&str>>("root", Self::VT_ROOT, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<File>>>>("files", Self::VT_FILES, false)?
      .visit_field::<bool>("complete", Self::VT_COMPLETE, false)?
+     .visit_field::<bool>("fc_stat", Self::VT_FC_STAT, false)?
      .finish();
     Ok(())
   }
@@ -87,6 +97,7 @@ pub struct ESCP_file_listArgs<'a> {
     pub root: Option<flatbuffers::WIPOffset<&'a str>>,
     pub files: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<File<'a>>>>>,
     pub complete: bool,
+    pub fc_stat: bool,
 }
 impl<'a> Default for ESCP_file_listArgs<'a> {
   #[inline]
@@ -95,6 +106,7 @@ impl<'a> Default for ESCP_file_listArgs<'a> {
       root: None,
       files: None,
       complete: false,
+      fc_stat: false,
     }
   }
 }
@@ -117,6 +129,10 @@ impl<'a: 'b, 'b> ESCP_file_listBuilder<'a, 'b> {
     self.fbb_.push_slot::<bool>(ESCP_file_list::VT_COMPLETE, complete, false);
   }
   #[inline]
+  pub fn add_fc_stat(&mut self, fc_stat: bool) {
+    self.fbb_.push_slot::<bool>(ESCP_file_list::VT_FC_STAT, fc_stat, false);
+  }
+  #[inline]
   pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a>) -> ESCP_file_listBuilder<'a, 'b> {
     let start = _fbb.start_table();
     ESCP_file_listBuilder {
@@ -137,6 +153,7 @@ impl core::fmt::Debug for ESCP_file_list<'_> {
       ds.field("root", &self.root());
       ds.field("files", &self.files());
       ds.field("complete", &self.complete());
+      ds.field("fc_stat", &self.fc_stat());
       ds.finish()
   }
 }
@@ -168,6 +185,8 @@ impl<'a> File<'a> {
   pub const VT_MTIM_NANO: flatbuffers::VOffsetT = 22;
   pub const VT_CTIM_SEC: flatbuffers::VOffsetT = 24;
   pub const VT_CTIM_NANO: flatbuffers::VOffsetT = 26;
+  pub const VT_CRC: flatbuffers::VOffsetT = 28;
+  pub const VT_COMPLETE: flatbuffers::VOffsetT = 30;
 
   #[inline]
   pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
@@ -187,6 +206,8 @@ impl<'a> File<'a> {
     builder.add_atim_sec(args.atim_sec);
     builder.add_sz(args.sz);
     builder.add_fino(args.fino);
+    builder.add_complete(args.complete);
+    builder.add_crc(args.crc);
     builder.add_gid(args.gid);
     builder.add_uid(args.uid);
     if let Some(x) = args.name { builder.add_name(x); }
@@ -279,6 +300,20 @@ impl<'a> File<'a> {
     // which contains a valid value in this slot
     unsafe { self._tab.get::<u64>(File::VT_CTIM_NANO, Some(0)).unwrap()}
   }
+  #[inline]
+  pub fn crc(&self) -> u32 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<u32>(File::VT_CRC, Some(0)).unwrap()}
+  }
+  #[inline]
+  pub fn complete(&self) -> u32 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<u32>(File::VT_COMPLETE, Some(0)).unwrap()}
+  }
 }
 
 impl flatbuffers::Verifiable for File<'_> {
@@ -300,6 +335,8 @@ impl flatbuffers::Verifiable for File<'_> {
      .visit_field::<u64>("mtim_nano", Self::VT_MTIM_NANO, false)?
      .visit_field::<u64>("ctim_sec", Self::VT_CTIM_SEC, false)?
      .visit_field::<u64>("ctim_nano", Self::VT_CTIM_NANO, false)?
+     .visit_field::<u32>("crc", Self::VT_CRC, false)?
+     .visit_field::<u32>("complete", Self::VT_COMPLETE, false)?
      .finish();
     Ok(())
   }
@@ -317,6 +354,8 @@ pub struct FileArgs<'a> {
     pub mtim_nano: u64,
     pub ctim_sec: u64,
     pub ctim_nano: u64,
+    pub crc: u32,
+    pub complete: u32,
 }
 impl<'a> Default for FileArgs<'a> {
   #[inline]
@@ -334,6 +373,8 @@ impl<'a> Default for FileArgs<'a> {
       mtim_nano: 0,
       ctim_sec: 0,
       ctim_nano: 0,
+      crc: 0,
+      complete: 0,
     }
   }
 }
@@ -392,6 +433,14 @@ impl<'a: 'b, 'b> FileBuilder<'a, 'b> {
     self.fbb_.push_slot::<u64>(File::VT_CTIM_NANO, ctim_nano, 0);
   }
   #[inline]
+  pub fn add_crc(&mut self, crc: u32) {
+    self.fbb_.push_slot::<u32>(File::VT_CRC, crc, 0);
+  }
+  #[inline]
+  pub fn add_complete(&mut self, complete: u32) {
+    self.fbb_.push_slot::<u32>(File::VT_COMPLETE, complete, 0);
+  }
+  #[inline]
   pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a>) -> FileBuilder<'a, 'b> {
     let start = _fbb.start_table();
     FileBuilder {
@@ -421,6 +470,8 @@ impl core::fmt::Debug for File<'_> {
       ds.field("mtim_nano", &self.mtim_nano());
       ds.field("ctim_sec", &self.ctim_sec());
       ds.field("ctim_nano", &self.ctim_nano());
+      ds.field("crc", &self.crc());
+      ds.field("complete", &self.complete());
       ds.finish()
   }
 }

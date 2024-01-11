@@ -1,19 +1,22 @@
-// To recompile:
-//
-// flatc -r -b file_spec.fbs
-// mv file_spec_generated.rs ../src/file_spec.rs
-//
-// flatc is very sensitive to the version of flatbuffers used and should match.
-// You may need to manually compile flatc from:
-// 
-// https://github.com/google/flatbuffers
+/*
 
+To (re)compile:
+
+  flatc -r -b file_spec.fbs
+  mv file_spec_generated.rs ../src/file_spec.rs
+
+flatc is very sensitive to the version of flatbuffers used (See Readme.md)
+You may need to manually compile flatc from:
+
+  https://github.com/google/flatbuffers
+
+*/
 
 /*
 
-How we handle placing files on the remote system: 
+How we handle placing files on the remote system:
 
-By default all files specified end up at the root directory of target system: 
+By default all files specified end up at the root directory of target system:
 
 for instance in escp foo/bar/blah /tmp/baz/blob host:target
 
@@ -30,10 +33,11 @@ assuming the user specified the correct flags.
 
  */
 
-table ESCP_file_list { 
+table ESCP_file_list {
   root: string;        // Ideally root path for files
   files: [File];
   complete: bool;
+  fc_stat: bool;
 }
 
 table File {
@@ -43,12 +47,16 @@ table File {
   uid:  int32;
   gid:  int32;
   sz:   int64;
+
   atim_sec:  uint64;
   atim_nano: uint64;
   mtim_sec:  uint64;
   mtim_nano: uint64;
   ctim_sec:  uint64;
   ctim_nano: uint64;
+
+  crc:       uint32;
+  complete:  uint32;
 }
 
 root_type ESCP_file_list;
