@@ -270,9 +270,8 @@ struct file_stat_type* file_next( int id, struct file_stat_type* test_fs ) {
     }
 
     if ((k++&0xffff) == 0xffff) {
-      // We use CAS weak, which can fail sometimes. This is a workaround for
-      // that, although maybe we should just use CAS strong.
-      NFO("file_incrementfilecount");
+      // We use CAS weak, which can fail sometimes. If it did fail, we
+      // need to repeat our check, which we do below.
       file_incrementfilecount();
     }
 

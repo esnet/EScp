@@ -1,0 +1,14 @@
+id: net.es.EScp
+command: escp
+runtime: org.freedesktop.Platform
+runtime-version: "23.08"
+sdk: org.freedesktop.Sdk
+modules:
+  - name: escp
+    buildsystem: simple
+    build-commands:
+      - install -D escp /app/bin/escp
+    sources:
+      - type: file
+        path: ../target/release/escp
+   

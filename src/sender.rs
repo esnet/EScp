@@ -13,11 +13,11 @@ fn escp_sender(safe_args: dtn_args_wrapper, flags: EScp_Args) {
 
   (_, dest) = dest_tmp.split_at(1);
 
-
   initialize_logging("/tmp/escp.log.", safe_args);
   debug!("Transfer to host: {}, dest_files: {} ", host, dest );
 
   let (mut sin, mut sout, mut serr, file, proc, stream, fd);
+
   if flags.mgmt.len() > 0 {
     stream = UnixStream::connect(flags.mgmt)
             .expect("Unable to open mgmt connection");
@@ -78,58 +78,60 @@ fn escp_sender(safe_args: dtn_args_wrapper, flags: EScp_Args) {
     sout = proc.stdout.as_ref().unwrap();
     serr = proc.stderr.as_ref().unwrap();
   }
-  let (session_id, start_port, do_verbose, crypto_key, io_engine, nodirect, thread_count, block_sz, do_hash );
-
-  crypto_key = vec![ 0i8; 16 ];
-
-  unsafe {
-    (*args).do_crypto = true;
-    tx_init(args);
-    (*args).session_id = rand::random::<u64>();
-    session_id = (*args).session_id;
-    start_port = (*args).active_port;
-    io_engine  = (*args).io_engine;
-    nodirect  = (*args).nodirect;
-    do_hash = (*args).do_hash;
-    thread_count = (*args).thread_count;
-    block_sz = (*args).block;
-    do_verbose = verbose_logging  > 0;
-    std::intrinsics::copy_nonoverlapping( (*args).crypto_key.as_ptr() , crypto_key.as_ptr() as *mut u8, 16 );
-  }
-
-  let mut builder = flatbuffers::FlatBufferBuilder::with_capacity(128);
-  let ckey = Some( builder.create_vector( &crypto_key ) );
-
-  let bu = session_init::Session_Init::create(
-    &mut builder, &session_init::Session_InitArgs{
-      version_major: env!("CARGO_PKG_VERSION_MAJOR").parse::<i32>().unwrap(),
-      version_minor: env!("CARGO_PKG_VERSION_MINOR").parse::<i32>().unwrap(),
-      session_id: session_id,
-      port_start: start_port as i32,
-      do_verbose: do_verbose,
-      do_crypto: true,
-      crypto_key: ckey,
-      io_engine: io_engine,
-      no_direct: nodirect,
-      do_hash: do_hash,
-      thread_count: thread_count,
-      block_sz: block_sz,
-      ..Default::default()
-    }
-  );
-  builder.finish( bu, None );
-  let buf = builder.finished_data();
-
-  debug!("Sending session_init message of len: {}", buf.len() );
-
-  let mut hdr  = to_header( buf.len() as u32, msg_session_init );
-
-  _ = sin.write( &mut hdr );
-  _ = sin.write( buf );
-  _ = sin.flush();
 
   {
+    let (session_id, start_port, do_verbose, crypto_key, io_engine, nodirect, thread_count, block_sz, do_hash );
 
+    crypto_key = vec![ 0i8; 16 ];
+
+    unsafe {
+      (*args).do_crypto = true;
+      tx_init(args);
+      (*args).session_id = rand::random::<u64>();
+      session_id = (*args).session_id;
+      start_port = (*args).active_port;
+      io_engine  = (*args).io_engine;
+      nodirect  = (*args).nodirect;
+      do_hash = (*args).do_hash;
+      thread_count = (*args).thread_count;
+      block_sz = (*args).block;
+      do_verbose = verbose_logging  > 0;
+      std::intrinsics::copy_nonoverlapping( (*args).crypto_key.as_ptr() , crypto_key.as_ptr() as *mut u8, 16 );
+    }
+
+    let mut builder = flatbuffers::FlatBufferBuilder::with_capacity(128);
+    let ckey = Some( builder.create_vector( &crypto_key ) );
+
+    let bu = session_init::Session_Init::create(
+      &mut builder, &session_init::Session_InitArgs{
+        version_major: env!("CARGO_PKG_VERSION_MAJOR").parse::<i32>().unwrap(),
+        version_minor: env!("CARGO_PKG_VERSION_MINOR").parse::<i32>().unwrap(),
+        session_id: session_id,
+        port_start: start_port as i32,
+        do_verbose: do_verbose,
+        do_crypto: true,
+        crypto_key: ckey,
+        io_engine: io_engine,
+        no_direct: nodirect,
+        do_hash: do_hash,
+        thread_count: thread_count,
+        block_sz: block_sz,
+        ..Default::default()
+      }
+    );
+    builder.finish( bu, None );
+    let buf = builder.finished_data();
+
+    debug!("Sending session_init message of len: {}", buf.len() );
+
+    let mut hdr  = to_header( buf.len() as u32, msg_session_init );
+
+    _ = sin.write( &mut hdr );
+    _ = sin.write( buf );
+    _ = sin.flush();
+  }
+
+  {
     debug!("Wait for response from receiver");
 
     let mut buf = vec![ 0u8; 6 ];
@@ -179,136 +181,181 @@ fn escp_sender(safe_args: dtn_args_wrapper, flags: EScp_Args) {
       debug!("Starting Sender");
       tx_start (args);
     }
+  }
 
-    // For the purpose of metrics, we consider this to be the start of the
-    // transfer. At this point we have not read any data from disk but have
-    // configured the transfer endpoints.
+  // For the purpose of metrics, we consider this to be the start of the
+  // transfer. At this point we have not read any data from disk but have
+  // configured the transfer endpoints.
 
-    let start    = std::time::Instant::now();
+  let start    = std::time::Instant::now();
+  let mut fi;
+  let mut fc_hash: HashMap<u64, (u64, u32, u32)> = HashMap::new();
 
-    let mut fi;
+  unsafe {
+    fi = std::fs::File::from_raw_fd(1);
+    if !flags.quiet {
+      _ = fi.write(b"\rCalculating ... ");
+      _ = fi.flush();
+    }
+  }
+
+  let (fc_in, fc_out) = crossbeam_channel::unbounded();
+  {
+    let nam = format!("fc_0");
+    let i = fc_in.clone();
+
+    thread::Builder::new().name(nam).spawn(move ||
+      fc_worker(i)).unwrap();
+  }
+
+  let bytes_total = iterate_files( flags.source, safe_args, dest.to_string(),
+                                   flags.quiet, &fi );
+  debug!("Finished iterating files, total bytes={bytes_total}");
+
+  if bytes_total <= 0 {
+    eprintln!("Nothing to transfer, exiting.");
+    process::exit(1);
+  }
+
+  loop {
+    if flags.quiet {
+      break;
+    }
+
+    let interval = std::time::Duration::from_millis(200);
+    {
+      file_check(
+        &mut fc_hash,
+        std::time::Instant::now() + std::time::Duration::from_millis(200),
+        &fc_out
+      );
+      thread::sleep(interval);
+    }
+
+    let bytes_now;
+    unsafe {
+      bytes_now = get_bytes_io( args as *mut dtn_args );
+    }
+
+    if bytes_now == 0 {
+      continue;
+    }
+
+    let duration = start.elapsed();
+
+    let width= ((bytes_now as f32 / bytes_total as f32) * 40.0) as usize ;
+    let progress = format!("{1:=>0$}", width, ">");
+    let rate = bytes_now as f32/duration.as_secs_f32();
+
+    let eta= ((bytes_total - bytes_now) as f32 / rate) as i64;
+    let eta_human;
+
+    if eta > 3600 {
+      eta_human = format!("{:02}:{:02}:{:02}", eta/3600, (eta/60)%60, eta%60);
+    } else {
+      eta_human = format!("{:02}:{:02}", eta/60, eta%60);
+    }
+
+    let rate_str;
+    let tot_str;
 
     unsafe {
-      fi = std::fs::File::from_raw_fd(1);
-      if !flags.quiet {
-        _ = fi.write(b"\rCalculating ... ");
-        _ = fi.flush();
-      }
+      let tmp = human_write( rate as u64, !flags.bits );
+      rate_str= CStr::from_ptr(tmp).to_str().unwrap();
+
+      let tmp = human_write( bytes_now as u64, true );
+      tot_str= CStr::from_ptr(tmp).to_str().unwrap();
+
+      debug!("{}/{}", bytes_now, bytes_total);
     }
 
-    let (fc_in, fc_out) = crossbeam_channel::unbounded();
-    {
-      let nam = format!("fc_0");
-      let i = fc_in.clone();
-
-      thread::Builder::new().name(nam).spawn(move ||
-        fc_worker(i)).unwrap();
+    let units;
+    if flags.bits {
+      units = "bits"
+    } else {
+      units = "B"
     }
 
-    let bytes_total = iterate_files( flags.source, safe_args, dest.to_string(),
-                                     flags.quiet, &fi );
-    debug!("Finished iterating files, total bytes={bytes_total}");
 
-    if bytes_total <= 0 {
-      eprintln!("Nothing to transfer, exiting.");
-      process::exit(1);
+    let bar = format!("\r [{: <40}] {}B {}{}/s {: <10}",
+                      progress, tot_str, rate_str, units, eta_human);
+    _ = fi.write(bar.as_bytes());
+    _ = fi.flush();
+
+    if bytes_now >= bytes_total {
+      let s = format!("\rComplete: {tot_str}B at {rate_str}{units}/s in {:0.1}s {:38}\n",
+        duration.as_secs_f32(), "");
+      _ = fi.write(s.as_bytes());
+      _ = fi.flush();
+      break;
     }
+  }
 
+  // Finished sending data
+
+  {
+    // Let receiver know that we think the session is complete
+
+    let hdr = to_header( 0, msg_session_complete );
+    unsafe {
+      meta_send( 0 as *mut i8, hdr.as_ptr() as *mut i8, 0 as i32 );
+    }
+  }
+
+  // Wait for ACK
+
+  while unsafe{ meta_recv() }.is_null() == true {
+    thread::sleep(std::time::Duration::from_millis(20));
+  }
+
+    /*
     loop {
-      if flags.quiet {
-        break;
-      }
+      let ptr =
 
-      let interval = std::time::Duration::from_millis(200);
-      thread::sleep(interval);
-
-      let bytes_now;
-      unsafe {
-        bytes_now = get_bytes_io( args as *mut dtn_args );
-      }
-
-      if bytes_now == 0 {
+      if ptr.is_null() {
+        let interval = std::time::Duration::from_millis(20);
+        thread::sleep(interval);
         continue;
       }
 
-      let duration = start.elapsed();
-
-      let width= ((bytes_now as f32 / bytes_total as f32) * 40.0) as usize ;
-      let progress = format!("{1:=>0$}", width, ">");
-      let rate = bytes_now as f32/duration.as_secs_f32();
-
-      let eta= ((bytes_total - bytes_now) as f32 / rate) as i64;
-      let eta_human;
-
-      if eta > 3600 {
-        eta_human = format!("{:02}:{:02}:{:02}", eta/3600, (eta/60)%60, eta%60);
-      } else {
-        eta_human = format!("{:02}:{:02}", eta/60, eta%60);
-      }
-
-      let rate_str;
-      let tot_str;
-
-      unsafe {
-        let tmp = human_write( rate as u64, !flags.bits );
-        rate_str= CStr::from_ptr(tmp).to_str().unwrap();
-
-        let tmp = human_write( bytes_now as u64, true );
-        tot_str= CStr::from_ptr(tmp).to_str().unwrap();
-
-        debug!("{}/{}", bytes_now, bytes_total);
-      }
-
-      let units;
-      if flags.bits {
-        units = "bits"
-      } else {
-        units = "B"
-      }
-
-
-      let bar = format!("\r [{: <40}] {}B {}{}/s {: <10}",
-                        progress, tot_str, rate_str, units, eta_human);
-      _ = fi.write(bar.as_bytes());
-      _ = fi.flush();
-
-      if bytes_now >= bytes_total {
-        let s = format!("\rComplete: {tot_str}B at {rate_str}{units}/s in {:0.1}s {:38}\n",
-          duration.as_secs_f32(), "");
-        _ = fi.write(s.as_bytes());
-        _ = fi.flush();
-        break;
-      }
+      // This should be our loop for handling data from receiver
+      break;
     }
-
-    {
-      let hdr = to_header( 0, msg_session_complete );
-      unsafe {
-        meta_send( 0 as *mut i8, hdr.as_ptr() as *mut i8, 0 as i32 );
-      }
-    }
-
-    while unsafe{ meta_recv() }.is_null() == true {
-      thread::sleep(std::time::Duration::from_millis(20));
-    }
-      /*
-      loop {
-        let ptr = 
-
-        if ptr.is_null() {
-          let interval = std::time::Duration::from_millis(20);
-          thread::sleep(interval);
-          continue;
-        }
-
-        // This should be our loop for handling data from receiver
-        break;
-      }
-      */
-  }
+    */
 
   debug!("Finished transfer");
-  println!("");
+}
+
+fn file_check(
+    hm: &mut HashMap<u64, (u64, u32, u32)>,
+    run_until: std::time::Instant,
+    fc_out: &crossbeam_channel::Receiver<(u64, u64, u32, u32)> ) -> u64
+  {
+
+  loop {
+    debug!("file_check_loop");
+    let (fino,sz,crc,complete);
+    match fc_out.recv_timeout(std::time::Duration::from_millis(2)) {
+      Ok((a,b,c,d)) => { (fino, sz, crc, complete) = (a, b, c, d); }
+      Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
+        break;
+      }
+      Err(_) => { debug!("file_check: fc_out empty; returning"); return 0; }
+     }
+
+    (*hm).insert( fino, (sz,crc,complete) );
+
+  }
+
+  let interval = run_until - std::time::Instant::now();
+  if interval.as_secs_f32() > 0.0 {
+    debug!("file_check: still have {}s left", interval.as_secs_f32());
+    thread::sleep(interval);
+  } else {
+    debug!("file_check: time is over: {}", interval.as_secs_f32());
+  }
+
+  return 0;
 }
 
 fn iterate_dir_worker(  dir_out:  crossbeam_channel::Receiver<(String, String, i32)>,
