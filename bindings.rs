@@ -2246,6 +2246,9 @@ extern "C" {
     pub fn get_bytes_io(dtn: *mut dtn_args) -> i64;
 }
 extern "C" {
+    pub fn tx_getclosed() -> i64;
+}
+extern "C" {
     pub fn human_write(number: u64, is_bytes: bool) -> *mut ::core::ffi::c_char;
 }
 #[repr(C)]
@@ -2335,6 +2338,9 @@ fn bindgen_test_layout_fc_info_struct() {
 }
 extern "C" {
     pub fn fc_pop() -> *mut fc_info_struct;
+}
+extern "C" {
+    pub fn fc_push(file_no: u64, bytes: u64, crc: u32);
 }
 extern "C" {
     pub fn meta_recv() -> *mut u8;

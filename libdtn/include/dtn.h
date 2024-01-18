@@ -233,6 +233,8 @@ void dtn_waituntilready( void* arg );
 void tx_init( struct dtn_args* args );
 
 int64_t get_bytes_io( struct dtn_args* dtn );
+int64_t tx_getclosed();
+
 char* human_write(uint64_t number, bool is_bytes);
 
 struct fc_info_struct {
@@ -244,6 +246,7 @@ struct fc_info_struct {
   uint64_t pad2[4];
 };
 struct fc_info_struct* fc_pop();
+void fc_push( uint64_t file_no, uint64_t bytes, uint32_t crc );
 
 uint8_t* meta_recv();
 void meta_complete();

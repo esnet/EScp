@@ -86,6 +86,7 @@ void fc_push( uint64_t file_no, uint64_t bytes, uint32_t crc ) {
   fc.file_no = file_no;
   fc.bytes = bytes;
   fc.crc = crc;
+  fc.completion = 4;
 
   memcpy_avx( &fc_info[h], &fc );
 }
@@ -114,7 +115,8 @@ struct fc_info_struct* fc_pop() {
 }
 
 void dtn_init() {
-  fc_info = (struct fc_info_struct*) aligned_alloc( 64, fc_info_cnt*64 );
+  atomic_store( &fc_info, (struct fc_info_struct*) aligned_alloc(64, fc_info_cnt*64) );
+  memset( fc_info, 0, fc_info_cnt*64 );
   VRFY( fc_info, "bad alloc" );
   VRFY( sizeof(struct file_stat_type) == 64, "ASSERT struct file_stat_type" );
   VRFY( sizeof(struct fc_info_struct) == 64, "ASSERT struct fc_info_struct" );
@@ -892,6 +894,7 @@ void* tx_worker( void* args ) {
           int64_t res = atomic_fetch_add( &tx_filesclosed, 1 );
           DBG("[%2d] Worker finished with fn=%ld files_closed=%ld; closing fd=%d",
               id, fs_lcl.file_no, res, fs_lcl.fd);
+          fc_push(fs_lcl.file_no, atomic_load(&fs->bytes_total), atomic_load(&fs->crc));
           wipe ++;
         } else {
           DBG("[%2d] Worker finished with fn=%ld", id, fs_lcl.file_no);
@@ -1183,6 +1186,10 @@ void print_args ( struct dtn_args* args ) {
 
 int64_t get_bytes_io( struct dtn_args* dtn ) {
   return atomic_load( &dtn->bytes_io );
+}
+
+int64_t get_files_total( struct dtn_args* dtn ) {
+  return atomic_load( &dtn->files_closed );
 }
 
 void tx_init( struct dtn_args* args ) {

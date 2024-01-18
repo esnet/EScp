@@ -190,6 +190,7 @@ fn escp_sender(safe_args: dtn_args_wrapper, flags: EScp_Args) {
   let start    = std::time::Instant::now();
   let mut fi;
   let mut fc_hash: HashMap<u64, (u64, u32, u32)> = HashMap::new();
+  let mut files_ok=0;
 
   unsafe {
     fi = std::fs::File::from_raw_fd(1);
@@ -199,13 +200,13 @@ fn escp_sender(safe_args: dtn_args_wrapper, flags: EScp_Args) {
     }
   }
 
-  let (fc_in, fc_out) = crossbeam_channel::unbounded();
+  let fc_out;
   {
+    let fc_in;
+    (fc_in, fc_out) = crossbeam_channel::unbounded();
     let nam = format!("fc_0");
-    let i = fc_in.clone();
-
     thread::Builder::new().name(nam).spawn(move ||
-      fc_worker(i)).unwrap();
+      fc_worker(fc_in)).unwrap();
   }
 
   let bytes_total = iterate_files( flags.source, safe_args, dest.to_string(),
@@ -222,20 +223,17 @@ fn escp_sender(safe_args: dtn_args_wrapper, flags: EScp_Args) {
       break;
     }
 
-    let interval = std::time::Duration::from_millis(200);
     {
+      // Note the delay below; file_check usually delays for interval specified
       file_check(
         &mut fc_hash,
         std::time::Instant::now() + std::time::Duration::from_millis(200),
+        &mut files_ok,
         &fc_out
       );
-      thread::sleep(interval);
     }
 
-    let bytes_now;
-    unsafe {
-      bytes_now = get_bytes_io( args as *mut dtn_args );
-    }
+    let bytes_now = unsafe { get_bytes_io( args as *mut dtn_args ) };
 
     if bytes_now == 0 {
       continue;
@@ -276,7 +274,6 @@ fn escp_sender(safe_args: dtn_args_wrapper, flags: EScp_Args) {
       units = "B"
     }
 
-
     let bar = format!("\r [{: <40}] {}B {}{}/s {: <10}",
                       progress, tot_str, rate_str, units, eta_human);
     _ = fi.write(bar.as_bytes());
@@ -290,6 +287,31 @@ fn escp_sender(safe_args: dtn_args_wrapper, flags: EScp_Args) {
       break;
     }
   }
+
+  unsafe { fc_push( 0, 0, 0 ); }
+
+  loop {
+    let files_now = unsafe { tx_getclosed() };
+
+    if files_ok as i64 >= files_now {
+      debug!("Exiting because {files_ok} >= {files_now}");
+      break;
+    }
+
+    let res = file_check(
+      &mut fc_hash,
+      std::time::Instant::now() + std::time::Duration::from_millis(20),
+      &mut files_ok,
+      &fc_out
+    );
+
+    if res==0 {
+      debug!("Exiting because file_check returned EOQ");
+      break;
+    }
+  }
+
+
 
   // Finished sending data
 
@@ -329,21 +351,81 @@ fn escp_sender(safe_args: dtn_args_wrapper, flags: EScp_Args) {
 fn file_check(
     hm: &mut HashMap<u64, (u64, u32, u32)>,
     run_until: std::time::Instant,
+    files_ok: &mut u64,
     fc_out: &crossbeam_channel::Receiver<(u64, u64, u32, u32)> ) -> u64
-  {
+{
 
-  loop {
-    debug!("file_check_loop");
-    let (fino,sz,crc,complete);
-    match fc_out.recv_timeout(std::time::Duration::from_millis(2)) {
-      Ok((a,b,c,d)) => { (fino, sz, crc, complete) = (a, b, c, d); }
-      Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
-        break;
+  let ptr = unsafe { meta_recv() };
+
+  if ptr.is_null() != true {
+
+    let b = unsafe { slice::from_raw_parts(ptr, 6).to_vec() };
+    let (sz, t) = from_header( b );
+
+    if t != msg_file_stat {
+      info!("file_check: Got unexpected type={t}");
+      return 0;
+    }
+
+    let c = unsafe { slice::from_raw_parts(ptr.add(16), sz as usize).to_vec() };
+    let fs = flatbuffers::root::<file_spec::ESCP_file_list>(c.as_slice()).unwrap();
+
+    for e in fs.files().unwrap() {
+
+      let (rx_fino, rx_sz, rx_crc, rx_complete) = (e.fino(), e.sz(), e.crc(), e.complete());
+      debug!("file_check on {} {} {} {}", rx_fino, rx_sz, rx_crc, rx_complete);
+
+      if !(*hm).contains_key(&rx_fino) {
+        loop {
+          // loop until we hm contains key or fc_out returns error
+          let (tx_fino, sz, crc, complete);
+
+          match fc_out.recv_timeout(std::time::Duration::from_millis(2)) {
+            Ok((a,b,c,d)) => { (tx_fino, sz, crc, complete) = (a, b, c, d); }
+            Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
+              continue;
+            }
+            Err(_) => { debug!("file_check: fc_out empty; returning"); return 0; }
+          }
+
+          debug!("fc_pop() returned {} {} {} {}", tx_fino, sz, crc, complete);
+
+          (*hm).insert( tx_fino, (sz,crc,complete) );
+          if rx_fino == tx_fino {
+            break;
+          }
+        }
       }
-      Err(_) => { debug!("file_check: fc_out empty; returning"); return 0; }
-     }
 
-    (*hm).insert( fino, (sz,crc,complete) );
+      let (sz,crc,complete) = (*hm).get(&rx_fino).unwrap();
+      let sz = *sz;
+      let crc = *crc;
+      let complete = *complete;
+
+
+      if complete != 4 {
+        debug!("Skipping {} {} {:#X} {}; Not complete.", rx_fino, sz, crc, complete);
+        continue;
+      }
+
+      if sz as i64 != rx_sz {
+        info!("sz mismatch on {} {}!={}", rx_fino, sz, rx_sz);
+        continue;
+      }
+
+      if crc != rx_crc {
+        // Should always be able to test CRC because if CRC not enabled
+        // entry should be zero
+        info!("sz mismatch on {} {}!={}", rx_fino, crc, rx_crc);
+      }
+
+      *files_ok += 1;
+
+      debug!("Matched successfully {}", rx_fino);
+      _ = (*hm).remove(&rx_fino);
+    }
+
+    unsafe{ meta_complete(); }
 
   }
 
@@ -355,7 +437,7 @@ fn file_check(
     debug!("file_check: time is over: {}", interval.as_secs_f32());
   }
 
-  return 0;
+  return 1;
 }
 
 fn iterate_dir_worker(  dir_out:  crossbeam_channel::Receiver<(String, String, i32)>,

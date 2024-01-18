@@ -53,5 +53,5 @@ parts:
       - autoconf
       - libnuma-dev
       - automake
-    stage-packages:
-      - libnuma1
+    # stage-packages:
+    #   - libnuma1
