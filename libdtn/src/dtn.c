@@ -743,9 +743,9 @@ void* rx_worker( void* arg ) {
             fc_push( file_no, fs.bytes, atomic_load(&fs_ptr->crc) );
           else
             fc_push( file_no, fs.bytes, 0 );
-          fob->truncate(fob, fs.bytes);
 
           if (fs.bytes != written) {
+            fob->truncate(fob, fs.bytes);
             DBG("[%2d] FIHDR_SHORT: close with truncate fn=%ld ", id, file_no);
           } else {
             DBG("[%2d] FIHDR_SHORT: close on fn=%ld ", id, file_no);
