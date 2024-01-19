@@ -221,7 +221,7 @@ struct file_stat_type* file_wait( uint64_t fileno, struct file_stat_type* test_f
   }
 
   VRFY(0, "Couldn't convert fileno");
-
+  return 0;
 }
 
 
@@ -310,7 +310,7 @@ struct file_stat_type* file_next( int id, struct file_stat_type* test_fs ) {
   }
 
   VRFY( 0, "[%2d] Error claiming file fn=%ld", id, fh );
-
+  return 0;
 }
 
 uint64_t  file_iow_remove( struct file_stat_type* fs, int id ) {

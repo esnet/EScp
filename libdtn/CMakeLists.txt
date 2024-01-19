@@ -24,7 +24,8 @@ set(CMAKE_C_FLAGS_DEBUG "-g -march=sandybridge -pthread")
 
 add_definitions("-Wall -Wno-unused-result -Wno-stringop-truncation -DO_VERSION=\\\"${ver}\\\"")
 
-
+#add_compile_options(-fsanitize=address)
+#add_link_options(-fsanitize=address)
 
 # Package defines
 

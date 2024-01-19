@@ -116,8 +116,8 @@ struct fc_info_struct* fc_pop() {
 
 void dtn_init() {
   atomic_store( &fc_info, (struct fc_info_struct*) aligned_alloc(64, fc_info_cnt*64) );
-  memset( fc_info, 0, fc_info_cnt*64 );
   VRFY( fc_info, "bad alloc" );
+  memset( fc_info, 0, fc_info_cnt*64 );
   VRFY( sizeof(struct file_stat_type) == 64, "ASSERT struct file_stat_type" );
   VRFY( sizeof(struct fc_info_struct) == 64, "ASSERT struct fc_info_struct" );
 }
@@ -738,10 +738,14 @@ void* rx_worker( void* arg ) {
             id, written, fs.bytes, file_no, offset, sz );
 
         if ( fs.bytes && fs.bytes <= written  ) {
+
+          if (dtn->do_hash)
+            fc_push( file_no, fs.bytes, atomic_load(&fs_ptr->crc) );
+          else
+            fc_push( file_no, fs.bytes, 0 );
+          fob->truncate(fob, fs.bytes);
+
           if (fs.bytes != written) {
-            if (dtn->do_hash)
-              fc_push( file_no, fs.bytes, atomic_load(&fs_ptr->crc) );
-            fob->truncate(fob, fs.bytes);
             DBG("[%2d] FIHDR_SHORT: close with truncate fn=%ld ", id, file_no);
           } else {
             DBG("[%2d] FIHDR_SHORT: close on fn=%ld ", id, file_no);

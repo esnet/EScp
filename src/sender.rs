@@ -209,8 +209,9 @@ fn escp_sender(safe_args: dtn_args_wrapper, flags: EScp_Args) {
       fc_worker(fc_in)).unwrap();
   }
 
+  let mut files_total = 0;
   let bytes_total = iterate_files( flags.source, safe_args, dest.to_string(),
-                                   flags.quiet, &fi );
+                                   flags.quiet, &fi, &mut files_total );
   debug!("Finished iterating files, total bytes={bytes_total}");
 
   if bytes_total <= 0 {
@@ -280,7 +281,7 @@ fn escp_sender(safe_args: dtn_args_wrapper, flags: EScp_Args) {
     _ = fi.flush();
 
     if bytes_now >= bytes_total {
-      let s = format!("\rComplete: {tot_str}B at {rate_str}{units}/s in {:0.1}s {:38}\n",
+      let s = format!("\rComplete: {tot_str}B in {files_total} files at {rate_str}{units}/s in {:0.1}s {:38}\n",
         duration.as_secs_f32(), "");
       _ = fi.write(s.as_bytes());
       _ = fi.flush();
@@ -627,7 +628,7 @@ fn iterate_file_worker(
 }
 
 
-fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, dest_path: String, quiet: bool, mut sout: &std::fs::File ) -> i64 {
+fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, dest_path: String, quiet: bool, mut sout: &std::fs::File, ft: &mut u64 ) -> i64 {
 
   // we use clean_path instead of path.canonicalize() because the engines are
   // responsible for implementing there own view of the file system and we can't
@@ -812,6 +813,8 @@ fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, dest_path: String
       break;
     }
   }
+
+  *ft = files_total;
 
   debug!("iterate_files: is finished");
   return bytes_total;
