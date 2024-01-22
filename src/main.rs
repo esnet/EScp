@@ -172,7 +172,7 @@ fn fc_worker(fc_in: crossbeam_channel::Sender<(u64, u64, u32, u32)>) {
   loop {
     unsafe {
       let fc = fc_pop();
-      
+
       if fc == std::ptr::null_mut() {
         continue;
       }

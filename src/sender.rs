@@ -331,6 +331,8 @@ fn escp_sender(safe_args: dtn_args_wrapper, flags: EScp_Args) {
     thread::sleep(std::time::Duration::from_millis(20));
   }
 
+  meta_complete();
+
     /*
     loop {
       let ptr =
@@ -358,14 +360,14 @@ fn file_check(
 
   let ptr = unsafe { meta_recv() };
 
-  if ptr.is_null() != true {
+  while ptr.is_null() != true {
 
     let b = unsafe { slice::from_raw_parts(ptr, 6).to_vec() };
     let (sz, t) = from_header( b );
 
     if t != msg_file_stat {
-      info!("file_check: Got unexpected type={t}");
-      return 0;
+      info!("file_check: Got unexpected type={t}, ignoring");
+      break;
     }
 
     let c = unsafe { slice::from_raw_parts(ptr.add(16), sz as usize).to_vec() };
@@ -374,7 +376,7 @@ fn file_check(
     for e in fs.files().unwrap() {
 
       let (rx_fino, rx_sz, rx_crc, rx_complete) = (e.fino(), e.sz(), e.crc(), e.complete());
-      debug!("file_check on {} {} {} {}", rx_fino, rx_sz, rx_crc, rx_complete);
+      debug!("file_check on {} {} {:#X} {}", rx_fino, rx_sz, rx_crc, rx_complete);
 
       if !(*hm).contains_key(&rx_fino) {
         loop {
@@ -389,7 +391,7 @@ fn file_check(
             Err(_) => { debug!("file_check: fc_out empty; returning"); return 0; }
           }
 
-          debug!("fc_pop() returned {} {} {} {}", tx_fino, sz, crc, complete);
+          debug!("fc_pop() returned {} {} {:#X} {}", tx_fino, sz, crc, complete);
 
           (*hm).insert( tx_fino, (sz,crc,complete) );
           if rx_fino == tx_fino {
@@ -417,7 +419,7 @@ fn file_check(
       if crc != rx_crc {
         // Should always be able to test CRC because if CRC not enabled
         // entry should be zero
-        info!("sz mismatch on {} {}!={}", rx_fino, crc, rx_crc);
+        info!("sz mismatch on {} {:#X}!={:#X}", rx_fino, crc, rx_crc);
       }
 
       *files_ok += 1;
@@ -426,9 +428,14 @@ fn file_check(
       _ = (*hm).remove(&rx_fino);
     }
 
-    unsafe{ meta_complete(); }
+    break;
 
   }
+
+  if ptr.is_null() != true {
+    unsafe{ meta_complete(); }
+  }
+
 
   let interval = run_until - std::time::Instant::now();
   if interval.as_secs_f32() > 0.0 {

@@ -58,7 +58,7 @@ uint32_t metabuf_sz = 4 * 1024 * 1024;
  * file_stat. I think this implementation is easier because it makes the
  * process of reading the file completion information less time critical
  * and avoids the need to skip over or iterate the fs struct.
- */ 
+ */
 
 struct fc_info_struct* fc_info;
 uint32_t fc_info_cnt = 16384;
@@ -69,7 +69,7 @@ void fc_push( uint64_t file_no, uint64_t bytes, uint32_t crc ) {
   uint64_t head = atomic_fetch_add( &fc_info_head, 1 );
   uint64_t tail = atomic_load( &fc_info_tail );
   uint64_t h = head % fc_info_cnt;
-  struct fc_info_struct fc __attribute__ ((aligned(64))) = {0}; 
+  struct fc_info_struct fc __attribute__ ((aligned(64))) = {0};
 
   while ((tail + fc_info_cnt) <= head) {
     // Wait until tail catches up
@@ -115,9 +115,16 @@ struct fc_info_struct* fc_pop() {
 }
 
 void dtn_init() {
-  atomic_store( &fc_info, (struct fc_info_struct*) aligned_alloc(64, fc_info_cnt*64) );
-  VRFY( fc_info, "bad alloc" );
+  char* a = aligned_alloc( 4096, (fc_info_cnt*64)+8192 );
+  VRFY( a, "bad alloc" );
+
+  atomic_store( &fc_info, (struct fc_info_struct*) (((uint64_t)a)+4096L) );
+
+  VRFY( mprotect( a, 4096, PROT_NONE ) == 0, "mprotect");
+  VRFY( mprotect( (void*) (((uint64_t)a)+4096L+(fc_info_cnt*64)), 4096, PROT_NONE ) == 0, "mprotect");
+
   memset( fc_info, 0, fc_info_cnt*64 );
+
   VRFY( sizeof(struct file_stat_type) == 64, "ASSERT struct file_stat_type" );
   VRFY( sizeof(struct fc_info_struct) == 64, "ASSERT struct fc_info_struct" );
 }
@@ -302,8 +309,17 @@ struct network_obj* network_initrx ( int socket,
 }
 
 void meta_init( struct network_obj* knob ) {
+  char* a = aligned_alloc( 4096, metabuf_sz + 8192 );
+  VRFY( a, "bad alloc" );
+
+
+  VRFY( mprotect( a, 4096, PROT_NONE ) == 0, "mprotect");
+  VRFY( mprotect( (void*) (((uint64_t)a)+4096L+(metabuf_sz)), 4096, PROT_NONE ) == 0, "mprotect");
+
+  atomic_store( &metabuf,  (uint8_t*) (((uint64_t)a)+4096L) );
   atomic_store( &metaknob, knob );
-  atomic_store( &metabuf,  aligned_alloc( 64, metabuf_sz ));
+
+  memset( metabuf, 0, metabuf_sz );
 
   knob->block = 'meta';
 }
@@ -359,7 +375,7 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
     uint64_t tail = atomic_load ( &metatail );
     uint8_t* buf  = atomic_load ( &metabuf  );
 
-    VRFY ( buf != NULL, "bad alloc" );
+    VRFY ( buf != NULL, "failed assertion, metabuf!=null" );
 
     int h = ((head*64) % metabuf_sz)/64;
     int t = ((tail*64) % metabuf_sz)/64;
@@ -535,9 +551,7 @@ void dtn_waituntilready( void* arg ) {
     usleep(10);
 }
 
-// All of the meta threads are designed to work correctly between threads, but
-// are not thread safe. For instance a thread can call the meta_recv function,
-// but it should be the only thread calling that function.
+// meta_ functions are SPSC;
 
 uint8_t* meta_recv() {
   uint64_t head = atomic_load( &metahead );
