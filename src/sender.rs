@@ -331,7 +331,7 @@ fn escp_sender(safe_args: dtn_args_wrapper, flags: EScp_Args) {
     thread::sleep(std::time::Duration::from_millis(20));
   }
 
-  meta_complete();
+  unsafe { meta_complete(); }
 
     /*
     loop {
