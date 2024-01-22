@@ -1,4 +1,4 @@
-fn escp_sender(safe_args: dtn_args_wrapper, flags: EScp_Args) {
+fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
   let args = safe_args.args;
 
   let (host,dest_tmp,dest);
@@ -13,7 +13,7 @@ fn escp_sender(safe_args: dtn_args_wrapper, flags: EScp_Args) {
 
   (_, dest) = dest_tmp.split_at(1);
 
-  initialize_logging("/tmp/escp.log.", safe_args);
+  logging::initialize_logging("/tmp/escp.log.", safe_args);
   debug!("Transfer to host: {}, dest_files: {} ", host, dest );
 
   let (mut sin, mut sout, mut serr, file, proc, stream, fd);
@@ -86,7 +86,7 @@ fn escp_sender(safe_args: dtn_args_wrapper, flags: EScp_Args) {
 
     unsafe {
       (*args).do_crypto = true;
-      tx_init(args);
+      tx_init(args as *mut dtn_args);
       (*args).session_id = rand::random::<u64>();
       session_id = (*args).session_id;
       start_port = (*args).active_port;
@@ -174,12 +174,12 @@ fn escp_sender(safe_args: dtn_args_wrapper, flags: EScp_Args) {
       let host_str = CString::new( host ).unwrap();
 
       debug!("Sender params: {:?} {:?}", host_str, d_str);
-      (*args).sock_store[0] =  dns_lookup( host_str.as_ptr() as *mut i8 , d_str.as_ptr() as *mut i8);
+      (*(args as *mut dtn_args)).sock_store[0] =  dns_lookup( host_str.as_ptr() as *mut i8 , d_str.as_ptr() as *mut i8);
       (*args).sock_store_count = 1;
       (*args).active_port = helo.port_start() as u16;
 
       debug!("Starting Sender");
-      tx_start (args);
+      tx_start (args as *mut dtn_args);
     }
   }
 
@@ -450,7 +450,7 @@ fn file_check(
 
 fn iterate_dir_worker(  dir_out:  crossbeam_channel::Receiver<(String, String, i32)>,
                         files_in: crossbeam_channel::Sender<(String, String)>,
-                        args:     dtn_args_wrapper ) {
+                        args:     logging::dtn_args_wrapper ) {
 
   let (close, fdopendir, readdir);
   unsafe {
@@ -504,7 +504,7 @@ fn iterate_file_worker(
   files_out: crossbeam_channel::Receiver<(String, String)>,
   dir_in:    crossbeam_channel::Sender<(String, String, i32)>,
   msg_in:    crossbeam_channel::Sender<(String, u64, stat)>,
-  args:      dtn_args_wrapper) {
+  args:      logging::dtn_args_wrapper) {
 
   let mode:i32 = 0;
   let (mut direct_mode, mut recursive) = (true, false);
@@ -565,7 +565,7 @@ fn iterate_file_worker(
         continue;
       }
 
-      let res = ((*(*args.args).fob).fstat.unwrap())( fd, &mut st as * mut _ );
+      let res = ((*(*(args.args as *mut dtn_args)).fob).fstat.unwrap())( fd, &mut st as * mut _ );
       if res == -1 {
         error!("trying to stat {:?} {}", c_str,
                   std::io::Error::last_os_error().raw_os_error().unwrap() );
@@ -635,7 +635,7 @@ fn iterate_file_worker(
 }
 
 
-fn iterate_files ( files: Vec<String>, args: dtn_args_wrapper, dest_path: String, quiet: bool, mut sout: &std::fs::File, ft: &mut u64 ) -> i64 {
+fn iterate_files ( files: Vec<String>, args: logging::dtn_args_wrapper, dest_path: String, quiet: bool, mut sout: &std::fs::File, ft: &mut u64 ) -> i64 {
 
   // we use clean_path instead of path.canonicalize() because the engines are
   // responsible for implementing there own view of the file system and we can't

@@ -11,7 +11,7 @@ extern crate rand;
 
 // use hwloc::Topology;
 use clap::Parser;
-use std::{env, process, thread, collections::HashMap, sync::mpsc};
+use std::{env, process, thread, collections::HashMap};
 use std::ffi::{CString, CStr};
 use regex::Regex;
 use subprocess::{Popen, PopenConfig, Redirection};
@@ -32,8 +32,6 @@ use clean_path;
 
 use log::{{debug, info, error}};
 
-use shadow_rs::shadow;
-shadow!(build);
 
 
 #[allow(dead_code, unused_imports)]
@@ -59,10 +57,11 @@ macro_rules! sess_init {
   }
 }
 
-include!("logging.rs");
+mod logging;
+// include!("logging.rs");
 include!("receiver.rs");
 include!("sender.rs");
-include!("dtn.rs");
+// include!("dtn.rs");
 
 const msg_session_init:u16      = 8;
 const msg_file_spec:u16         =16;
@@ -153,18 +152,15 @@ fn from_header( i: Vec<u8> ) -> ( u32, u16 ) {
 
 
 fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
-  let safe_args = dtn_args_wrapper{ args: args };
+  let safe_args = logging::dtn_args_wrapper{ args: args as *mut logging::dtn_args };
+  unsafe impl Send for logging::dtn_args_wrapper {}
+  unsafe impl Sync for logging::dtn_args_wrapper {}
 
   if unsafe { (*args).do_server } {
     escp_receiver( safe_args, flags );
   } else {
     escp_sender( safe_args, flags );
   }
-}
-
-#[ derive(Clone, Copy) ]
-struct dtn_args_wrapper {
-  args: *mut dtn_args
 }
 
 fn fc_worker(fc_in: crossbeam_channel::Sender<(u64, u64, u32, u32)>) {
@@ -189,7 +185,7 @@ fn fc_worker(fc_in: crossbeam_channel::Sender<(u64, u64, u32, u32)>) {
 
 
 #[derive(Parser, Debug)]
-#[command(  author, long_version=build::CLAP_LONG_VERSION, about, long_about = None )]
+#[command(  author, long_version=logging::build::CLAP_LONG_VERSION, about, long_about = None )]
 struct EScp_Args {
    /// Source Files/Path
    #[arg(required=true)]
@@ -357,9 +353,9 @@ fn main() {
 
   let config = load_yaml("/etc/escp.conf");
 
-  let args: Vec<String> = env::args().collect();
-  let path = std::path::Path::new( &args[0] );
-  let cmd = path.file_name().expect("COWS!").to_str().unwrap() ;
+  // let args: Vec<String> = env::args().collect();
+  // let path = std::path::Path::new( &args[0] );
+  // let cmd = path.file_name().expect("COWS!").to_str().unwrap() ;
 
   let args =
   unsafe {
@@ -399,6 +395,7 @@ fn main() {
   ]);
 
 
+  /*
   if cmd == "dtn" {
     let flags = DTN_Args::parse();
     // println!("Files={:?}", flags.file );
@@ -437,10 +434,12 @@ fn main() {
       (*args).window = int_from_human(flags.window.clone()) as u32;
 
       print_args( args );
-      do_dtn( args, flags );
+      // do_dtn( args, flags );
     }
 
-  } else {
+  } else
+  */
+  {
     let flags = EScp_Args::parse();
 
     unsafe {

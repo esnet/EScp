@@ -1,4 +1,4 @@
-fn fileopen( queue: std::sync::mpsc::Receiver<String>, args: dtn_args_wrapper ) {
+fn fileopen( queue: std::sync::mpsc::Receiver<String>, args: logging::dtn_args_wrapper ) {
   let mut i:u64 = 0;
 
   loop {
@@ -32,9 +32,10 @@ fn fileopen( queue: std::sync::mpsc::Receiver<String>, args: dtn_args_wrapper ) 
         continue;
       }
 
-      let mut st: stat = std::mem::zeroed();
+      // let mut st: stat = std::mem::zeroed();
 
-      let res = ((*(*args.args).fob).fstat.unwrap())( fd, &mut st as *mut stat);
+      // let res = ((*(*args.args).fob).fstat.unwrap())( fd, &mut st as *mut stat);
+      let res = 0;
       if res == -1 {
         info!("RUST Got an error trying to stat {:?} {}", c_str,
                   std::io::Error::last_os_error().raw_os_error().unwrap() );
@@ -42,7 +43,7 @@ fn fileopen( queue: std::sync::mpsc::Receiver<String>, args: dtn_args_wrapper ) 
       }
 
       i += 1;
-      file_addfile( i, fd, 0, st.st_size );
+      // file_addfile( i, fd, 0, st.st_size );
 
     }
     debug!( "opened fn: {} with fd: {}", i, fd );
@@ -52,17 +53,17 @@ fn fileopen( queue: std::sync::mpsc::Receiver<String>, args: dtn_args_wrapper ) 
 
 
 // Typically used to manually launch DTN transfers or execute disk tests
-fn do_dtn( args: *mut dtn_args, flags: DTN_Args) {
+fn do_dtn( args: *mut logging::dtn_args, flags: DTN_Args) {
 
   let mut fileopen_chan   = Vec::new();
   let mut fileopen_thread = Vec::new();
   let mut connection_count:usize = 0;
-  let safe_args = dtn_args_wrapper{ args: args };
+  let safe_args = logging::dtn_args_wrapper{ args: args };
 
-  unsafe impl Send for dtn_args_wrapper {}
-  unsafe impl Sync for dtn_args_wrapper {}
+  unsafe impl Send for logging::dtn_args_wrapper {}
+  unsafe impl Sync for logging::dtn_args_wrapper {}
 
-  initialize_logging( "/tmp/dtn.log.", safe_args );
+  // initialize_logging( "/tmp/dtn.log.", safe_args );
 
   // Decode host arguments
 
@@ -89,11 +90,13 @@ fn do_dtn( args: *mut dtn_args, flags: DTN_Args) {
       println!("BADNESS > 100");
     }
 
+    /*
     unsafe {
       (*args).sock_store[connection_count] =  dns_lookup( c_str.as_ptr() as *mut i8, d_str.as_ptr() as *mut i8 );
       connection_count += 1;
       (*args).sock_store_count = connection_count as i32;
     }
+    */
 
     debug!("Add connection target: {}:{} ", c_str.into_string().unwrap(), d_str.into_string().unwrap() );
 
@@ -109,9 +112,9 @@ fn do_dtn( args: *mut dtn_args, flags: DTN_Args) {
       // file_iotest( args as *mut ::std::os::raw::c_void );
       // println!("io_test is finished");
     } else if (*args).do_server {
-      rx_start (args);
+      // rx_start (args);
     } else {
-      tx_start (args);
+      // tx_start (args);
     }
 
   }

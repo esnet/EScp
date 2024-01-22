@@ -1,10 +1,10 @@
 
-fn start_receiver( args: dtn_args_wrapper ) {
+fn start_receiver( args: logging::dtn_args_wrapper ) {
   debug!("start_receiver started");
 
   let ret;
   unsafe{
-    ret = rx_start( args.args );
+    ret = rx_start( args.args as *mut dtn_args );
   }
   if ret != 0 {
     error!("Failed to start receiver");
@@ -15,7 +15,7 @@ fn start_receiver( args: dtn_args_wrapper ) {
   debug!("start_receiver complete");
 }
 
-fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
+fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
   let args = safe_args.args;
 
   let (mut sin, mut sout, file, file2, listener, stream);
@@ -118,7 +118,7 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
       _ => { },
     }
 
-    initialize_logging( "/tmp/escp.log.", safe_args);
+    logging::initialize_logging( "/tmp/escp.log.", safe_args);
 
      debug!("Session init {:016X?}", helo.session_id());
   } else {
@@ -140,7 +140,7 @@ fn escp_receiver(safe_args: dtn_args_wrapper, flags: EScp_Args) {
 
   let mut connection_count=0;
   unsafe {
-    (*args).sock_store[connection_count] =  dns_lookup( bind_interface.as_ptr() as *mut i8 , p.as_ptr() as *mut i8);
+    (*(args as *mut dtn_args)).sock_store[connection_count] =  dns_lookup( bind_interface.as_ptr() as *mut i8 , p.as_ptr() as *mut i8);
     connection_count += 1;
     (*args).sock_store_count = connection_count as i32;
     (*args).flags |= libc::O_CREAT|libc::O_WRONLY|libc::O_TRUNC;
