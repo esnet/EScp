@@ -228,7 +228,7 @@ fn escp_sender(safe_args: dtn_args_wrapper, flags: EScp_Args) {
       // Note the delay below; file_check usually delays for interval specified
       file_check(
         &mut fc_hash,
-        std::time::Instant::now() + std::time::Duration::from_millis(200),
+        std::time::Instant::now() + std::time::Duration::from_millis(20),
         &mut files_ok,
         &fc_out
       );
