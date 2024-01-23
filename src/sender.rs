@@ -683,11 +683,18 @@ fn iterate_files ( files: Vec<String>, args: logging::dtn_args_wrapper, dest_pat
     if !quiet {
 
       let a = unsafe { human_write( files_total, true )};
-      let b = unsafe { human_write(
-        (files_total as f32/start.elapsed().as_secs_f32()) as u64, true) };
+
+      let mut rate = "0";
+
+      if files_total >= 1 {
+        unsafe {
+        let b = human_write(
+          (files_total as f32/start.elapsed().as_secs_f32()) as u64, true);
+        rate = CStr::from_ptr(b).to_str().unwrap();
+        }
+      }
 
       let tot  = unsafe { CStr::from_ptr(a).to_str().unwrap() };
-      let rate = unsafe { CStr::from_ptr(b).to_str().unwrap() };
 
       let l = format!("\rCalculating ... Files: {tot} Rate: {rate}/s ");
       _ = sout.write(l.as_bytes());
