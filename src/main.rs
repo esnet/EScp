@@ -58,10 +58,8 @@ macro_rules! sess_init {
 }
 
 mod logging;
-// include!("logging.rs");
 include!("receiver.rs");
 include!("sender.rs");
-// include!("dtn.rs");
 
 const msg_session_init:u16      = 8;
 const msg_file_spec:u16         =16;

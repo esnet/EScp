@@ -228,7 +228,7 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
       // Note the delay below; file_check usually delays for interval specified
       file_check(
         &mut fc_hash,
-        std::time::Instant::now() + std::time::Duration::from_millis(200),
+        std::time::Instant::now() + std::time::Duration::from_millis(100),
         &mut files_ok,
         &fc_out
       );
@@ -301,7 +301,7 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
 
     let res = file_check(
       &mut fc_hash,
-      std::time::Instant::now() + std::time::Duration::from_millis(20),
+      std::time::Instant::now() + std::time::Duration::from_millis(200),
       &mut files_ok,
       &fc_out
     );
@@ -312,10 +312,7 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
     }
   }
 
-
-
   // Finished sending data
-
   {
     // Let receiver know that we think the session is complete
 
@@ -330,23 +327,7 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
   while unsafe{ meta_recv() }.is_null() == true {
     thread::sleep(std::time::Duration::from_millis(20));
   }
-
   unsafe { meta_complete(); }
-
-    /*
-    loop {
-      let ptr =
-
-      if ptr.is_null() {
-        let interval = std::time::Duration::from_millis(20);
-        thread::sleep(interval);
-        continue;
-      }
-
-      // This should be our loop for handling data from receiver
-      break;
-    }
-    */
 
   debug!("Finished transfer");
 }
@@ -695,13 +676,11 @@ fn iterate_files ( files: Vec<String>, args: logging::dtn_args_wrapper, dest_pat
   let mut vec = VecDeque::new();
 
   let start = std::time::Instant::now();
-  let mut interval = std::time::Instant::now();
 
   let _ = GLOBAL_FILEOPEN_TAIL.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
   loop {
-    if !quiet && (interval.elapsed().as_secs_f32() > 0.25) {
-      interval = std::time::Instant::now();
+    if !quiet {
 
       let a = unsafe { human_write( files_total, true )};
       let b = unsafe { human_write(
