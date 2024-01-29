@@ -187,6 +187,16 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
   // transfer. At this point we have not read any data from disk but have
   // configured the transfer endpoints.
 
+  /*
+  let mut counter=0;
+  loop {
+    let hdr = to_header( 0, 399 );
+    debug!("meta_send {counter}");
+    counter+=1;
+    unsafe { meta_send( 0 as *mut i8, hdr.as_ptr() as *mut i8, 0 as i32 ); }
+  }
+  */
+
   let start    = std::time::Instant::now();
   let mut fi;
   let mut fc_hash: HashMap<u64, (u64, u32, u32)> = HashMap::new();
@@ -219,6 +229,7 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
     process::exit(1);
   }
 
+  let mut last_update = std::time::Instant::now();
   loop {
     if flags.quiet {
       break;
@@ -235,57 +246,61 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
     }
 
     let bytes_now = unsafe { get_bytes_io( args as *mut dtn_args ) };
+    if (last_update.elapsed().as_secs_f32() > 0.2) || (bytes_now>=bytes_total) {
 
-    if bytes_now == 0 {
-      continue;
-    }
+      if bytes_now == 0 {
+        continue;
+      }
 
-    let duration = start.elapsed();
+      let duration = start.elapsed();
 
-    let width= ((bytes_now as f32 / bytes_total as f32) * 40.0) as usize ;
-    let progress = format!("{1:=>0$}", width, ">");
-    let rate = bytes_now as f32/duration.as_secs_f32();
+      let width= ((bytes_now as f32 / bytes_total as f32) * 40.0) as usize ;
+      let progress = format!("{1:=>0$}", width, ">");
+      let rate = bytes_now as f32/duration.as_secs_f32();
 
-    let eta= ((bytes_total - bytes_now) as f32 / rate) as i64;
-    let eta_human;
+      let eta= ((bytes_total - bytes_now) as f32 / rate) as i64;
+      let eta_human;
 
-    if eta > 3600 {
-      eta_human = format!("{:02}:{:02}:{:02}", eta/3600, (eta/60)%60, eta%60);
-    } else {
-      eta_human = format!("{:02}:{:02}", eta/60, eta%60);
-    }
+      if eta > 3600 {
+        eta_human = format!("{:02}:{:02}:{:02}", eta/3600, (eta/60)%60, eta%60);
+      } else {
+        eta_human = format!("{:02}:{:02}", eta/60, eta%60);
+      }
 
-    let rate_str;
-    let tot_str;
+      let rate_str;
+      let tot_str;
 
-    unsafe {
-      let tmp = human_write( rate as u64, !flags.bits );
-      rate_str= CStr::from_ptr(tmp).to_str().unwrap();
+      unsafe {
+        let tmp = human_write( rate as u64, !flags.bits );
+        rate_str= CStr::from_ptr(tmp).to_str().unwrap();
 
-      let tmp = human_write( bytes_now as u64, true );
-      tot_str= CStr::from_ptr(tmp).to_str().unwrap();
+        let tmp = human_write( bytes_now as u64, true );
+        tot_str= CStr::from_ptr(tmp).to_str().unwrap();
 
-      debug!("{}/{}", bytes_now, bytes_total);
-    }
+        debug!("{}/{}", bytes_now, bytes_total);
+      }
 
-    let units;
-    if flags.bits {
-      units = "bits"
-    } else {
-      units = "B"
-    }
+      let units;
+      if flags.bits {
+        units = "bits"
+      } else {
+        units = "B"
+      }
 
-    let bar = format!("\r [{: <40}] {}B {}{}/s {: <10}",
-                      progress, tot_str, rate_str, units, eta_human);
-    _ = fi.write(bar.as_bytes());
-    _ = fi.flush();
-
-    if bytes_now >= bytes_total {
-      let s = format!("\rComplete: {tot_str}B in {files_total} files at {rate_str}{units}/s in {:0.1}s {:38}\n",
-        duration.as_secs_f32(), "");
-      _ = fi.write(s.as_bytes());
+      let bar = format!("\r [{: <40}] {}B {}{}/s {: <10}",
+                        progress, tot_str, rate_str, units, eta_human);
+      _ = fi.write(bar.as_bytes());
       _ = fi.flush();
-      break;
+
+      if bytes_now >= bytes_total {
+        let s = format!("\rComplete: {tot_str}B in {files_total} files at {rate_str}{units}/s in {:0.1}s {:38}\n",
+          duration.as_secs_f32(), "");
+        _ = fi.write(s.as_bytes());
+        _ = fi.flush();
+        break;
+      }
+
+      last_update = std::time::Instant::now();
     }
   }
 
@@ -322,6 +337,7 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
     }
   }
 
+  info!("Waiting for ACK");
   // Wait for ACK
 
   while unsafe{ meta_recv() }.is_null() == true {
@@ -415,15 +431,14 @@ fn file_check(
 
   if ptr.is_null() != true {
     unsafe{ meta_complete(); }
-  }
-
-
-  let interval = run_until - std::time::Instant::now();
-  if interval.as_secs_f32() > 0.0 {
-    debug!("file_check: still have {}s left", interval.as_secs_f32());
-    thread::sleep(interval);
   } else {
-    debug!("file_check: time is over: {}", interval.as_secs_f32());
+    let interval = run_until - std::time::Instant::now();
+    if interval.as_secs_f32() > 0.0 {
+      debug!("file_check: still have {}s left", interval.as_secs_f32());
+      thread::sleep(interval);
+    } else {
+      debug!("file_check: time is over: {}", interval.as_secs_f32());
+    }
   }
 
   return 1;

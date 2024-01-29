@@ -170,7 +170,7 @@ fn fc_worker(fc_in: crossbeam_channel::Sender<(u64, u64, u32, u32)>) {
       if fc == std::ptr::null_mut() {
         continue;
       }
-      debug!("fc_worker: {} {} {} {}", (*fc).file_no, (*fc).bytes, (*fc).crc, (*fc).completion);
+      debug!("fc_worker: {} {} {:#X} {}", (*fc).file_no, (*fc).bytes, (*fc).crc, (*fc).completion);
       if (*fc).file_no == 0 {
         debug!("fc_worker: returning because file_no == 0");
         return;

@@ -203,7 +203,10 @@ fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
         let mut finish_fc = false;
 
         match fc_out.recv_timeout(std::time::Duration::from_millis(fct)) {
-          Ok((a,b,c,d)) => { (file_no,bytes,crc,completion) = (a,b,c,d); }
+          Ok((a,b,c,d)) => {
+            (file_no,bytes,crc,completion) = (a,b,c,d);
+            debug!("fc: fc_pop returned {} {} {:#X}", file_no, bytes, crc);
+          }
           Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
             finish_fc = true;
           }
@@ -212,12 +215,12 @@ fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
         fct = 1;
 
         if !did_init && !finish_fc {
-          // debug!("fc: Setting did_init=true because data was received");
+          debug!("fc: Setting did_init=true because data was received");
           did_init = true;
         }
 
         if did_init && !finish_fc {
-          // debug!("fc: Adding file {}", file_no);
+          debug!("fc: pack {}", file_no);
           v.push(
             file_spec::File::create( &mut builder,
               &file_spec::FileArgs{
@@ -230,7 +233,7 @@ fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
         }
 
         if loop_start.elapsed().as_secs_f32() > 0.002 {
-          // debug!("fc: setting finish_fc because loop timeout is exceeded");
+          debug!("fc: setting finish_fc because loop timeout is exceeded");
           finish_fc = true;
         }
 
