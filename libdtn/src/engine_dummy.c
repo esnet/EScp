@@ -47,11 +47,11 @@ int file_dummystat( int fd, struct stat *sbuf ) {
   return 0;
 }
 
-int file_dummytruncate( void*, int64_t ) {
+int file_dummytruncate( void* ptr, int64_t size) {
   return 0;
 }
 
-int file_dummyclose( void* ) {
+int file_dummyclose( void* ptr) {
   VRFY( pthread_mutex_lock(&dummy_lock) == 0, );
   --dummy_fd_head;
   pthread_mutex_unlock(&dummy_lock);
@@ -111,7 +111,7 @@ void* file_dummycomplete( void* arg, void* arg2 ) {
   return 0;
 }
 
-int file_dummyclosefd( int ) {
+int file_dummyclosefd( int size) {
   return 0;
 }
 
