@@ -385,7 +385,7 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
 
     increment = (sz+16+63) / 64;
 
-    DBG("[%2d] META IN %ld/%ld %lX sz=%d incr=%d", knob->id, head, tail, (uint64_t) buf, sz, increment);
+    NFO("[%2d] META IN %ld/%ld %lX sz=%d incr=%d", knob->id, head, tail, (uint64_t) buf, sz, increment);
 
     VRFY( sz < (metabuf_sz/2), "Invalid sz=%d on packet", sz );
 
@@ -397,7 +397,9 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
       h = 0;
     }
 
-    while ( (h<t) && ((h+increment)>=t) ) {
+    while ( (tail+(metabuf_sz/64) <= head) ||
+            ( (h<t) && ((h+increment)>=t) )) {
+
       // Not enough room for metadata, wait for queue to clear
 
       usleep(10000);

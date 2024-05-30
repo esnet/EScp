@@ -1,7 +1,9 @@
 fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
   let args = safe_args.args;
-
   let (host,dest_tmp,dest);
+  let mut fc_hash: HashMap<u64, (u64, u32, u32)> = HashMap::new();
+  let mut files_ok=0;
+
   match flags.destination.rfind(':') {
     Some (a) => { (host, dest_tmp) = flags.destination.split_at(a); },
     _        => {
@@ -199,8 +201,6 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
 
   let start    = std::time::Instant::now();
   let mut fi;
-  let mut fc_hash: HashMap<u64, (u64, u32, u32)> = HashMap::new();
-  let mut files_ok=0;
 
   unsafe {
     fi = std::fs::File::from_raw_fd(1);
@@ -221,7 +221,12 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
 
   let mut files_total = 0;
   let bytes_total = iterate_files( flags.source, safe_args, dest.to_string(),
-                                   flags.quiet, &fi, &mut files_total );
+                                   flags.quiet,
+                                   &fi,
+                                   &mut files_total,
+                                   &mut fc_hash,
+                                   &mut files_ok,
+                                   &fc_out );
   debug!("Finished iterating files, total bytes={bytes_total}");
 
   if bytes_total <= 0 {
@@ -377,7 +382,7 @@ fn file_check(
 
       if !(*hm).contains_key(&rx_fino) {
         loop {
-          // loop until we hm contains key or fc_out returns error
+          // loop until the hm contains key or fc_out returns error
           let (tx_fino, sz, crc, complete);
 
           match fc_out.recv_timeout(std::time::Duration::from_millis(2)) {
@@ -500,7 +505,10 @@ fn iterate_file_worker(
   files_out: crossbeam_channel::Receiver<(String, String)>,
   dir_in:    crossbeam_channel::Sender<(String, String, i32)>,
   msg_in:    crossbeam_channel::Sender<(String, u64, stat)>,
-  args:      logging::dtn_args_wrapper) {
+  args:      logging::dtn_args_wrapper,
+  // hm: &mut HashMap<u64, (u64, u32, u32)>,
+  // files_ok: &mut u64
+) {
 
   let mode:i32 = 0;
   let (mut direct_mode, mut recursive) = (true, false);
@@ -543,22 +551,32 @@ fn iterate_file_worker(
     unsafe {
       let mut st: stat = std::mem::zeroed();
 
-      if direct_mode {
-        fd = open( c_str.as_ptr() as *const i8, (*args.args).flags | libc::O_DIRECT, mode );
-        if (fd == -1) && (*libc::__errno_location() == 22) {
-          direct_mode = false;
+      loop {
+        if direct_mode {
+          fd = open( c_str.as_ptr() as *const i8, (*args.args).flags | libc::O_DIRECT, mode );
+          if (fd == -1) && (*libc::__errno_location() == 22) {
+            direct_mode = false;
+            fd = open( c_str.as_ptr() as *const i8, (*args.args).flags, mode );
+          }
+        } else {
           fd = open( c_str.as_ptr() as *const i8, (*args.args).flags, mode );
         }
-      } else {
-        fd = open( c_str.as_ptr() as *const i8, (*args.args).flags, mode );
-      }
 
-      if fd == -1 {
-        error!("trying to open {:?} {:?}", c_str,
-                 std::io::Error::last_os_error() );
-        eprintln!("trying to open {:?} {:?}", c_str,
+        if fd == -1 {
+          if std::io::Error::last_os_error().raw_os_error().unwrap() == 24 {
+            debug!("Open failed on {:?} {:?}; retrying.", c_str,
+                     std::io::Error::last_os_error() );
+            thread::sleep(std::time::Duration::from_millis(20));
+            continue;
+          }
+          error!("trying to open {:?} {:?}", c_str,
                    std::io::Error::last_os_error() );
-        continue;
+          eprintln!("trying to open {:?} {:?}", c_str,
+                     std::io::Error::last_os_error() );
+          return;
+        }
+
+        break;
       }
 
       let res = ((*(*(args.args as *mut dtn_args)).fob).fstat.unwrap())( fd, &mut st as * mut _ );
@@ -630,8 +648,15 @@ fn iterate_file_worker(
   debug!("iterate_file_worker: exiting");
 }
 
-
-fn iterate_files ( files: Vec<String>, args: logging::dtn_args_wrapper, dest_path: String, quiet: bool, mut sout: &std::fs::File, ft: &mut u64 ) -> i64 {
+fn iterate_files ( files: Vec<String>,
+                    args: logging::dtn_args_wrapper,
+               dest_path: String, quiet: bool,
+                mut sout: &std::fs::File,
+                      ft: &mut u64,
+                 fc_hash: &mut HashMap<u64, (u64, u32, u32)>,
+                files_ok: &mut u64,
+                  fc_out: &crossbeam_channel::Receiver<(u64, u64, u32, u32)>
+                 ) -> i64 {
 
   // we use clean_path instead of path.canonicalize() because the engines are
   // responsible for implementing there own view of the file system and we can't
@@ -658,6 +683,7 @@ fn iterate_files ( files: Vec<String>, args: logging::dtn_args_wrapper, dest_pat
       let mi = msg_in.clone();
       thread::Builder::new().name(nam).spawn(move ||
         iterate_file_worker(fo, di, mi, a)).unwrap();
+        // iterate_file_worker(fo, di, mi, a, fc_hash, files_ok)).unwrap();
     }
 
     for j in 0..GLOBAL_DIROPEN_COUNT{
@@ -725,13 +751,19 @@ fn iterate_files ( files: Vec<String>, args: logging::dtn_args_wrapper, dest_pat
 
       let (fi, fino, st);
 
-      match msg_out.recv_timeout(std::time::Duration::from_millis(2)) {
+      match msg_out.recv_timeout(std::time::Duration::from_micros(20)) {
         Ok((a,b,c)) => { (fi, fino, st) = (a,b,c); }
         Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
           if counter > 0 {
             // Go ahead and send whatever we have now
             break;
           }
+          file_check(
+            fc_hash,
+            std::time::Instant::now() + std::time::Duration::from_millis(2),
+            files_ok,
+            &fc_out
+          );
           continue;
         }
         Err(_) => {

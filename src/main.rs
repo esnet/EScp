@@ -28,7 +28,7 @@ use std::collections::VecDeque;
 use std::slice;
 use hex;
 use crossbeam_channel;
-use clean_path;
+// use clean_path;
 
 use log::{{debug, info, error}};
 
