@@ -350,7 +350,7 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
   }
   unsafe { meta_complete(); }
 
-  debug!("Finished transfer");
+  info!("Finished transfer");
 }
 
 fn file_check(

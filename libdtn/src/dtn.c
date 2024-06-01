@@ -385,7 +385,7 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
 
     increment = (sz+16+63) / 64;
 
-    NFO("[%2d] META IN %ld/%ld %lX sz=%d incr=%d", knob->id, head, tail, (uint64_t) buf, sz, increment);
+    DBG("[%2d] META IN %ld/%ld %lX sz=%d incr=%d", knob->id, head, tail, (uint64_t) buf, sz, increment);
 
     VRFY( sz < (metabuf_sz/2), "Invalid sz=%d on packet", sz );
 
