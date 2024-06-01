@@ -71,32 +71,20 @@ INSTALL
 The recommended approach to using EScp is by compiling it yourself and then to
 use the resultant RPM/DEB file to install on your systems.
 
-On ubuntu, you can also try the EScp snap:
-
-```
-snap install escp --channel beta --devmode
-```
-
-AFAIK, Snaps do not interact with ssh-agent and may have weird issues where
-they don't have visibility into your file system (they are made more for
-applications than system utilities). Currently the Snap on Ubuntu snap repo
-is a development version, like the code available here, only older.
-
-
 COMPILING
 =========
 
 ```
-# Install system dependencies
-apt install cmake libtool g++ libnuma-dev nasm autoconf automake
+# Install system dependencies (Debian)
+apt install cmake libtool g++ libnuma-dev nasm autoconf automake \
+   curl           # for get rust stanza \
+   libclang-dev   # for bindgen
 
 # Get rust
 curl https://sh.rustup.rs -sSf | sh
 . "$HOME/.cargo/env"
 
 # Build escp
-cargo build
-# or directly call mk.sh script (needed if libdtn is modified)
 ./mk.sh
 
 # You now need to install escp, the suggested path is to create an RPM/DEB
