@@ -364,8 +364,7 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
 
   if ( *subheader == FIHDR_META ) {
 
-    // Meta is intended to only have a single writer, thus we treat below as
-    // single threaded.
+    // block intended to have a single writer, thus we treat below as exclusive
 
     if ( knob->block != 'meta' ) {
       meta_init(knob);
@@ -377,13 +376,16 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
 
     VRFY ( buf != NULL, "failed assertion, metabuf!=null" );
 
-    int h = ((head*64) % metabuf_sz)/64;
-    int t = ((tail*64) % metabuf_sz)/64;
+    int h = head % (metabuf_sz/64);
+    int t = tail % (metabuf_sz/64);
     int increment;
 
     uint32_t sz = ((uint32_t*)knob->buf)[0];
     sz = ntohl(sz);
+
     increment = (sz+16+63) / 64;
+
+    NFO("[%2d] META IN %ld/%ld %lX sz=%d incr=%d", knob->id, head, tail, (uint64_t) buf, sz, increment);
 
     VRFY( sz < (metabuf_sz/2), "Invalid sz=%d on packet", sz );
 
@@ -392,15 +394,17 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
 
       ((uint32_t*) &buf[h*64])[0] = ~0;
       head += (metabuf_sz/64) - h;
-      h = ((head*64) % metabuf_sz)/64;
+      h = 0;
     }
 
-   while ( (h<t) && ((h+increment)>=t) ) {
+    while ( (tail+(metabuf_sz/64) <= head) ||
+            ( (h<t) && ((h+increment)>=t) )) {
+
       // Not enough room for metadata, wait for queue to clear
 
       usleep(10000);
       tail = atomic_load ( &metatail );
-      t = (tail*64) % metabuf_sz;
+      t = tail % (metabuf_sz/64);
     }
 
     memcpy ( &buf[h*64], knob->buf, 16 );
@@ -460,7 +464,7 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
       return 0;
     }
     VRFY( memcmp(computed_hash, actual_hash, 16) == 0,
-          "Bad auth tag hdr=%d %x%x%x%x!=%x%x%x%x", *subheader,
+          "[%2d] Bad auth tag hdr=%d %x%x%x%x!=%x%x%x%x", knob->id, *subheader,
           actual_hash[0], actual_hash[1], actual_hash[2], actual_hash[3],
           computed_hash[0], computed_hash[1], computed_hash[2], computed_hash[3]
         );
@@ -556,7 +560,7 @@ void dtn_waituntilready( void* arg ) {
 uint8_t* meta_recv() {
   uint64_t head = atomic_load( &metahead );
   uint64_t tail = atomic_load( &metatail );
-  int t = ((tail*64) % metabuf_sz)/64;
+  int t = tail % (metabuf_sz/64);
 
   if ( tail >= head )
     return NULL;
@@ -564,7 +568,7 @@ uint8_t* meta_recv() {
   uint32_t sz = atomic_load( (uint32_t*) &metabuf[t*64] );
   if ( sz == ~0 ) {
       tail += (metabuf_sz/64) - t;
-      t = ((tail*64) % metabuf_sz)/64;
+      t = 0;
       atomic_store( &metatail, tail );
   }
 
@@ -573,36 +577,54 @@ uint8_t* meta_recv() {
 
 void meta_complete() {
   uint64_t tail = atomic_load( &metatail );
-  int t = ((tail*64) % metabuf_sz)/64;
+  int t = tail % (metabuf_sz/64);
   uint32_t sz = atomic_load( (uint32_t*) &metabuf[t*64] );
   sz = ntohl(sz);
-  int increment = (sz + 63+16)/64;
-  atomic_fetch_add(&metatail, increment);
+  int increment = (sz + 63 + 16)/64;
+  atomic_store( &metatail, tail + increment );
 }
 
 void meta_send( char* buf, char* hdr, int len ) {
-  uint8_t* mb;
-  struct network_obj* knob;
+  struct network_obj* tmp;
+  // buf should be 16 byte aligned and padded to 16 bytes
+  static char* temp_buf=0;
+  static struct network_obj* knob = NULL;
 
-  // buf should be 16 byte aligned and padded to 16 byte boundary
+  // VRFY ( (((uint64_t) buf) & 0xf) == 0, "buf is not aligned correctly" );
 
-  while (1) {
-    // Wait until meta machinery is initialized
-    mb = atomic_load( &metabuf );
-    knob = atomic_load( &metaknob );
+  if (!temp_buf)
+    temp_buf = aligned_alloc( 16, 1024*1024 );
 
-    if ( mb && knob )
-      break;
-
-    usleep(1000);
+  if (buf) {
+    VRFY(len <= (1024*1024), "meta must be less than 1M");
+    memcpy( temp_buf, buf, len );
   }
+
+
+  while (knob==NULL) {
+
+    // Wait until metaknob is initialized
+    tmp = atomic_load( &metaknob );
+
+    if ( !tmp ) {
+      usleep(1000);
+      continue;
+    }
+
+    knob = aligned_alloc( 64, sizeof(struct network_obj));
+    memcpy( knob, tmp, sizeof(struct network_obj) );
+
+  }
+
+  DBG("[%2d] meta_send: %ld sz=%d", knob->id, (uint64_t) buf, len);
+
   {
     char b[16] __attribute__ ((aligned(16))) = {0};
     memcpy( b, hdr, 6 );
 
     if (buf) {
       VRFY( network_send(knob, b,   16,  16+len, true,  FIHDR_META) > 0, );
-      VRFY( network_send(knob, buf, len, 16+len, false, FIHDR_META) > 0, );
+      VRFY( network_send(knob, temp_buf, len, 16+len, false, FIHDR_META) > 0, );
     } else {
       VRFY( network_send(knob, b,   16,  16, false,  FIHDR_META) > 0, );
     }

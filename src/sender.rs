@@ -1,7 +1,9 @@
 fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
   let args = safe_args.args;
-
   let (host,dest_tmp,dest);
+  let mut fc_hash: HashMap<u64, (u64, u32, u32)> = HashMap::new();
+  let mut files_ok=0;
+
   match flags.destination.rfind(':') {
     Some (a) => { (host, dest_tmp) = flags.destination.split_at(a); },
     _        => {
@@ -187,10 +189,18 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
   // transfer. At this point we have not read any data from disk but have
   // configured the transfer endpoints.
 
+  /*
+  let mut counter=0;
+  loop {
+    let hdr = to_header( 0, 399 );
+    debug!("meta_send {counter}");
+    counter+=1;
+    unsafe { meta_send( 0 as *mut i8, hdr.as_ptr() as *mut i8, 0 as i32 ); }
+  }
+  */
+
   let start    = std::time::Instant::now();
   let mut fi;
-  let mut fc_hash: HashMap<u64, (u64, u32, u32)> = HashMap::new();
-  let mut files_ok=0;
 
   unsafe {
     fi = std::fs::File::from_raw_fd(1);
@@ -211,7 +221,12 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
 
   let mut files_total = 0;
   let bytes_total = iterate_files( flags.source, safe_args, dest.to_string(),
-                                   flags.quiet, &fi, &mut files_total );
+                                   flags.quiet,
+                                   &fi,
+                                   &mut files_total,
+                                   &mut fc_hash,
+                                   &mut files_ok,
+                                   &fc_out );
   debug!("Finished iterating files, total bytes={bytes_total}");
 
   if bytes_total <= 0 {
@@ -219,6 +234,7 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
     process::exit(1);
   }
 
+  let mut last_update = std::time::Instant::now();
   loop {
     if flags.quiet {
       break;
@@ -235,57 +251,61 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
     }
 
     let bytes_now = unsafe { get_bytes_io( args as *mut dtn_args ) };
+    if (last_update.elapsed().as_secs_f32() > 0.2) || (bytes_now>=bytes_total) {
 
-    if bytes_now == 0 {
-      continue;
-    }
+      if bytes_now == 0 {
+        continue;
+      }
 
-    let duration = start.elapsed();
+      let duration = start.elapsed();
 
-    let width= ((bytes_now as f32 / bytes_total as f32) * 40.0) as usize ;
-    let progress = format!("{1:=>0$}", width, ">");
-    let rate = bytes_now as f32/duration.as_secs_f32();
+      let width= ((bytes_now as f32 / bytes_total as f32) * 40.0) as usize ;
+      let progress = format!("{1:=>0$}", width, ">");
+      let rate = bytes_now as f32/duration.as_secs_f32();
 
-    let eta= ((bytes_total - bytes_now) as f32 / rate) as i64;
-    let eta_human;
+      let eta= ((bytes_total - bytes_now) as f32 / rate) as i64;
+      let eta_human;
 
-    if eta > 3600 {
-      eta_human = format!("{:02}:{:02}:{:02}", eta/3600, (eta/60)%60, eta%60);
-    } else {
-      eta_human = format!("{:02}:{:02}", eta/60, eta%60);
-    }
+      if eta > 3600 {
+        eta_human = format!("{:02}:{:02}:{:02}", eta/3600, (eta/60)%60, eta%60);
+      } else {
+        eta_human = format!("{:02}:{:02}", eta/60, eta%60);
+      }
 
-    let rate_str;
-    let tot_str;
+      let rate_str;
+      let tot_str;
 
-    unsafe {
-      let tmp = human_write( rate as u64, !flags.bits );
-      rate_str= CStr::from_ptr(tmp).to_str().unwrap();
+      unsafe {
+        let tmp = human_write( rate as u64, !flags.bits );
+        rate_str= CStr::from_ptr(tmp).to_str().unwrap();
 
-      let tmp = human_write( bytes_now as u64, true );
-      tot_str= CStr::from_ptr(tmp).to_str().unwrap();
+        let tmp = human_write( bytes_now as u64, true );
+        tot_str= CStr::from_ptr(tmp).to_str().unwrap();
 
-      debug!("{}/{}", bytes_now, bytes_total);
-    }
+        debug!("{}/{}", bytes_now, bytes_total);
+      }
 
-    let units;
-    if flags.bits {
-      units = "bits"
-    } else {
-      units = "B"
-    }
+      let units;
+      if flags.bits {
+        units = "bits"
+      } else {
+        units = "B"
+      }
 
-    let bar = format!("\r [{: <40}] {}B {}{}/s {: <10}",
-                      progress, tot_str, rate_str, units, eta_human);
-    _ = fi.write(bar.as_bytes());
-    _ = fi.flush();
-
-    if bytes_now >= bytes_total {
-      let s = format!("\rComplete: {tot_str}B in {files_total} files at {rate_str}{units}/s in {:0.1}s {:38}\n",
-        duration.as_secs_f32(), "");
-      _ = fi.write(s.as_bytes());
+      let bar = format!("\r [{: <40}] {}B {}{}/s {: <10}",
+                        progress, tot_str, rate_str, units, eta_human);
+      _ = fi.write(bar.as_bytes());
       _ = fi.flush();
-      break;
+
+      if bytes_now >= bytes_total {
+        let s = format!("\rComplete: {tot_str}B in {files_total} files at {rate_str}{units}/s in {:0.1}s {:38}\n",
+          duration.as_secs_f32(), "");
+        _ = fi.write(s.as_bytes());
+        _ = fi.flush();
+        break;
+      }
+
+      last_update = std::time::Instant::now();
     }
   }
 
@@ -301,7 +321,7 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
 
     let res = file_check(
       &mut fc_hash,
-      std::time::Instant::now() + std::time::Duration::from_millis(20),
+      std::time::Instant::now() + std::time::Duration::from_millis(200),
       &mut files_ok,
       &fc_out
     );
@@ -312,10 +332,7 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
     }
   }
 
-
-
   // Finished sending data
-
   {
     // Let receiver know that we think the session is complete
 
@@ -325,28 +342,13 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
     }
   }
 
+  info!("Waiting for ACK");
   // Wait for ACK
 
   while unsafe{ meta_recv() }.is_null() == true {
     thread::sleep(std::time::Duration::from_millis(20));
   }
-
   unsafe { meta_complete(); }
-
-    /*
-    loop {
-      let ptr =
-
-      if ptr.is_null() {
-        let interval = std::time::Duration::from_millis(20);
-        thread::sleep(interval);
-        continue;
-      }
-
-      // This should be our loop for handling data from receiver
-      break;
-    }
-    */
 
   debug!("Finished transfer");
 }
@@ -380,7 +382,7 @@ fn file_check(
 
       if !(*hm).contains_key(&rx_fino) {
         loop {
-          // loop until we hm contains key or fc_out returns error
+          // loop until the hm contains key or fc_out returns error
           let (tx_fino, sz, crc, complete);
 
           match fc_out.recv_timeout(std::time::Duration::from_millis(2)) {
@@ -434,15 +436,14 @@ fn file_check(
 
   if ptr.is_null() != true {
     unsafe{ meta_complete(); }
-  }
-
-
-  let interval = run_until - std::time::Instant::now();
-  if interval.as_secs_f32() > 0.0 {
-    debug!("file_check: still have {}s left", interval.as_secs_f32());
-    thread::sleep(interval);
   } else {
-    debug!("file_check: time is over: {}", interval.as_secs_f32());
+    let interval = run_until - std::time::Instant::now();
+    if interval.as_secs_f32() > 0.0 {
+      debug!("file_check: still have {}s left", interval.as_secs_f32());
+      thread::sleep(interval);
+    } else {
+      debug!("file_check: time is over: {}", interval.as_secs_f32());
+    }
   }
 
   return 1;
@@ -504,7 +505,10 @@ fn iterate_file_worker(
   files_out: crossbeam_channel::Receiver<(String, String)>,
   dir_in:    crossbeam_channel::Sender<(String, String, i32)>,
   msg_in:    crossbeam_channel::Sender<(String, u64, stat)>,
-  args:      logging::dtn_args_wrapper) {
+  args:      logging::dtn_args_wrapper,
+  // hm: &mut HashMap<u64, (u64, u32, u32)>,
+  // files_ok: &mut u64
+) {
 
   let mode:i32 = 0;
   let (mut direct_mode, mut recursive) = (true, false);
@@ -547,22 +551,32 @@ fn iterate_file_worker(
     unsafe {
       let mut st: stat = std::mem::zeroed();
 
-      if direct_mode {
-        fd = open( c_str.as_ptr() as *const i8, (*args.args).flags | libc::O_DIRECT, mode );
-        if (fd == -1) && (*libc::__errno_location() == 22) {
-          direct_mode = false;
+      loop {
+        if direct_mode {
+          fd = open( c_str.as_ptr() as *const i8, (*args.args).flags | libc::O_DIRECT, mode );
+          if (fd == -1) && (*libc::__errno_location() == 22) {
+            direct_mode = false;
+            fd = open( c_str.as_ptr() as *const i8, (*args.args).flags, mode );
+          }
+        } else {
           fd = open( c_str.as_ptr() as *const i8, (*args.args).flags, mode );
         }
-      } else {
-        fd = open( c_str.as_ptr() as *const i8, (*args.args).flags, mode );
-      }
 
-      if fd == -1 {
-        error!("trying to open {:?} {:?}", c_str,
-                 std::io::Error::last_os_error() );
-        eprintln!("trying to open {:?} {:?}", c_str,
+        if fd == -1 {
+          if std::io::Error::last_os_error().raw_os_error().unwrap() == 24 {
+            debug!("Open failed on {:?} {:?}; retrying.", c_str,
+                     std::io::Error::last_os_error() );
+            thread::sleep(std::time::Duration::from_millis(20));
+            continue;
+          }
+          error!("trying to open {:?} {:?}", c_str,
                    std::io::Error::last_os_error() );
-        continue;
+          eprintln!("trying to open {:?} {:?}", c_str,
+                     std::io::Error::last_os_error() );
+          return;
+        }
+
+        break;
       }
 
       let res = ((*(*(args.args as *mut dtn_args)).fob).fstat.unwrap())( fd, &mut st as * mut _ );
@@ -634,8 +648,15 @@ fn iterate_file_worker(
   debug!("iterate_file_worker: exiting");
 }
 
-
-fn iterate_files ( files: Vec<String>, args: logging::dtn_args_wrapper, dest_path: String, quiet: bool, mut sout: &std::fs::File, ft: &mut u64 ) -> i64 {
+fn iterate_files ( files: Vec<String>,
+                    args: logging::dtn_args_wrapper,
+               dest_path: String, quiet: bool,
+                mut sout: &std::fs::File,
+                      ft: &mut u64,
+                 fc_hash: &mut HashMap<u64, (u64, u32, u32)>,
+                files_ok: &mut u64,
+                  fc_out: &crossbeam_channel::Receiver<(u64, u64, u32, u32)>
+                 ) -> i64 {
 
   // we use clean_path instead of path.canonicalize() because the engines are
   // responsible for implementing there own view of the file system and we can't
@@ -662,6 +683,7 @@ fn iterate_files ( files: Vec<String>, args: logging::dtn_args_wrapper, dest_pat
       let mi = msg_in.clone();
       thread::Builder::new().name(nam).spawn(move ||
         iterate_file_worker(fo, di, mi, a)).unwrap();
+        // iterate_file_worker(fo, di, mi, a, fc_hash, files_ok)).unwrap();
     }
 
     for j in 0..GLOBAL_DIROPEN_COUNT{
@@ -695,20 +717,25 @@ fn iterate_files ( files: Vec<String>, args: logging::dtn_args_wrapper, dest_pat
   let mut vec = VecDeque::new();
 
   let start = std::time::Instant::now();
-  let mut interval = std::time::Instant::now();
 
   let _ = GLOBAL_FILEOPEN_TAIL.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
   loop {
-    if !quiet && (interval.elapsed().as_secs_f32() > 0.25) {
-      interval = std::time::Instant::now();
+    if !quiet {
 
       let a = unsafe { human_write( files_total, true )};
-      let b = unsafe { human_write(
-        (files_total as f32/start.elapsed().as_secs_f32()) as u64, true) };
+
+      let mut rate = "0";
+
+      if files_total >= 1 {
+        unsafe {
+          let b = human_write(
+            (files_total as f32/start.elapsed().as_secs_f32()) as u64, true);
+          rate = CStr::from_ptr(b).to_str().unwrap();
+        }
+      }
 
       let tot  = unsafe { CStr::from_ptr(a).to_str().unwrap() };
-      let rate = unsafe { CStr::from_ptr(b).to_str().unwrap() };
 
       let l = format!("\rCalculating ... Files: {tot} Rate: {rate}/s ");
       _ = sout.write(l.as_bytes());
@@ -724,13 +751,19 @@ fn iterate_files ( files: Vec<String>, args: logging::dtn_args_wrapper, dest_pat
 
       let (fi, fino, st);
 
-      match msg_out.recv_timeout(std::time::Duration::from_millis(2)) {
+      match msg_out.recv_timeout(std::time::Duration::from_micros(20)) {
         Ok((a,b,c)) => { (fi, fino, st) = (a,b,c); }
         Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
           if counter > 0 {
             // Go ahead and send whatever we have now
             break;
           }
+          file_check(
+            fc_hash,
+            std::time::Instant::now() + std::time::Duration::from_millis(2),
+            files_ok,
+            &fc_out
+          );
           continue;
         }
         Err(_) => {

@@ -28,7 +28,7 @@ use std::collections::VecDeque;
 use std::slice;
 use hex;
 use crossbeam_channel;
-use clean_path;
+// use clean_path;
 
 use log::{{debug, info, error}};
 
@@ -58,10 +58,8 @@ macro_rules! sess_init {
 }
 
 mod logging;
-// include!("logging.rs");
 include!("receiver.rs");
 include!("sender.rs");
-// include!("dtn.rs");
 
 const msg_session_init:u16      = 8;
 const msg_file_spec:u16         =16;
@@ -172,7 +170,7 @@ fn fc_worker(fc_in: crossbeam_channel::Sender<(u64, u64, u32, u32)>) {
       if fc == std::ptr::null_mut() {
         continue;
       }
-      debug!("fc_worker: {} {} {} {}", (*fc).file_no, (*fc).bytes, (*fc).crc, (*fc).completion);
+      debug!("fc_worker: {} {} {:#X} {}", (*fc).file_no, (*fc).bytes, (*fc).crc, (*fc).completion);
       if (*fc).file_no == 0 {
         debug!("fc_worker: returning because file_no == 0");
         return;
