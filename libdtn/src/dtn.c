@@ -716,6 +716,8 @@ void* rx_worker( void* arg ) {
       uint64_t file_no = fi->file_no_packed >> 8;
       uint64_t offset = fi->offset & ~(0xffffUL);
       uint64_t res=0;
+      sz = (sz + 4095) & ~4095;
+      int orig_sz = sz;
 
       fob->set( knob->token, FOB_OFFSET, offset );
       fob->set( knob->token, FOB_SZ, sz );
@@ -726,6 +728,7 @@ void* rx_worker( void* arg ) {
 
         // Always read in at least 4K of data
         fob->set( knob->token, FOB_SZ,  4096 );
+	sz = 4096;
       }
 
       while ( file_cur != file_no ) {
@@ -736,7 +739,7 @@ void* rx_worker( void* arg ) {
         DBV("[%2d] FIHDR_SHORT: call file_wait for fn=%ld", id, file_no);
         fs_ptr = file_wait( file_no, &fs );
 
-        DBG("[%2d] FIHDR_SHORT: file_wait returned fd=%d for fn=%ld", id, fs.fd, file_no);
+        DBV("[%2d] FIHDR_SHORT: file_wait returned fd=%d for fn=%ld", id, fs.fd, file_no);
 
         file_cur = file_no;
       }
@@ -766,7 +769,9 @@ void* rx_worker( void* arg ) {
         }
         */
 
-        VRFY(sz > 0, "[%2d] write error, fd=%d fn=%ld", id, fs.fd, file_no);
+        VRFY(sz > 0, "[%2d] WRITE ERR, b=%08ld fd=%d fn=%ld os=%zX sz=%d crc=%08x",
+             id, fs.bytes, fs.fd, file_no, offset, orig_sz, fs_ptr->crc );
+
         fob->complete(fob, knob->token);
         written = atomic_fetch_add(&fs_ptr->bytes_total, sz) + sz;
 

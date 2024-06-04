@@ -185,7 +185,7 @@ struct file_stat_type* file_wait( uint64_t fileno, struct file_stat_type* test_f
   int i;
   uint64_t fc, slot, fs_init;
 
-  DBG("file_wait start fn=%ld", fileno);
+  // DBG("file_wait start fn=%ld", fileno);
 
   while (1) {
     fc = atomic_load( &file_count );
@@ -195,7 +195,7 @@ struct file_stat_type* file_wait( uint64_t fileno, struct file_stat_type* test_f
     usleep (100);
   }
 
-  DBG("file_wait ready on fn=%ld", fileno);
+  // DBG("file_wait ready on fn=%ld", fileno);
 
   slot = fileno;
 
