@@ -668,7 +668,7 @@ fn iterate_files ( files: Vec<String>,
   {
     // Spawn helper threads
     let (files_in, files_out) = crossbeam_channel::bounded(15000);
-    let (dir_in, dir_out) = crossbeam_channel::bounded(10);
+    let (dir_in, dir_out) = crossbeam_channel::bounded(1000);
 
     let msg_in;
     (msg_in, msg_out) = crossbeam_channel::bounded(400);
