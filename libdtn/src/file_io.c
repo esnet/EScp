@@ -73,7 +73,7 @@ void memset_avx( void* dst ) {
 // much less than HSZ (which must be ^2 aligned).
 #define FILE_STAT_COUNT 700
 #define FILE_STAT_COUNT_HSZ 4096
-#define FILE_STAT_COUNT_CC 8
+#define FILE_STAT_COUNT_CC 12
 
 #define FS_INIT        0xBAEBEEUL
 #define FS_IO          (1UL << 31)
@@ -121,7 +121,7 @@ void file_incrementfilecount() {
   cur -= 1;
 
   if (orig != cur) {
-    if (atomic_compare_exchange_weak( &file_count, &orig, cur ))
+    if (atomic_fetch_add( &file_count, cur - orig ))
       DBG("Increment file_count from %ld to %ld", orig, cur);
   }
 }

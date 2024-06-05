@@ -184,6 +184,7 @@ uint64_t global_iv=0;
 
 int u64_2flo( uint64_t* target ) {
   int exponent = 64 - __builtin_clzl( *target );
+  uint64_t orig = *target;
 
   if (exponent <= 16)
     return 0;
@@ -191,8 +192,17 @@ int u64_2flo( uint64_t* target ) {
   exponent = exponent - 16;
   *target >>= exponent;
 
+  if (orig & ((1 << exponent) -1)) {
+    ++*target;
+
+    if (*target >= (1 << 16)) {
+      exponent++;
+      *target>>=1;;
+    }
+  }
+
   return exponent;
-}
+};
 
 uint64_t flo2_u64( int significand, int exponent ) {
   return (uint64_t) significand << (uint64_t) exponent;
