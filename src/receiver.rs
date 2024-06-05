@@ -101,7 +101,8 @@ fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
     if helo.io_engine() > 0 {
       unsafe {
         (*args).io_engine = helo.io_engine();
-        (*args).io_engine_name = "RCVER".as_ptr() as *mut i8;
+        (*args).io_engine_name = "RCVER".as_ptr() as *mut i8; // five letter
+                                                              // engine name
       }
     }
 
@@ -316,7 +317,8 @@ fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
 
 
             if entry.sz() < 1 {
-              debug!("Closed and ignoring {fino} because 0 sz", fino=entry.fino());
+              debug!("Empty file created (&closed)  for {fino} because sz==0",
+                      fino=entry.fino());
               close(fd);
               break;
             }

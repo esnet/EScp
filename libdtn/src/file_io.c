@@ -149,7 +149,7 @@ struct file_stat_type* file_addfile( uint64_t fileno, int fd, uint32_t crc,
     if ( (fileno - ft) < (FILE_STAT_COUNT+50) )
       break;
 
-    usleep(10000);
+    ESCP_DELAY(10);
   }
 
   for (i=0; i<FILE_STAT_COUNT_CC; i++) {
@@ -192,7 +192,7 @@ struct file_stat_type* file_wait( uint64_t fileno, struct file_stat_type* test_f
     if (fileno <= fc) {
       break;;
     }
-    usleep (100);
+    ESCP_DELAY(225);
   }
 
   // DBG("file_wait ready on fn=%ld", fileno);
@@ -276,7 +276,7 @@ struct file_stat_type* file_next( int id, struct file_stat_type* test_fs ) {
     }
 
     // Got nothing, wait and try again later.
-    usleep(287);
+    ESCP_DELAY(1);
   }
 
   // We got a file_no, now we need to translate it into a slot.
@@ -338,7 +338,7 @@ int file_get_activeport( void* args_raw ) {
   struct dtn_args* args = (struct dtn_args*) args_raw;
 
   while ( !(res=atomic_load(&args->active_port)) ) {
-    usleep(10000);
+    ESCP_DELAY(10);
   }
 
   return res;
