@@ -163,6 +163,13 @@ fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
 
 fn fc_worker(fc_in: crossbeam_channel::Sender<(u64, u64, u32, u32)>) {
 
+  // Once a file is complete, it gets put into the fc ring buffer (libdtn)
+  //
+  // This function attempts to pop an object from fc ring using fc_pop (libdtn)
+  // and, if successful, it stuffs that object into fc_in where it is read
+  // by rust main loop and sent to the sender which can use that information
+  // to confirm that a file was written successfully.
+
   loop {
     unsafe {
       let fc = fc_pop();
@@ -170,7 +177,8 @@ fn fc_worker(fc_in: crossbeam_channel::Sender<(u64, u64, u32, u32)>) {
       if fc == std::ptr::null_mut() {
         continue;
       }
-      debug!("fc_worker: {} {} {:#X} {}", (*fc).file_no, (*fc).bytes, (*fc).crc, (*fc).completion);
+      debug!("fc_worker: fn={} bytes={} crc={:#X} complete={}",
+             (*fc).file_no, (*fc).bytes, (*fc).crc, (*fc).completion);
       if (*fc).file_no == 0 {
         debug!("fc_worker: returning because file_no == 0");
         return;

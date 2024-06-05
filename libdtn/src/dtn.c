@@ -73,13 +73,13 @@ void fc_push( uint64_t file_no, uint64_t bytes, uint32_t crc ) {
 
   while ((tail + fc_info_cnt) <= head) {
     // Wait until tail catches up
-    usleep(1000);
+    ESCP_DELAY(25);
     tail = atomic_load( &fc_info_tail );
   }
 
   while ( atomic_load( &fc_info[h].state ) ) {
     // Wait until slot is clear
-    usleep(100);
+    ESCP_DELAY(1);
   }
 
   fc.state= 1;
@@ -99,7 +99,7 @@ struct fc_info_struct* fc_pop() {
 
   while (tail >= head) {
     // Tail is past head, wait for head
-    ESCP_DELAY(1);
+    ESCP_DELAY(25);
     head = atomic_load( &fc_info_head );
   }
 
@@ -402,7 +402,7 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
 
       // Not enough room for metadata, wait for queue to clear
 
-      usleep(10000);
+      ESCP_DELAY(10);
       tail = atomic_load ( &metatail );
       t = tail % (metabuf_sz/64);
     }
@@ -607,7 +607,7 @@ void meta_send( char* buf, char* hdr, int len ) {
     tmp = atomic_load( &metaknob );
 
     if ( !tmp ) {
-      usleep(1000);
+      ESCP_DELAY(1);
       continue;
     }
 
@@ -1032,7 +1032,7 @@ void finish_transfer( struct dtn_args* args, uint64_t filecount ) {
       DBG("[--] Waiting on %ld/%ld", files_closed, filecount);
     }
 
-    usleep(1000);
+    ESCP_DELAY(1)
   }
 
   for (int i=0; i < args->thread_count; i++)
@@ -1176,7 +1176,7 @@ int rx_start( void* fn_arg ) {
         DBG("Finished spawning workers");
         return 0;
       }
-      usleep(1000);
+      ESCP_DELAY(1);
     }
 
     if (  pthread_create(
