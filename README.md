@@ -1,7 +1,7 @@
 EScp 0.7
 ========
 
-ESCP 0.7 is the second major relase of EScp; EScp 0.6 was based on Python
+ESCP 0.7 is the second major release of EScp; EScp 0.6 was based on Python
 and C. EScp 0.7 is a re-write of the Python component in RUST, which
 improves performance, stability, and eases platform distribution.
 
@@ -50,7 +50,7 @@ report. Logs presently are directed to /tmp/escp.log.{client,server}.
 If you found this software useful and/or have any questions/requests, please
 reach out.
 
-The cconf file, `/etc/escp.conf , is a YAML file. At present it has only
+The conf file, `/etc/escp.conf`, is a YAML file. At present it has only
 been tested with the following parameters (change the values for your system):
 
 ```
@@ -295,6 +295,13 @@ Lastly, thanks to you, for using this application. EScp was written for you!
 If you are interested in contributing, you are in the unique position of
 being the first external collaborator to be added here.
 
+RELEASES
+========
+
+```
+SHA256                                                            NAME
+c91d47a3b0c6578e7a727af26700dabd79e0acbf0db7eeffbf3151b48980b8a6  EScp-0.7.0.zip
+```
 
 LICENSE (BSD3)
 ==============
