@@ -29,13 +29,12 @@ pub fn initialize_logging( base_path: &str, args: dtn_args_wrapper ) {
       }
     }
 
-    let ident;
 
-    if unsafe { (*args.args).do_server } {
-      ident = "server";
+    let ident = if unsafe { (*args.args).do_server } {
+      "server"
     } else  {
-      ident = "client";
-    }
+      "client"
+    };
 
     let logfile = FileAppender::builder()
         .encoder(Box::new(PatternEncoder::new("{d(%Y%m%d.%H%M%S%.6f)} [{l}] {T} {f}:{L} {m}\n")))
@@ -58,8 +57,7 @@ pub fn initialize_logging( base_path: &str, args: dtn_args_wrapper ) {
       build::BUILD_TIME,
     );
 
-    _ = thread::Builder::new().name("logr".to_string()).spawn(move ||
-          initialize_clog() );
+    _ = thread::Builder::new().name("logr".to_string()).spawn( initialize_clog );
 }
 
 fn initialize_clog() {

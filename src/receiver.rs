@@ -23,7 +23,7 @@ fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
   let mut buf = vec![ 0u8; 6 ];
   let mut direct_mode = true;
 
-  if flags.mgmt.len() > 0 {
+  if !flags.mgmt.is_empty() {
     _ = fs::remove_file(flags.mgmt.clone());
     listener = UnixListener::bind(flags.mgmt).unwrap();
     stream = listener.accept().unwrap().0 ;
@@ -62,7 +62,9 @@ fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
 
   let mut port_start = 1232;
   let mut port_end = 65536; // XXX: port_end not implemented
-  let mut bind_interface = CString::new( "" ).unwrap();
+  let bind_interface;
+
+
 
   if t == msg_session_init {
 
@@ -114,10 +116,7 @@ fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
 
     if helo.no_direct() { direct_mode = false; }
 
-    match helo.bind_interface() {
-      Some( string )  => { bind_interface = CString::new(string).unwrap(); },
-      _ => { },
-    }
+    bind_interface = CString::new( helo.bind_interface().unwrap_or("") ).unwrap();
 
     logging::initialize_logging( "/tmp/escp.log.", safe_args);
 
@@ -129,10 +128,9 @@ fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
 
   let (fc_in, fc_out) = crossbeam_channel::unbounded();
   {
-    let nam = format!("fc_0");
     let i = fc_in.clone();
 
-    thread::Builder::new().name(nam).spawn(move ||
+    thread::Builder::new().name("fc_0".to_string()).spawn(move ||
       fc_worker(i)).unwrap();
   }
 
@@ -168,14 +166,14 @@ fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
   let builder = sess_init!( {
         version_major: env!("CARGO_PKG_VERSION_MAJOR").parse::<i32>().unwrap(),
         version_minor: env!("CARGO_PKG_VERSION_MINOR").parse::<i32>().unwrap(),
-        port_start: port as i32,
+        port_start: port,
         ..Default::default()
     }
   );
   let buf = builder.finished_data();
 
-  let mut hdr = to_header( buf.len() as u32, msg_session_init );
-  _ = sout.write( &mut hdr );
+  let hdr = to_header( buf.len() as u32, msg_session_init );
+  _ = sout.write( &hdr );
   _ = sout.write( buf );
   _ = sout.flush();
 
@@ -227,7 +225,7 @@ fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
               &file_spec::FileArgs{
                 fino:     file_no,
                 sz:       bytes as i64,
-                crc:      crc,
+                crc,
                 complete: completion,
                 ..Default::default()
               }));
@@ -278,14 +276,14 @@ fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
 
         unsafe{
           let filename = entry.name().unwrap();
-          if root.len() > 0 {
-            full_path = format!("{}/{}", root, filename);
+          full_path = if root.is_empty() {
+            filename.to_string()
           } else {
-            full_path = format!("{}", filename);
-          }
+            format!("{}/{}", root, filename)
+          };
 
           if fs.complete() && (filecount==0) && (fs.files().unwrap().len()==1 &&
-             (root.len() > 0) ) {
+            !root.is_empty() ) {
 
             // If src is a single file and dest is not a directory, we
             // use dest as name for file on remote system
@@ -303,11 +301,11 @@ fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
 
           let fp = CString::new( full_path.clone() ).unwrap();
 
-          for _ in 1..3 {
+          for _ in 1..4 {
             if direct_mode {
               fd = open( fp.as_ptr(), (*args).flags | libc::O_DIRECT, 0o644 );
               if (fd == -1) && (*libc::__errno_location() == 22) {
-                debug!("Couldn't open '{}' using O_DIRECT; disabling direct mode", filename);
+                info!("Couldn't open '{}' using O_DIRECT; disabling direct mode", filename);
                 direct_mode = false;
                 continue;
               }
@@ -317,7 +315,7 @@ fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
 
 
             if entry.sz() < 1 {
-              debug!("Empty file created (&closed)  for {fino} because sz==0",
+              debug!("Empty file created (&closed) for {fino} because sz<=0",
                       fino=entry.fino());
               close(fd);
               break;
@@ -330,7 +328,7 @@ fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
                 let path = std::path::Path::new(full_path.as_str());
                 let _ = fs::create_dir_all(path.parent().unwrap());
 
-                debug!("Create directory {path:?}");
+                info!("Create directory {path:?}");
                 continue;
               }
               info!("Got an error opening file {:?} {:?}",
@@ -376,7 +374,7 @@ fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
 
   let hdr = to_header( 0, msg_session_complete );
   unsafe {
-    meta_send( 0 as *mut i8, hdr.as_ptr() as *mut i8, 0 as i32 );
+    meta_send( std::ptr::null_mut::<i8>(), hdr.as_ptr() as *mut i8, 0_i32 );
   }
 
 

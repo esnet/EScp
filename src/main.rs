@@ -15,8 +15,6 @@ use std::{env, process, thread, collections::HashMap};
 use std::ffi::{CString, CStr};
 use regex::Regex;
 use subprocess::{Popen, PopenConfig, Redirection};
-use std;
-use libc;
 use std::io;
 use std::io::Read;
 use std::io::Write;
@@ -26,9 +24,6 @@ use std::os::fd::FromRawFd;
 use std::fs;
 use std::collections::VecDeque;
 use std::slice;
-use hex;
-use crossbeam_channel;
-// use clean_path;
 
 use log::{{debug, info, error}};
 
@@ -89,12 +84,11 @@ fn int_from_human ( str: String  ) -> u64 {
    */
   let re = Regex::new(r"[a-zA-Z]").unwrap();
   let mut divisor = 1;
-  let idx;
 
-  match re.find(str.as_str()) {
-    Some(value) => { idx = value.start(); }
-    _ => { idx = str.len(); }
-  }
+  let idx = match re.find(str.as_str()) {
+    Some(value) => { value.start() }
+    _ => { str.len() }
+  };
 
   let (number,unit) = str.split_at(idx);
   let val;
@@ -108,7 +102,7 @@ fn int_from_human ( str: String  ) -> u64 {
   let unit_names = " kmgtpe";
   let mut pow = 0;
 
-  if u.len() > 0 {
+  if !u.is_empty() {
     let (x,_y) = u.split_at(1);
     match unit_names.find(x) {
       Some(value) => { pow = value as u32; }
@@ -122,7 +116,7 @@ fn int_from_human ( str: String  ) -> u64 {
     divisor = 8;
   }
 
-  return val * multiplier.pow(pow) / divisor ;
+  val * multiplier.pow(pow) / divisor
 }
 
 /*
@@ -174,7 +168,7 @@ fn fc_worker(fc_in: crossbeam_channel::Sender<(u64, u64, u32, u32)>) {
     unsafe {
       let fc = fc_pop();
 
-      if fc == std::ptr::null_mut() {
+      if fc.is_null() {
         continue;
       }
       debug!("fc_worker: fn={} bytes={} crc={:#X} complete={}",
@@ -351,7 +345,7 @@ fn load_yaml(file_str: &str) -> HashMap<String, String> {
       map.insert(i.to_string(), res.to_string());
     }
 
-    return map;
+    map
 }
 
 fn main() {
@@ -368,7 +362,7 @@ fn main() {
     args_new()
   };
 
-  if config.contains_key(&"cpumask".to_string()) {
+  if config.contains_key("cpumask") {
     unsafe{
       (*args).do_affinity = true;
 
@@ -386,7 +380,7 @@ fn main() {
     }
   }
 
-  if config.contains_key(&"nodemask".to_string()) {
+  if config.contains_key("nodemask") {
     unsafe{
       (*args).nodemask = u64::from_str_radix(
         config["nodemask"].as_str(), 16).expect("Bad nodemask");
@@ -468,7 +462,7 @@ fn main() {
       (*args).do_hash  = !flags.nochecksum;
       if flags.recursive  { (*args).recursive = true; }
 
-      (*args).pacing = int_from_human(flags.limit.clone()) as u64;
+      (*args).pacing = int_from_human(flags.limit.clone());
       (*args).window = 512*1024*1024;
       (*args).mtu=8204;
       (*args).thread_count = flags.threads as i32;

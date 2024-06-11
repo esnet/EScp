@@ -20,7 +20,7 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
 
   let (mut sin, mut sout, mut serr, file, proc, stream, fd);
 
-  if flags.mgmt.len() > 0 {
+  if !flags.mgmt.is_empty() {
     stream = UnixStream::connect(flags.mgmt)
             .expect("Unable to open mgmt connection");
     fd = stream.as_raw_fd();
@@ -36,11 +36,11 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
     let mut ssh_args = vec![flags.ssh.as_str(), "-p", port_str.as_str()];
     let escp_cmd;
 
-    if flags.identity.len() > 0 {
+    if !flags.identity.is_empty() {
       ssh_args.extend(["-i", flags.identity.as_str()]);
     }
 
-    if flags.ssh_option.len() > 0 {
+    if !flags.ssh_option.is_empty() {
       ssh_args.extend(["-o", flags.ssh_option.as_str()]);
     }
 
@@ -48,7 +48,7 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
       ssh_args.extend(["-o", "BatchMode=True"]);
     }
 
-    if flags.cipher.len() > 0 {
+    if !flags.cipher.is_empty() {
       ssh_args.extend(["-c", flags.cipher.as_str()]);
     }
 
@@ -108,16 +108,16 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
       &mut builder, &session_init::Session_InitArgs{
         version_major: env!("CARGO_PKG_VERSION_MAJOR").parse::<i32>().unwrap(),
         version_minor: env!("CARGO_PKG_VERSION_MINOR").parse::<i32>().unwrap(),
-        session_id: session_id,
+        session_id,
         port_start: start_port as i32,
-        do_verbose: do_verbose,
+        do_verbose,
         do_crypto: true,
         crypto_key: ckey,
-        io_engine: io_engine,
+        io_engine,
         no_direct: nodirect,
-        do_hash: do_hash,
-        thread_count: thread_count,
-        block_sz: block_sz,
+        do_hash,
+        thread_count,
+        block_sz,
         ..Default::default()
       }
     );
@@ -126,9 +126,9 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
 
     debug!("Sending session_init message of len: {}", buf.len() );
 
-    let mut hdr  = to_header( buf.len() as u32, msg_session_init );
+    let hdr  = to_header( buf.len() as u32, msg_session_init );
 
-    _ = sin.write( &mut hdr );
+    _ = sin.write( &hdr );
     _ = sin.write( buf );
     _ = sin.flush();
   }
@@ -155,7 +155,6 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
     let (sz, t) = from_header( buf.to_vec() );
     debug!("Got sz={:?} of type={:?}", sz, t);
 
-    let helo;
     buf.resize( sz as usize, 0 );
     let result = sout.read_exact( &mut buf);
     match result {
@@ -166,7 +165,7 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
       }
     }
 
-    helo = flatbuffers::root::<session_init::Session_Init>(buf.as_slice()).unwrap();
+    let helo = flatbuffers::root::<session_init::Session_Init>(buf.as_slice()).unwrap();
     debug!("Got response from receiver");
 
 
@@ -214,7 +213,7 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
   {
     let fc_in;
     (fc_in, fc_out) = crossbeam_channel::unbounded();
-    let nam = format!("fc_0");
+    let nam = "fc_0".to_string();
     thread::Builder::new().name(nam).spawn(move ||
       fc_worker(fc_in)).unwrap();
   }
@@ -264,13 +263,12 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
       let rate = bytes_now as f32/duration.as_secs_f32();
 
       let eta= ((bytes_total - bytes_now) as f32 / rate) as i64;
-      let eta_human;
 
-      if eta > 3600 {
-        eta_human = format!("{:02}:{:02}:{:02}", eta/3600, (eta/60)%60, eta%60);
+      let eta_human = if eta > 3600 {
+        format!("{:02}:{:02}:{:02}", eta/3600, (eta/60)%60, eta%60)
       } else {
-        eta_human = format!("{:02}:{:02}", eta/60, eta%60);
-      }
+        format!("{:02}:{:02}", eta/60, eta%60)
+      };
 
       let rate_str;
       let tot_str;
@@ -285,12 +283,7 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
         debug!("{}/{}", bytes_now, bytes_total);
       }
 
-      let units;
-      if flags.bits {
-        units = "bits"
-      } else {
-        units = "B"
-      }
+      let units = if flags.bits { "bits" } else { "B" };
 
       let bar = format!("\r [{: <40}] {}B {}{}/s {: <10}",
                         progress, tot_str, rate_str, units, eta_human);
@@ -338,16 +331,17 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
 
     let hdr = to_header( 0, msg_session_complete );
     unsafe {
-      meta_send( 0 as *mut i8, hdr.as_ptr() as *mut i8, 0 as i32 );
+      meta_send( std::ptr::null_mut::<i8>(), hdr.as_ptr() as *mut i8, 0_i32 );
     }
   }
 
   info!("Waiting for ACK");
   // Wait for ACK
 
-  while unsafe{ meta_recv() }.is_null() == true {
+  while unsafe{ meta_recv() }.is_null() {
     thread::sleep(std::time::Duration::from_millis(20));
   }
+
   unsafe { meta_complete(); }
 
   info!("Finished transfer");
@@ -362,7 +356,9 @@ fn file_check(
 
   let ptr = unsafe { meta_recv() };
 
-  while ptr.is_null() != true {
+  while !ptr.is_null() {
+
+    info!("looping through loop that never actually loops");
 
     let b = unsafe { slice::from_raw_parts(ptr, 6).to_vec() };
     let (sz, t) = from_header( b );
@@ -434,7 +430,7 @@ fn file_check(
 
   }
 
-  if ptr.is_null() != true {
+  if !ptr.is_null() {
     unsafe{ meta_complete(); }
   } else {
     let interval = run_until - std::time::Instant::now();
@@ -446,7 +442,7 @@ fn file_check(
     }
   }
 
-  return 1;
+  1
 }
 
 fn iterate_dir_worker(  dir_out:  crossbeam_channel::Receiver<(String, String, i32)>,
@@ -472,7 +468,7 @@ fn iterate_dir_worker(  dir_out:  crossbeam_channel::Receiver<(String, String, i
 
     loop {
       let fi = unsafe { readdir( dir ) };
-      if fi == std::ptr::null_mut() {
+      if fi.is_null() {
         break;
       }
 
@@ -553,13 +549,14 @@ fn iterate_file_worker(
 
       loop {
         if direct_mode {
-          fd = open( c_str.as_ptr() as *const i8, (*args.args).flags | libc::O_DIRECT, mode );
+          // fd = open( c_str.as_ptr() as *const i8, (*args.args).flags | libc::O_DIRECT, mode );
+          fd = open( c_str.as_ptr(), (*args.args).flags | libc::O_DIRECT, mode );
           if (fd == -1) && (*libc::__errno_location() == 22) {
             direct_mode = false;
-            fd = open( c_str.as_ptr() as *const i8, (*args.args).flags, mode );
+            fd = open( c_str.as_ptr(), (*args.args).flags, mode );
           }
         } else {
-          fd = open( c_str.as_ptr() as *const i8, (*args.args).flags, mode );
+          fd = open( c_str.as_ptr(), (*args.args).flags, mode );
         }
 
         if fd == -1 {
@@ -617,18 +614,16 @@ fn iterate_file_worker(
       }
 
 
-      let res;
-
-      if f == prefix.as_str() {
+      let res = if f == prefix.as_str() {
         let prefix  = std::path::Path::new(prefix.as_str());
         let f_path = std::path::Path::new(f);
         let strip=prefix.parent().unwrap();
-        res = f_path.strip_prefix(strip).unwrap();
+        f_path.strip_prefix(strip).unwrap()
       } else {
         let prefix  = std::path::Path::new(prefix.as_str());
         let f_path = std::path::Path::new(f);
-        res = f_path.strip_prefix(prefix).unwrap();
-      }
+        f_path.strip_prefix(prefix).unwrap()
+      };
 
       let fname = res.to_str().unwrap().to_string();
       if st.st_size > 0 {
@@ -677,7 +672,7 @@ fn iterate_files ( files: Vec<String>,
 
     for j in 0..GLOBAL_FILEOPEN_COUNT{
       let nam = format!("file_{}", j as i32);
-      let a = args.clone();
+      let a = args;
       let fo = files_out.clone();
       let di = dir_in.clone();
       let mi = msg_in.clone();
@@ -688,7 +683,7 @@ fn iterate_files ( files: Vec<String>,
 
     for j in 0..GLOBAL_DIROPEN_COUNT{
       let nam = format!("dir_{}", j as i32);
-      let a = args.clone();
+      let a = args;
       let dir_o = dir_out.clone();
       let fi = files_in.clone();
 
@@ -697,7 +692,7 @@ fn iterate_files ( files: Vec<String>,
     }
 
     for fi in files {
-      if fi.len() < 1 { continue; };
+      if fi.is_empty() { continue; };
       let path = clean_path::clean(fi).into_os_string().into_string().unwrap();
       _ = files_in.send((path.clone(),path));
     }
@@ -762,7 +757,7 @@ fn iterate_files ( files: Vec<String>,
             fc_hash,
             std::time::Instant::now() + std::time::Duration::from_millis(2),
             files_ok,
-            &fc_out
+            fc_out
           );
           continue;
         }
@@ -809,7 +804,7 @@ fn iterate_files ( files: Vec<String>,
         file_spec::File::create( &mut builder,
           &file_spec::FileArgs{
                 fino: *a,
-                name: name,
+                name,
                 sz: *c,
                 ..Default::default()
           }));
@@ -827,7 +822,7 @@ fn iterate_files ( files: Vec<String>,
       let fi   = Some( builder.create_vector( &v ) );
       let bu = file_spec::ESCP_file_list::create(
         &mut builder, &file_spec::ESCP_file_listArgs{
-          root: root,
+          root,
           files: fi,
           complete: do_break,
           ..Default::default()
@@ -857,7 +852,7 @@ fn iterate_files ( files: Vec<String>,
   *ft = files_total;
 
   debug!("iterate_files: is finished");
-  return bytes_total;
+  bytes_total
 }
 
 
