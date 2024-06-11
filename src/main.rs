@@ -338,7 +338,7 @@ fn load_yaml(file_str: &str) -> HashMap<String, String> {
     file.read_to_string(&mut contents)
         .expect("Unable to read file");
 
-    let docs = yaml_rust::YamlLoader::load_from_str(
+    let docs = yaml_rust2::YamlLoader::load_from_str(
       &contents).expect("Error parsing YAML File");
     let doc = &docs[0];
 

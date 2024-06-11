@@ -14,7 +14,7 @@
 
 #include <syslog.h>
 
-// Generic delay for about 1ms
+// Delay for x time in milli-seconds.
 #define ESCP_DELAY(x) {                                     \
   struct timespec g = {0};                                  \
   g.tv_nsec = x*1000*1000;                                  \

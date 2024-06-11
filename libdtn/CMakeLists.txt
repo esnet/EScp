@@ -19,10 +19,10 @@ execute_process(
 #set(CMAKE_C_FLAGS_RELEASE "-g -march=sandybridge -O3 -pthread")
 #set(CMAKE_C_FLAGS_DEBUG "-g -march=sandybridge -O3 -pthread")
 
-set(CMAKE_C_FLAGS_RELEASE "-g -march=sandybridge -pthread")
+set(CMAKE_C_FLAGS_RELEASE "-g -march=sandybridge -pthread -O ")
 set(CMAKE_C_FLAGS_DEBUG "-g -march=sandybridge -pthread")
 
-add_definitions("-Wall -Wno-unused-result -Wno-stringop-truncation -DO_VERSION=\\\"${ver}\\\"")
+add_definitions("-Wall -Wno-unused-result -Wno-stringop-truncation")
 
 #add_compile_options(-fsanitize=address)
 #add_link_options(-fsanitize=address)
