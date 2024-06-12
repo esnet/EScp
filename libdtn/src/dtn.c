@@ -726,20 +726,12 @@ void* rx_worker( void* arg ) {
       uint64_t file_no = fi->file_no_packed >> 8;
       uint64_t offset = fi->offset & ~(0xffffUL);
       uint64_t res=0;
-      sz = (sz + 4095) & ~4095;
       int orig_sz = sz;
+      sz = (sz + 4095) & ~4095; // Note: io_flags & O_DIRECT doesn't get set anymore because we always
+                                //       try to do direct mode... so we always just pad to 4k
 
       fob->set( knob->token, FOB_OFFSET, offset );
       fob->set( knob->token, FOB_SZ, sz );
-
-      if ( sz < 4096 )  {
-        // Note: io_flags & O_DIRECT doesn't get set anymore because we always
-        //       try to do direct mode... so we always just pad to 4k
-
-        // Always read in at least 4K of data
-        fob->set( knob->token, FOB_SZ,  4096 );
-	sz = 4096;
-      }
 
       while ( file_cur != file_no ) {
         // Fetch the file descriptor associated with block
@@ -760,15 +752,14 @@ void* rx_worker( void* arg ) {
       if (dtn->do_hash) {
         uint8_t* buf = fob->get( knob->token, FOB_BUF );
         int seed = offset/knob->block;
-        atomic_fetch_xor( &fs_ptr->crc, file_hash(buf, sz, seed) );
+        atomic_fetch_xor( &fs_ptr->crc, file_hash(buf, orig_sz, seed) );
       }
 
-      DBV("[%2d] Do FIHDR_SHORT crc=%08x fn=%ld offset=%zX sz=%d", id, crc, file_no, offset, sz);
+      DBV("[%2d] Do FIHDR_SHORT crc=%08x fn=%ld offset=%zX sz=%d", id, fs_ptr->crc, file_no, offset, orig_sz);
 
       while ( (knob->token = fob->submit(fob, &sz, &res)) ) {
         // XXX: Flushes IO queue; we don't necessarily want to do that;
         //      For instance when UIO is added back.
-
         int64_t written;
 
         /*

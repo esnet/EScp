@@ -295,6 +295,7 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
           duration.as_secs_f32(), "");
         _ = fi.write(s.as_bytes());
         _ = fi.flush();
+        info!("{}", s.trim());
         break;
       }
 
@@ -358,8 +359,6 @@ fn file_check(
 
   while !ptr.is_null() {
 
-    info!("looping through loop that never actually loops");
-
     let b = unsafe { slice::from_raw_parts(ptr, 6).to_vec() };
     let (sz, t) = from_header( b );
 
@@ -410,14 +409,16 @@ fn file_check(
       }
 
       if sz as i64 != rx_sz {
-        info!("sz mismatch on {} {}!={}", rx_fino, sz, rx_sz);
-        continue;
+        error!("sz mismatch on {} {}!={}", rx_fino, sz, rx_sz);
+        return 0;
       }
 
       if crc != rx_crc {
         // Should always be able to test CRC because if CRC not enabled
         // entry should be zero
-        info!("sz mismatch on {} {:#X}!={:#X}", rx_fino, crc, rx_crc);
+        error!("CRC mismatch on {} {:#010X}!={:#010X}", rx_fino, crc, rx_crc);
+        return 0;
+
       }
 
       *files_ok += 1;
