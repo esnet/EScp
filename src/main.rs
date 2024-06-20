@@ -143,7 +143,7 @@ fn from_header( i: Vec<u8> ) -> ( u32, u16 ) {
 }
 
 
-fn do_escp(args: *mut dtn_args, flags: EScp_Args) {
+fn do_escp(args: *mut dtn_args, flags: &EScp_Args) {
   let safe_args = logging::dtn_args_wrapper{ args: args as *mut logging::dtn_args };
   unsafe impl Send for logging::dtn_args_wrapper {}
   unsafe impl Sync for logging::dtn_args_wrapper {}
@@ -479,7 +479,7 @@ fn main() {
       process::exit(0);
     };
 
-    do_escp( args, flags );
+    do_escp( args, &flags );
   };
 
 }

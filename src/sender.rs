@@ -1,4 +1,4 @@
-fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
+fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   let args = safe_args.args;
   let (host,dest_tmp,dest);
   let mut fc_hash: HashMap<u64, (u64, u32, u32)> = HashMap::new();
@@ -21,7 +21,7 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
   let (mut sin, mut sout, mut serr, file, proc, stream, fd);
 
   if !flags.mgmt.is_empty() {
-    stream = UnixStream::connect(flags.mgmt)
+    stream = UnixStream::connect(flags.mgmt.clone())
             .expect("Unable to open mgmt connection");
     fd = stream.as_raw_fd();
 
@@ -219,8 +219,7 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
   }
 
   let mut files_total = 0;
-  let bytes_total = iterate_files( flags.source, safe_args, dest.to_string(),
-                                   flags.quiet,
+  let bytes_total = iterate_files( &flags, safe_args, dest.to_string(),
                                    &fi,
                                    &mut files_total,
                                    &mut fc_hash,
@@ -644,9 +643,9 @@ fn iterate_file_worker(
   debug!("iterate_file_worker: exiting");
 }
 
-fn iterate_files ( files: Vec<String>,
+fn iterate_files ( flags: &EScp_Args,
                     args: logging::dtn_args_wrapper,
-               dest_path: String, quiet: bool,
+               dest_path: String,
                 mut sout: &std::fs::File,
                       ft: &mut u64,
                  fc_hash: &mut HashMap<u64, (u64, u32, u32)>,
@@ -692,7 +691,7 @@ fn iterate_files ( files: Vec<String>,
         iterate_dir_worker(dir_o, fi, a)).unwrap();
     }
 
-    for fi in files {
+    for fi in &flags.source {
       if fi.is_empty() { continue; };
       let path = clean_path::clean(fi).into_os_string().into_string().unwrap();
       _ = files_in.send((path.clone(),path));
@@ -717,7 +716,7 @@ fn iterate_files ( files: Vec<String>,
   let _ = GLOBAL_FILEOPEN_TAIL.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
   loop {
-    if !quiet {
+    if !flags.quiet {
 
       let a = unsafe { human_write( files_total, true )};
 
@@ -732,8 +731,29 @@ fn iterate_files ( files: Vec<String>,
       }
 
       let tot  = unsafe { CStr::from_ptr(a).to_str().unwrap() };
+      let mut transfer = String::from("");
 
-      let l = format!("\rCalculating ... Files: {tot} Rate: {rate}/s ");
+      let bytes_now = unsafe { get_bytes_io(args.args as *mut dtn_args) };
+      if bytes_now > 0 {
+
+        let duration = start.elapsed();
+
+        let rate = bytes_now as f32/duration.as_secs_f32();
+
+
+        let units = if flags.bits { "bits" } else { "B" };
+
+        let tmp = unsafe { human_write(rate as u64, !flags.bits) };
+        let rate_str= unsafe { CStr::from_ptr(tmp).to_str().unwrap() };
+
+        let tmp = unsafe { human_write(bytes_now as u64, true) };
+        let tot_str= unsafe { CStr::from_ptr(tmp).to_str().unwrap() };
+
+        transfer = format!("Bytes: {}B {}{}/s",
+                           tot_str, rate_str, units);
+      }
+
+      let l = format!("\rCalculating ... Files: {tot} ({rate}/s)   {transfer}");
       _ = sout.write(l.as_bytes());
       _ = sout.flush();
     }

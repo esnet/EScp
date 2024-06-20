@@ -15,7 +15,7 @@ fn start_receiver( args: logging::dtn_args_wrapper ) {
   debug!("start_receiver complete");
 }
 
-fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
+fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   let args = safe_args.args;
 
   let (mut sin, mut sout, file, file2, listener, stream);
@@ -25,7 +25,7 @@ fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: EScp_Args) {
 
   if !flags.mgmt.is_empty() {
     _ = fs::remove_file(flags.mgmt.clone());
-    listener = UnixListener::bind(flags.mgmt).unwrap();
+    listener = UnixListener::bind(flags.mgmt.clone()).unwrap();
     stream = listener.accept().unwrap().0 ;
 
     let fd = stream.as_raw_fd();
