@@ -300,8 +300,22 @@ RELEASES
 
 ```
 SHA256                                                            NAME
+755fd7c88a9983e45250e7d3ea2f5942295b5f3bdedb980cb06cd6deede212f2  EScp-0.7.1.tar.gz
 c91d47a3b0c6578e7a727af26700dabd79e0acbf0db7eeffbf3151b48980b8a6  EScp-0.7.0.zip
 ```
+
+Chages from 0.7.0 to 0.7.1:
+  * Checksum feature enabled
+  * Change how transfer progress is displayed when calculating files
+  * Code cleanup w/ clippy & cargo audit
+
+Chages from 0.6.0 to 0.7.0:
+  * Complete rewrite of python code
+  * Change to fully lockless design
+    - Previous versions locked when iterating through files
+  * CLI Syntax more closely mirrors scp, w/ some borrow from iPerf
+  * Config File format changed to YAML
+  * HashMap for indexing file descriptors/file numbers
 
 LICENSE (BSD3)
 ==============
