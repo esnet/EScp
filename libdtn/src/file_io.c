@@ -27,6 +27,17 @@
 // to something below that maximum. It must always be set below the configured
 // FD limit.
 
+#define FILE_STAT_COUNT 750
+#define FILE_STAT_COUNT_HSZ 2048
+#define FILE_STAT_COUNT_CC 16
+
+#define FS_INIT        0xBAEBEEUL
+#define FS_IO          (1UL << 31) // NOTE: These values set a limit to the
+#define FS_COMPLETE    (1UL << 30) //       number of threads. It really
+                                   //       should be 1UL<<62 & 1UL<<63
+#define FS_MASK(A)     (A & (FILE_STAT_COUNT_HSZ-1))
+
+
 /*
 // The AVX routines are sort of stand-ins for atomically do something with
 // a cacheline of memory. Should be replaced with something less platform
@@ -71,15 +82,6 @@ void memset_avx( void* dst ) {
 
 // Soft limit on file descriptors, must at least 50 less than FD limit, and
 // much less than HSZ (which must be ^2 aligned).
-#define FILE_STAT_COUNT 700
-#define FILE_STAT_COUNT_HSZ 4096
-#define FILE_STAT_COUNT_CC 12
-
-#define FS_INIT        0xBAEBEEUL
-#define FS_IO          (1UL << 31)
-#define FS_COMPLETE    (1UL << 30)
-#define FS_MASK(A)     (A & (FILE_STAT_COUNT_HSZ-1))
-
 struct file_stat_type file_stat[FILE_STAT_COUNT_HSZ]={0};
 
 uint64_t file_claim __attribute__ ((aligned(64)));

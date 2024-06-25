@@ -1052,9 +1052,9 @@ DBG("tx_start spawning workers");
   if (!args->thread_count)
     args->thread_count=1;
 
-  VRFY( args->thread_count < (THREAD_COUNT-1),
-    "thread_count %d > hardocoded limit %d",
-    args->thread_count, THREAD_COUNT-1 );
+  VRFY( args->thread_count < (THREAD_COUNT-2),
+    "thread_count %d >= thread limit %d",
+    args->thread_count, THREAD_COUNT-2 );
 
   for (i=0; i < args->thread_count; i++)  {
     tx_arg[i].dtn = args;
