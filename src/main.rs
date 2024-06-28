@@ -195,8 +195,8 @@ struct EScp_Args {
    #[arg(required=true, default_value_t=String::from(""))]
    destination: String,
 
-   /// Port
-   #[arg(short='P', long="port", default_value_t = 22)]
+   /// SSH Port
+   #[arg(short='P', long="port", hide_default_value=true, default_value_t = 22)]
    ssh_port: u16,
 
    /// ESCP Port
@@ -222,8 +222,8 @@ struct EScp_Args {
    #[arg(short='i', long, default_value_t=String::from(""))]
    identity: String,
 
-   /// LIMIT transfer to (bytes/sec)
-   #[arg(short, long, default_value_t = String::from("0"))]
+   /// LIMIT/thread (bytes/sec) using SO_MAX_PACING_RATE
+   #[arg(short, long, hide_default_value=true, default_value_t = String::from("0"))]
    limit: String,
 
    /// Preserve source attributes (TODO)
@@ -239,7 +239,7 @@ struct EScp_Args {
    recursive: bool,
 
    /// SSH_OPTION to SSH
-   #[arg(short='o', default_value_t=String::from(""))]
+   #[arg(short='o', hide_default_value=true, default_value_t=String::from(""))]
    ssh_option: String,
 
    /// SSH binary
@@ -261,7 +261,7 @@ struct EScp_Args {
    #[arg(short='t', long="parallel", default_value_t = 4 )]
    threads: u32,
 
-   #[arg(long, help="mgmt UDS/IPC connection", default_value_t=String::from(""))]
+   #[arg(long, hide=true, help="mgmt UDS/IPC connection", default_value_t=String::from(""))]
    mgmt: String,
 
    #[arg(long, help="Display speed in bits/s")]

@@ -16,7 +16,7 @@
 pthread_mutex_t dummy_lock;
 
 static int dummy_fd_head=0;
-static struct stat dummy_sb[THREAD_COUNT] = {0};
+static struct stat dummy_sb[THREAD_COUNT] __attribute__ ((aligned(64))) = {0};
 
 
 int file_dummyopen( const char* filename, int flags, ... ) {
