@@ -187,12 +187,12 @@ fn fc_worker(fc_in: crossbeam_channel::Sender<(u64, u64, u32, u32)>) {
 #[derive(Parser, Debug)]
 #[command(  author, long_version=logging::build::CLAP_LONG_VERSION, about, long_about = None )]
 struct EScp_Args {
-   /// Source Files/Path
-   #[arg(required=true)]
+   /// [ Destination ]
+   #[arg()]
    source: Vec<String>,
 
    /// Destination host:<path/file>
-   #[arg(required=true, default_value_t=String::from(""))]
+   #[arg(hide=true, long="dest", default_value_t=String::from(""))]
    destination: String,
 
    /// SSH Port
@@ -394,7 +394,6 @@ fn main() {
     ("shmem", 4),
   ]);
 
-
   /*
   if cmd == "dtn" {
     let flags = DTN_Args::parse();
@@ -440,7 +439,13 @@ fn main() {
   } else
   */
   {
-    let flags = EScp_Args::parse();
+    let mut flags = EScp_Args::parse();
+
+    let l = flags.source.len();
+    flags.destination=flags.source.last().unwrap_or(&String::new()).to_string();
+    if l >= 2 {
+      flags.source.truncate(l-1);
+    }
 
     unsafe {
 
@@ -478,6 +483,16 @@ fn main() {
       print_license();
       process::exit(0);
     };
+
+    if l < 2 {
+      eprintln!("Error: Not enough arguments\n");
+
+      use clap::CommandFactory;
+      let mut cmd = EScp_Args::command();
+      let _ = cmd.print_help();
+
+      process::exit(0);
+    }
 
     do_escp( args, &flags );
   };
