@@ -154,8 +154,10 @@ bindgen libdtn/include/dtn.h -o bindings.rs --use-core  --generate-cstr
 
 # You probably also want gdb/valgrind/whatever your favorite debug tools are
 
-# Enable autocomplete
+# You can enable autocomplete by adding below to .bashrc
 complete -F _scp -o nospace escp
+_completion_loader scp
+
 
 
 ```
