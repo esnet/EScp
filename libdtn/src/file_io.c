@@ -182,7 +182,7 @@ struct file_stat_type* file_addfile( uint64_t fileno, int fd, uint32_t crc,
   return( &file_stat[FS_MASK(slot)] );
 }
 
-struct file_stat_type* file_wait( uint64_t fileno, struct file_stat_type* test_fs ) {
+struct file_stat_type* file_wait( uint64_t fileno, struct file_stat_type* test_fs, int id ) {
 
   int i;
   uint64_t fc, slot, fs_init;
@@ -194,7 +194,7 @@ struct file_stat_type* file_wait( uint64_t fileno, struct file_stat_type* test_f
     if (fileno <= fc) {
       break;;
     }
-    ESCP_DELAY(225);
+    ESCP_DELAY(10);
   }
 
   // DBG("file_wait ready on fn=%ld", fileno);
@@ -212,18 +212,19 @@ struct file_stat_type* file_wait( uint64_t fileno, struct file_stat_type* test_f
     if ( (test_fs->state == FS_INIT) && atomic_compare_exchange_weak(
       &file_stat[FS_MASK(slot)].state, &fs_init, FS_COMPLETE|FS_IO) )
     {
-      DBG("NEW IOW on fn=%ld, slot=%ld", test_fs->file_no, FS_MASK(slot));
+      DBG("[%2d] NEW IOW on fn=%ld, slot=%ld", id, test_fs->file_no, FS_MASK(slot));
       return &file_stat[FS_MASK(slot)]; // Fist worker on file
     }
 
     if (test_fs->state & FS_IO) {
-      DBG("ADD writer to fn=%ld", test_fs->file_no);
+      DBG("[%2d] ADD writer to fn=%ld", id, test_fs->file_no);
       return &file_stat[FS_MASK(slot)]; // Add worker to file
     }
   }
 
-  VRFY(0, "Couldn't convert fileno");
-  return 0;
+  // VRFY(0, "[%2d] Couldn't convert fileno", id);
+  NFO("[%2d] Couldn't convert fileno, trying again.", id);
+  return file_wait( fileno, test_fs, id );
 }
 
 

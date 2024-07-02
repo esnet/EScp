@@ -739,7 +739,7 @@ void* rx_worker( void* arg ) {
         VRFY( file_no, "ASSERT: file_no != zero" );
 
         DBV("[%2d] FIHDR_SHORT: call file_wait for fn=%ld", id, file_no);
-        fs_ptr = file_wait( file_no, &fs );
+        fs_ptr = file_wait( file_no, &fs, id );
 
         DBV("[%2d] FIHDR_SHORT: file_wait returned fd=%d for fn=%ld", id, fs.fd, file_no);
 
