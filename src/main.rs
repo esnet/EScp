@@ -62,7 +62,7 @@ const msg_file_stat:u16         =17;
 const msg_session_complete:u16  = 1;
 const msg_session_terminate:u16 = 9;
 
-const config_items: [&str; 2]= [ "cpumask", "nodemask" ];
+const config_items: &[&str]= &[ "cpumask", "nodemask" ];
 
 static GLOBAL_FILEOPEN_CLEANUP: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static GLOBAL_FILEOPEN_TAIL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -338,7 +338,7 @@ fn load_yaml(file_str: &str) -> HashMap<String, String> {
 
     for i in config_items {
       let res;
-      match doc[i].as_str() {
+      match doc[*i].as_str() {
         Some(value)  => { res= value; }
         _ => { continue }
       }
@@ -352,7 +352,6 @@ fn main() {
 
 
   let config = load_yaml("/etc/escp.conf");
-
   // let args: Vec<String> = env::args().collect();
   // let path = std::path::Path::new( &args[0] );
   // let cmd = path.file_name().expect("COWS!").to_str().unwrap() ;

@@ -58,7 +58,7 @@ while 1:
     mask = mask | 1 << i
   cpurange = cpurange[2:]
 
-output = "cpumask: %X\n" % mask
+output = "cpumask: \"%X\"\n" % mask
 
 s=subprocess.run(["systool", "-A", "numa_node", "-c", "net", sys.argv[1]], stdout=subprocess.PIPE)
 
@@ -72,6 +72,6 @@ numanode=numanode.split("\"")[1]
 numanode=int(numanode)
 
 if (numanode>=0):
-  output += "nodemask: %X" % (1 << numanode)
+  output += "nodemask: \"%X\"" % (1 << numanode)
 
 print(output)

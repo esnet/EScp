@@ -28,7 +28,7 @@ uint64_t ESCP_DROPPED_MSG=0;
 #pragma GCC diagnostic ignored "-Wmultichar"
 char si_prefix[] = " KMGTPE";
 
-void affinity_set ( struct dtn_args* args ) {
+void affinity_set ( struct dtn_args* args, int id ) {
   int i=0;
 
   if (!args->do_affinity)
@@ -37,15 +37,20 @@ void affinity_set ( struct dtn_args* args ) {
   cpu_set_t set;
   CPU_ZERO(&set);
 
+  uint64_t mask = 0;
+
   for (i=0; i<(args->cpumask_len*8); i++) {
-    if (args->cpumask_bytes[i/8] & ( 1 << (i & 0x7) ))
+    if (args->cpumask_bytes[i/8] & ( 1 << (i & 0x7) )) {
       CPU_SET( i, &set );
+      mask |= 1 << i;
+    }
   }
+
+  DBG("[%2d] Set CPU affinity to %lX", id, mask);
 
   set_mempolicy( MPOL_BIND, &args->nodemask, 64 );
   if ( sched_setaffinity(0, sizeof(set), &set) ) {
-    perror("Setting CPU Affinity");
-    exit(-1);
+    VRFY(0, "[%2d] Setting CPU Affinity", id);
   }
 }
 

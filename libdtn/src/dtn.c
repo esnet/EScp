@@ -688,7 +688,7 @@ void* rx_worker( void* arg ) {
 
   DBG("[%2d] Accept connection", id);
 
-  affinity_set( dtn );
+  affinity_set( dtn, id );
 
   while ( 1 ) {
     uint64_t read_sz=read_fixed( rx->conn, read_buf, 16 );
@@ -830,9 +830,10 @@ void* tx_worker( void* args ) {
   struct network_obj* knob;
   void* token;
 
-  affinity_set( dtn );
 
   id = atomic_fetch_add(&thread_id, 1);
+  affinity_set( dtn, id );
+
   fob = file_memoryinit( dtn, id );
   fob->id = id;
 

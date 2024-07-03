@@ -129,8 +129,8 @@ int file_posixinit( struct file_object* fob ) {
   op = malloc( sizeof(struct posix_op) );
   VRFY( op, "bad malloc" );
 
-  op->buf = mmap (  NULL, fob->blk_sz, PROT_READ|PROT_WRITE,
-                         MAP_SHARED|MAP_ANONYMOUS, -1, 0 );
+  op->buf = mmap( NULL, fob->blk_sz*2, PROT_READ|PROT_WRITE,
+                  MAP_SHARED|MAP_ANONYMOUS, -1, 0 );
   VRFY( op->buf != (void*) -1, "mmap (block_sz=%d)", fob->blk_sz );
 
   fob->pvdr = op;

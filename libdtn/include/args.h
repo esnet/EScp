@@ -160,7 +160,7 @@ static inline void dtn_error( char* msg ) {
 struct fc_info_struct* fc_pop();
 
 struct dtn_args* args_new () ;
-void affinity_set ( struct dtn_args* args );
+void affinity_set ( struct dtn_args* args, int id );
 struct sockaddr_storage dns_lookup( char*, char* );
 char* dtn_log_getnext();
 char* dtn_err_getnext();
