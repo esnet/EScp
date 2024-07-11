@@ -22,6 +22,7 @@
 #define FOB_BUF 3
 #define FOB_FD 4
 #define FOB_TRUNCATE 5
+#define FOB_COMPRESSED 6
 
 struct posix_op {
   union {
@@ -34,16 +35,21 @@ struct posix_op {
   uint64_t offset;
   uint32_t flags;
   uint32_t fd; // 32
+  uint64_t compressed;
 };
 
 struct file_object {
   // Generic object that abstracts file_io operation to different engines
   int32_t QD;
-  int32_t pad12;
+  uint8_t hugepages;
+  uint8_t compression;
+  uint8_t is_compressed;
+  uint8_t pad;
 
   uint32_t blk_sz;
   uint16_t id;
   uint16_t io_type;  // Posix, uring, ...
+
 
   int64_t  head;
   int64_t  tail;     // 32

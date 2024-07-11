@@ -261,6 +261,9 @@ struct EScp_Args {
    #[arg(short='t', long="parallel", default_value_t = 4 )]
    threads: u32,
 
+   #[arg(long, hide=true, help="enable hugetlb", default_value_t=0)]
+   hugepages: u32,
+
    #[arg(long, hide=true, help="mgmt UDS/IPC connection", default_value_t=String::from(""))]
    mgmt: String,
 
@@ -460,6 +463,9 @@ fn main() {
         process::exit(0);
       }
 
+      if flags.verbose   { verbose_logging += 1; }
+      if flags.compression { (*args).compression = 1; }
+      if flags.hugepages > 0  { (*args).hugepages = flags.hugepages as i32; }
       if flags.verbose   { verbose_logging += 1; }
       if flags.quiet     { verbose_logging = 0; }
       (*args).nodirect = flags.nodirect;

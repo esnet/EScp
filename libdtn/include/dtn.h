@@ -39,35 +39,6 @@ struct sockaddr_storage dns_lookup( char*, char* );
 char* dtn_log_getnext();
 char* dtn_err_getnext();
 
-#define FIHDR_SHORT 16
-#define FIHDR_CINIT 1
-#define FIHDR_CRYPT 2
-#define FIHDR_META  3
-
-#define FIIO_POSIX 1
-#define FIIO_URING 2
-#define FIIO_DUMMY 3
-#define FIIO_SHMEM 4
-
-#define FOB_SZ 1
-#define FOB_OFFSET 2
-#define FOB_BUF 3
-#define FOB_FD 4
-#define FOB_TRUNCATE 5
-
-struct posix_op {
-  union {
-    struct {
-      uint8_t* buf;
-      uint64_t sz;
-    };
-    struct iovec vec;
-  }; // 16
-  uint64_t offset;
-  uint32_t flags;
-  uint32_t fd; // 32
-};
-
 struct file_object {
   // Generic object that abstracts file_io operation to different engines
   int32_t QD;
@@ -184,6 +155,10 @@ struct dtn_args {
   int block;
   int flags;
   int QD;
+
+  int compression;
+  int hugepages;
+
   int64_t disable_io;
   uint64_t pacing;
 

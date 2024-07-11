@@ -87,6 +87,10 @@ struct dtn_args {
   int block;
   int flags;
   int QD;
+
+  int compression;
+  int hugepages; 
+
   int64_t disable_io;
   uint64_t pacing;
 

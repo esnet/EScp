@@ -10,6 +10,9 @@
 #include <fcntl.h>
 #include <dirent.h>
 #include "args.h"
+#include <zstd.h>
+
+
 #include "file_io.h"
 
 void* file_posixfetch( void* arg ) {
@@ -62,6 +65,8 @@ void* file_posixget( void* arg, int32_t key ) {
       return (void*) op->buf;
     case FOB_FD:
       return (void*) ((uint64_t) op->fd);
+    case FOB_COMPRESSED:
+      return (void*) ((uint64_t) op->compressed);
     default:
       VRFY( 0, "Bad key passed to posixset" );
   }
@@ -76,18 +81,39 @@ void file_posixflush( void* arg ) {
 void* file_posixsubmit( void* arg, int32_t* sz, uint64_t* offset ) {
   struct file_object* fob = arg;
   struct posix_op* op = (struct posix_op*) fob->pvdr;
+  static __thread struct ZSTD_CCtx_s* zctx = NULL;
+  uint64_t csz=0;
 
   if ( fob->tail < fob->head ) {
 
-    DBV( "[%2d] %s op fd=%d sz=%zd, offset=%zd %ld:%ld",
-      fob->id, fob->io_flags & O_WRONLY ? "write":"read",
-      op->fd, fob->io_flags & O_WRONLY ? op->sz: fob->blk_sz,
-      op->offset, fob->tail, fob->head );
-
     if ( fob->io_flags & O_WRONLY )
       *sz = pwrite( op->fd, op->buf, op->sz, op->offset );
-    else
+    else {
       *sz = pread( op->fd, op->buf, fob->blk_sz, op->offset );
+      if (fob->compression) {
+
+        if (!zctx) {
+          zctx = ZSTD_createCCtx();
+          VRFY(zctx > 0, "Couldn't allocate zctx");
+        }
+
+        csz = ZSTD_compressCCtx( zctx,
+          op->buf + fob->blk_sz, fob->blk_sz,
+          op->buf, *sz, 3 );
+
+        if ((csz > 0) && (csz < *sz)) {
+          op->compressed=csz;
+        } else {
+          op->compressed=0;
+          csz=0;
+        }
+      }
+    }
+
+    DBG( "[%2d] %s op fd=%d sz=%zd, offset=%zd %ld:%ld c=%zd",
+      fob->id, fob->io_flags & O_WRONLY ? "write":"read",
+      op->fd, fob->io_flags & O_WRONLY ? op->sz: fob->blk_sz,
+      op->offset, fob->tail, fob->head, csz);
 
     offset[0] = op->offset;
     fob->tail++;
@@ -129,8 +155,17 @@ int file_posixinit( struct file_object* fob ) {
   op = malloc( sizeof(struct posix_op) );
   VRFY( op, "bad malloc" );
 
-  op->buf = mmap( NULL, fob->blk_sz*2, PROT_READ|PROT_WRITE,
-                  MAP_SHARED|MAP_ANONYMOUS, -1, 0 );
+  int flags = MAP_SHARED|MAP_ANONYMOUS;
+
+  if (fob->hugepages)
+    flags |= MAP_HUGETLB;
+
+  uint64_t alloc_sz = fob->blk_sz;
+
+  if (fob->compression)
+    alloc_sz *= 2;
+
+  op->buf = mmap( NULL, alloc_sz, PROT_READ|PROT_WRITE, flags, -1, 0 );
   VRFY( op->buf != (void*) -1, "mmap (block_sz=%d)", fob->blk_sz );
 
   fob->pvdr = op;

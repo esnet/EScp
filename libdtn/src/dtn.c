@@ -970,8 +970,21 @@ void* tx_worker( void* args ) {
       struct file_info fi = {0};
       int bytes_sent;
 
+      uint64_t compressed = (uint64_t) fob->get( token, FOB_COMPRESSED );
+
       uint64_t significand = bytes_read;
       int exponent = u64_2flo(&significand);
+
+      if (compressed) {
+
+        /* Our hint that data is compressed is that the significand
+         * and exponent are zero. The decompressed size is encoded in
+         * the compressed data.
+         */
+
+        significand = 0;
+        exponent = 0;
+      }
 
       fi.file_no_packed = fs_lcl.file_no << 8ULL;
       fi.block_sz_exponent = exponent;
@@ -979,8 +992,12 @@ void* tx_worker( void* args ) {
       fi.offset = offset;
       fi.block_sz_significand = significand;
 
-      bytes_sent = flo2_u64( significand, exponent );
+      if ( !compressed )
+        bytes_sent = flo2_u64( significand, exponent );
+      else
+        bytes_sent = compressed;
 
+      // XXX: do_hash needs to be moved to engine routines (before compression)
       if ( dtn->do_hash ) {
         atomic_fetch_xor( &fs->crc, file_hash(buf, bytes_sent, offset/dtn->block) );
         // NFO("[%2d] CRC with fn=%ld offset=%lX, crc=%08X",

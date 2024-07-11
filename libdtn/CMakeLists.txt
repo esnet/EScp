@@ -109,9 +109,9 @@ add_dependencies(isal isa-l_crypto_project)
 #   BUILD_IN_SOURCE   1
 # )
 
-add_library(liburing STATIC IMPORTED)
-set_property(TARGET liburing PROPERTY IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/uring/lib/liburing.a)
-add_dependencies(liburing liburing_project)
+# add_library(liburing STATIC IMPORTED)
+# set_property(TARGET liburing PROPERTY IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/uring/lib/liburing.a)
+# add_dependencies(liburing liburing_project)
 
 
 find_package(Threads REQUIRED)
@@ -127,7 +127,7 @@ set(SOURCES src/file_io.c src/args.c
 add_library( dtn STATIC ${SOURCES} src/dtn.c)
 
 target_compile_definitions(dtn PUBLIC __ENGINE_POSIX__ __ENGINE_DUMMY__ )
-target_link_libraries(dtn libnuma liburing isal Threads::Threads "rt")
+#target_link_libraries(dtn zstd libnuma liburing isal Threads::Threads "rt")
 
 # And tests (Needs updating)
 enable_testing ()
