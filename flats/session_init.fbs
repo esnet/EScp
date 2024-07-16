@@ -14,6 +14,7 @@ table Session_Init {
   do_hash:          bool;
   do_crypto:        bool;
   do_verbose:       bool;
+  do_compression:   bool;
   no_direct:        bool;
   is_error:         bool;
   message:        string;

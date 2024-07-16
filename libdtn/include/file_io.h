@@ -24,6 +24,8 @@
 #define FOB_TRUNCATE 5
 #define FOB_COMPRESSED 6
 
+#define FIO_COMPRESS_MARGIN (256*1024)
+
 struct posix_op {
   union {
     struct {
@@ -35,7 +37,7 @@ struct posix_op {
   uint64_t offset;
   uint32_t flags;
   uint32_t fd; // 32
-  uint64_t compressed;
+  uint32_t compressed;
 };
 
 struct file_object {

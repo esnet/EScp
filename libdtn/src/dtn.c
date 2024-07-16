@@ -338,11 +338,13 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
 
   struct crypto_hdr* chdr = (struct crypto_hdr*) aad;
   struct file_info* fi = (struct file_info*) knob->buf;
+  static __thread   struct ZSTD_DCtx_s* dctx = NULL;
 
   int64_t bytes_read=16;
 
   if (knob->do_crypto) {
     if (chdr->hdr_sz<48) {
+      ERR("[%2d] Invalid hdr_sz", knob->id );
       return -1;
     }
 
@@ -431,7 +433,8 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
     uint8_t* buffer;
 
     uint64_t block_sz=flo2_u64(fi->block_sz_significand, fi->block_sz_exponent);
-    VRFY ( block_sz <= knob->block, "Invalid block_sz=%ld", block_sz);
+
+    // NFO("chdr=%d block_sz=%zd\n", chdr->hdr_sz, block_sz);
 
     bytes_read += block_sz;
 
@@ -447,17 +450,78 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
     }
     */
 
+    /* NOTE: Encryption is sort of a de-facto requiremnent, although there is
+     *       an intention to not force encryption. However, if compression is
+     *       enabled, you must also use encryption. Compression does not work
+     *       with the weird byte stuffing that regular transfers use; The 16
+     *       byte FIHDR_SHORT hdr, contains offset, file number, and file size,
+     *       three 8-byte fields. To make that work EScp compresses file_size
+     *       using floating point and stuffs those bytes into unused bits in
+     *       offset/file_number.
+     */
+
     buffer = knob->fob->get( knob->token, FOB_BUF );
 
-    DBV("[%2d] Read of %d sz", knob->id, block_sz);
-    if (read_fixed(knob->socket, buffer, block_sz) != block_sz) {
-      DBG("[%2d] Returning 0 from network_recv because ... ", knob->id);
-      return 0;
-    }
+    if ( block_sz == 0 ) {
+      if (!knob->do_crypto)
+        VRFY( 0, "Compression requires that encryption be enabled");
 
-    if ( knob->do_crypto ) {
-       aes_gcm_dec_128_update( &knob->gkey, &knob->gctx,
-         buffer, buffer, block_sz );
+      block_sz = chdr->hdr_sz - 48;
+      VRFY ( block_sz <= knob->block, "Invalid block_sz=%ld", block_sz);
+
+      DBV("[%2d] Compression Read of %d sz", knob->id, block_sz);
+
+      uint8_t* compressed_data = buffer+knob->block+FIO_COMPRESS_MARGIN-block_sz;
+      if (read_fixed(knob->socket, compressed_data, block_sz) != block_sz) {
+        DBG("[%2d] Returning 0 from network_recv because ... ", knob->id);
+        return 0;
+      }
+
+      /* Note: We decompress data here, but don't actually check that the
+       *       encryption checksum is valud until later in this function.
+       *       This means we depend on libzstd to error correctly if we feed
+       *       it bad data, which it does/should do. If the crypto checksum is
+       *       invalid we generate an error and stop processing the data.
+       */
+      aes_gcm_dec_128_update( &knob->gkey, &knob->gctx,
+           compressed_data, compressed_data, block_sz );
+
+      size_t sz_calculated = ZSTD_findFrameCompressedSize(compressed_data, block_sz);
+      VRFY ( sz_calculated <= knob->block, "Invalid compression size %zd>=%zd",
+                                           sz_calculated, knob->block );
+
+      if ( dctx == NULL ) {
+        dctx = ZSTD_createDCtx();
+        VRFY( dctx != NULL, "Couldn't allocate dctx" );
+      }
+
+      /* Zstd supports in place decompression w/ margin + right aligned src */
+      res = ZSTD_decompressDCtx(dctx,
+                   buffer, knob->block,
+                   compressed_data, sz_calculated);
+
+      int zstd_err = ZSTD_isError(res);
+      VRFY( zstd_err == 0, "Compression error: %s", ZSTD_getErrorName(zstd_err) );
+
+      int exponent = u64_2flo(&sz_calculated);
+
+      fi->block_sz_exponent = exponent;
+      fi->block_sz_significand = sz_calculated;
+
+    } else {
+
+      VRFY ( block_sz <= knob->block, "Invalid block_sz=%ld", block_sz);
+
+      DBV("[%2d] Read of %d sz", knob->id, block_sz);
+      if (read_fixed(knob->socket, buffer, block_sz) != block_sz) {
+        DBG("[%2d] Returning 0 from network_recv because ... ", knob->id);
+        return 0;
+      }
+
+      if ( knob->do_crypto ) {
+         aes_gcm_dec_128_update( &knob->gkey, &knob->gctx,
+           buffer, buffer, block_sz );
+      }
     }
   } else {
     VRFY( 0, "[%2d] network_recv: subheader %d not implemented",
