@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <errno.h>
 #include <execinfo.h>
@@ -20,19 +21,19 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/random.h>
 
 #include <libgen.h>
-#include <numaif.h>
 #include <sched.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <poll.h>
 #include <linux/tcp.h>
-#include <sys/random.h>
 
+#include <numaif.h>
 #include <isa-l_crypto.h>
+#include <zstd.h>
 
-#include <stdatomic.h>
 
 #include "file_io.h"
 #include "args.h"
@@ -487,8 +488,9 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
            compressed_data, compressed_data, block_sz );
 
       size_t sz_calculated = ZSTD_findFrameCompressedSize(compressed_data, block_sz);
-      VRFY ( sz_calculated <= knob->block, "Invalid compression size %zd>=%zd",
-                                           sz_calculated, knob->block );
+      VRFY ( sz_calculated <= knob->block, "Bad compression size %zd>=%d: %s",
+                                           sz_calculated, knob->block,
+                                           ZSTD_getErrorName(sz_calculated) );
 
       if ( dctx == NULL ) {
         dctx = ZSTD_createDCtx();
@@ -496,17 +498,17 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
       }
 
       /* Zstd supports in place decompression w/ margin + right aligned src */
-      res = ZSTD_decompressDCtx(dctx,
-                   buffer, knob->block,
-                   compressed_data, sz_calculated);
+      uint64_t res = ZSTD_decompressDCtx(dctx,
+                                    buffer, knob->block,
+                                    compressed_data, sz_calculated);
 
       int zstd_err = ZSTD_isError(res);
       VRFY( zstd_err == 0, "Compression error: %s", ZSTD_getErrorName(zstd_err) );
 
-      int exponent = u64_2flo(&sz_calculated);
+      int exponent = u64_2flo(&res);
 
       fi->block_sz_exponent = exponent;
-      fi->block_sz_significand = sz_calculated;
+      fi->block_sz_significand = res;
 
     } else {
 
@@ -826,14 +828,6 @@ void* rx_worker( void* arg ) {
         //      For instance when UIO is added back.
         int64_t written;
 
-        /*
-        if ( (sz <= 0) && (errno == EBADF) ) {
-         NFO("[%2d] repeating write call. fn=%ld. fd=%d", id, file_no, fs.fd);
-         usleep(5000000);
-         knob->token = fob->submit(fob, &sz, &res);
-        }
-        */
-
         VRFY(sz > 0, "[%2d] WRITE ERR, b=%08ld fd=%d fn=%ld os=%zX sz=%d crc=%08x",
              id, fs.bytes, fs.fd, file_no, offset, orig_sz, fs_ptr->crc );
 
@@ -1061,11 +1055,8 @@ void* tx_worker( void* args ) {
       else
         bytes_sent = compressed;
 
-      // XXX: do_hash needs to be moved to engine routines (before compression)
       if ( dtn->do_hash ) {
-        atomic_fetch_xor( &fs->crc, file_hash(buf, bytes_sent, offset/dtn->block) );
-        // NFO("[%2d] CRC with fn=%ld offset=%lX, crc=%08X",
-        //   id, fs_lcl.file_no, offset, fs->crc);
+        atomic_fetch_xor( &fs->crc, fob->get( token, FOB_HASH ) );
       }
 
       DBG("[%2d] FI_HDR sent with fn=%ld offset=%lX, bytes_read=%d, bytes_sent=%d",

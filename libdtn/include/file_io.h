@@ -23,6 +23,7 @@
 #define FOB_FD 4
 #define FOB_TRUNCATE 5
 #define FOB_COMPRESSED 6
+#define FOB_HASH 7
 
 #define FIO_COMPRESS_MARGIN (256*1024)
 
@@ -38,6 +39,8 @@ struct posix_op {
   uint32_t flags;
   uint32_t fd; // 32
   uint32_t compressed;
+  uint32_t compress_offset;
+  uint32_t hash;
 };
 
 struct file_object {
@@ -46,7 +49,7 @@ struct file_object {
   uint8_t hugepages;
   uint8_t compression;
   uint8_t is_compressed;
-  uint8_t pad;
+  uint8_t do_hash;
 
   uint32_t blk_sz;
   uint16_t id;

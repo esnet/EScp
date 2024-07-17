@@ -97,7 +97,10 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       do_hash = (*args).do_hash;
       thread_count = (*args).thread_count;
       block_sz = (*args).block;
-      if (*args).compression > 0 { do_compression = true; }
+      if (*args).compression > 0
+        { do_compression = true; }
+      else
+        { do_compression = false; }
       do_verbose = verbose_logging  > 0;
       std::intrinsics::copy_nonoverlapping( (*args).crypto_key.as_ptr() , crypto_key.as_ptr() as *mut u8, 16 );
     }
@@ -119,6 +122,7 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
         do_hash,
         thread_count,
         block_sz,
+        do_compression,
         ..Default::default()
       }
     );
@@ -168,6 +172,13 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
 
     let helo = flatbuffers::root::<session_init::Session_Init>(buf.as_slice()).unwrap();
     debug!("Got response from receiver");
+
+    if (helo.version_major() == 0) && (helo.version_minor() <= 7) {
+      eprintln!("Receiver version {}.{} < required 0.8 and must be updated.",
+                helo.version_major(), helo.version_minor());
+      error!("Receiver version {}.{} < required 0.8 and must be updated.",
+                helo.version_major(), helo.version_minor());
+    }
 
 
     unsafe {
@@ -241,13 +252,17 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
 
     {
       // Note the delay below; file_check usually delays for interval specified
-      file_check(
+      if file_check(
         &mut fc_hash,
         std::time::Instant::now() + std::time::Duration::from_millis(20),
         &mut files_ok,
         &fc_out
-      );
-    }
+      ) != 1 {
+        eprintln!("Exiting because of CRC mismatch");
+        thread::sleep(std::time::Duration::from_millis(2));
+        process::exit(1);
+      }
+ }
 
     let bytes_now = unsafe { get_bytes_io( args as *mut dtn_args ) };
     if (last_update.elapsed().as_secs_f32() > 0.2) || (bytes_now>=bytes_total) {
@@ -409,16 +424,15 @@ fn file_check(
       }
 
       if sz as i64 != rx_sz {
-        error!("sz mismatch on {} {}!={}", rx_fino, sz, rx_sz);
+        error!("\rsz mismatch on {} {}!={}\n", rx_fino, sz, rx_sz);
         return 0;
       }
 
       if crc != rx_crc {
         // Should always be able to test CRC because if CRC not enabled
         // entry should be zero
-        error!("CRC mismatch on {} {:#010X}!={:#010X}", rx_fino, crc, rx_crc);
+        error!("\rCRC mismatch on {} {:#010X}!={:#010X}\n", rx_fino, crc, rx_crc);
         return 0;
-
       }
 
       *files_ok += 1;
@@ -775,12 +789,16 @@ fn iterate_files ( flags: &EScp_Args,
             // Go ahead and send whatever we have now
             break;
           }
-          file_check(
+          if file_check(
             fc_hash,
             std::time::Instant::now() + std::time::Duration::from_millis(2),
             files_ok,
             fc_out
-          );
+          ) != 1 {
+            eprintln!("Exiting because of CRC mismatch");
+            thread::sleep(std::time::Duration::from_millis(2));
+            process::exit(1);
+          }
           continue;
         }
         Err(_) => {

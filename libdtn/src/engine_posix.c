@@ -62,11 +62,16 @@ void* file_posixget( void* arg, int32_t key ) {
     case FOB_OFFSET:
       return (void*) op->offset;
     case FOB_BUF:
-      return (void*) op->buf;
+      if (op->compressed)
+        return (void*) (op->buf + op->compress_offset);
+      else
+        return (void*) op->buf;
     case FOB_FD:
       return (void*) ((uint64_t) op->fd);
     case FOB_COMPRESSED:
       return (void*) ((uint64_t) op->compressed);
+    case FOB_HASH:
+      return (void*) ((uint64_t) op->hash);
     default:
       VRFY( 0, "Bad key passed to posixset" );
   }
@@ -90,12 +95,19 @@ void* file_posixsubmit( void* arg, int32_t* sz, uint64_t* offset ) {
       *sz = pwrite( op->fd, op->buf, op->sz, op->offset );
     else {
       *sz = pread( op->fd, op->buf, fob->blk_sz, op->offset );
+
+      if (fob->do_hash) {
+        op->hash = file_hash(op->buf, *sz, *offset/fob->blk_sz);
+      }
+
       if (fob->compression) {
 
         if (!zctx) {
           zctx = ZSTD_createCCtx();
           VRFY(zctx > 0, "Couldn't allocate zctx");
         }
+
+        op->compress_offset = fob->blk_sz;
 
         csz = ZSTD_compressCCtx( zctx,
           op->buf + fob->blk_sz, fob->blk_sz,
@@ -163,7 +175,10 @@ int file_posixinit( struct file_object* fob ) {
   uint64_t alloc_sz = fob->blk_sz;
 
   if (fob->compression)
+    // We could do alloc_sz + FIO_COMPRESS_MARGIN if receiver. *=2 is OK
+    // because fob->blk_sz always ?= 256K
     alloc_sz *= 2;
+
 
   op->buf = mmap( NULL, alloc_sz, PROT_READ|PROT_WRITE, flags, -1, 0 );
   VRFY( op->buf != (void*) -1, "mmap (block_sz=%d)", fob->blk_sz );

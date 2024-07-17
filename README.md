@@ -20,7 +20,13 @@ SCP. Some features include:
   * Checksums, Direct I/O, API's.
 
 In general, the approach taken by EScp is to have algorithms optimized to give
-good performance across all metrics (i.e. billions of small files, single large file), that scale linearly with core count.
+good performance across all metrics (i.e. billions of small files, single large
+file), that scale linearly with core count.
+
+EScp is currently only available for x86 on Linux. If you want it to run on
+a specific platform that is not yet supported, please reach out to the author
+and/or create an issue on github that describes what you would like and how
+you would like to use EScp.
 
 Release Notes
 =============
@@ -375,6 +381,16 @@ below:
 Internally EScp uses AES-GCM using the `ISA-L_crypto` library. The
 implementation follows NIST 800-38D guidelines and has not been peer
 reviewed.
+
+
+HARD LIMITS
+===========
+
+ * Files are limited to 2^64 bytes
+ * A max of 2^64 files can be transferred per session.
+ * AES-GCM uses a 2^64 counter, which limits the number of blocks sent
+   in a transfer session to 2^64.
+ * Approx. 28 transfer threads
 
 
 AUTHOR

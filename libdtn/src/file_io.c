@@ -383,6 +383,7 @@ struct file_object* file_memoryinit( void* arg, int id ) {
   f.id = id;
   f.compression = dtn->compression;
   f.hugepages = dtn->hugepages;
+  f.do_hash = dtn->do_hash;
 
   switch (f.io_type) {
 #ifdef __ENGINE_POSIX__

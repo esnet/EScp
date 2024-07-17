@@ -457,6 +457,11 @@ fn main() {
 
       (*args).block = int_from_human(flags.block_sz.to_string()) as i32;
 
+      if (*args).block < 256*1024 {
+        eprintln!("setting block size to 256K, which is minimum block size");
+        (*args).block = 256*1024;
+      }
+
       if (*args).io_engine  == -1 {
         eprintln!("io_engine='{}' not in compiled io_engines {:?}",
                   io_engine, io_engine_names.keys());
