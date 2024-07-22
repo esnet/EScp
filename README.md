@@ -380,14 +380,15 @@ below:
 
 Internally EScp uses AES-GCM using the `ISA-L_crypto` library. The
 implementation follows NIST 800-38D guidelines and has not been peer
-reviewed.
+reviewed. If you want more information, check `network_recv` or
+`network_initrx` in `libdtn/src/dtn.c`.
 
 
 HARD LIMITS
 ===========
 
  * Files are limited to 2^64 bytes
- * A max of 2^64 files can be transferred per session.
+ * A max of 2^56 files can be transferred per session.
  * AES-GCM uses a 2^64 counter, which limits the number of blocks sent
    in a transfer session to 2^64.
  * Approx. 28 transfer threads

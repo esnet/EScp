@@ -143,12 +143,23 @@ struct rx_args {
 };
 
 struct network_obj {
-  int socket;
-  int do_crypto;
-  int id;
-  struct dtn_args* dtn;
-
+  int16_t do_crypto;
+  int16_t id;
+  int32_t socket;
   uint32_t block;
+
+  uint32_t bytes_network;
+  uint32_t bytes_disk;
+  uint32_t bytes_compressed;
+
+  uint64_t timestamp;      // Set by RX when message mostly received.
+                           // I.e. after decrypting header but before
+                           // full decryption/decompression
+  uint64_t total_network;
+  uint64_t total_disk;
+  uint64_t total_compressed; 
+
+  struct dtn_args* dtn; // 64
 
   struct gcm_context_data gctx;
   struct gcm_key_data gkey;
@@ -310,7 +321,10 @@ struct network_obj* network_initrx ( int socket,
                    (uint8_t*) &csi, 16, hash, 16 );
   VRFY( memcmp( hash, csi.hash, 16 ) == 0, "Bad Hash" );
 
+  // Set crypto key to &knob.gkey (first 16 bytes) sent by client
   aes_gcm_pre_128( csi.key, &knob.gkey );
+
+  // Set IV  to last 4 bytes sent by client
   memcpy( knob.iv, &csi.key[16], 4 );
 
   knob.iv_one = 1;
@@ -412,7 +426,6 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
 
     while ( (tail+(metabuf_sz/64) <= head) ||
             ( (h<t) && ((h+increment)>=t) )) {
-
       // Not enough room for metadata, wait for queue to clear
 
       ESCP_DELAY(10);
@@ -431,14 +444,12 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
     atomic_store( &metahead, head+increment );
   } else if ( *subheader == FIHDR_SHORT ) {
     // Read into buffer from storage I/O
-    uint8_t* buffer;
 
+    uint8_t* buffer;
     uint64_t block_sz=flo2_u64(fi->block_sz_significand, fi->block_sz_exponent);
 
-    // NFO("chdr=%d block_sz=%zd\n", chdr->hdr_sz, block_sz);
 
     bytes_read += block_sz;
-
     VRFY( (knob->token=knob->fob->fetch(knob->fob)) != 0,
           "IO Queue full. XXX: I should wait for it to empty?");
 
@@ -770,10 +781,8 @@ void* rx_worker( void* arg ) {
         continue;
     }
 
-    // network_recv will always read into buffer, but buffer is not
-    // yet associated with a file descriptor. Read into buffer
-    // only occurs if FIHDR_SHORT type is specified.
-
+    // network_recv reads in and decrypts next mesasge. If FIHDR_SHORT, also
+    // allocate buffer from IO system and copy data to buffer.
     if ( (read_sz=network_recv(knob, read_buf, &fi_type)) < 1 ) {
       NFO("[%2d] Bad read=%ld", id, read_sz);
       break;
@@ -783,6 +792,7 @@ void* rx_worker( void* arg ) {
     fi = (struct file_info*) knob->buf;
 
     if (fi_type == FIHDR_META)
+      // Nothing to do, network_recv has already copied META
       continue;
 
     VRFY( fi_type == FIHDR_SHORT, "Unkown header type %d", fi_type);
