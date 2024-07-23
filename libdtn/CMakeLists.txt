@@ -85,8 +85,8 @@ set_property(TARGET libnuma PROPERTY IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DI
 add_dependencies(libnuma libnuma_project)
 
 ExternalProject_Add(isa-l_crypto_project
-  URL https://github.com/intel/isa-l_crypto/archive/refs/tags/v2.24.0.zip
-  URL_HASH SHA256=653c13e46b3923d0f04021604d6c70e445335c9b54fd62bf5303860de7904d89
+  URL https://github.com/intel/isa-l_crypto/archive/refs/tags/v2.25.0.zip
+  URL_HASH SHA256=46f36985ec3e0e4a3b37f926b0fe8d3ee9d2a65f09c0af5c6d5a90903104d81f
   CONFIGURE_COMMAND ./autogen.sh && ./configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/isal
   BUILD_COMMAND     make -j 24
   INSTALL_COMMAND   make install

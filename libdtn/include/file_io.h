@@ -93,24 +93,10 @@ struct file_object {
 };
 
 struct file_info {
-  union {
-    uint16_t block_sz_significand;
-    uint64_t offset;
-  };
-  union {
-    uint8_t block_sz_exponent;
-    uint64_t file_no_packed;
-  };
-} __attribute__ ((packed)) ;
-
-struct file_info_end {
-  uint8_t hdr_type;
-  uint8_t type;
-  uint16_t hdr_sz; // 4
-  uint32_t hash;  // 8
+  uint64_t offset;
   uint64_t file_no;
-  uint64_t sz;   // 24
-}__attribute__ ((packed)) ;
+  uint32_t sz;
+} __attribute__ ((packed)) ;
 
 struct file_stat_type {
 
@@ -141,7 +127,7 @@ struct file_stat_type {
   uint64_t crc          __attribute__ ((aligned(64)));
   */
 
-}__attribute__ ((packed)) ;
+} __attribute__ ((packed)) ;
 
 
 void file_iotest( void* );

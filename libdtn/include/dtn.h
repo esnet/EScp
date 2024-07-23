@@ -85,6 +85,7 @@ struct file_object {
 
 };
 
+/*
 struct sess_info {
   uint8_t hdr_type;
   uint8_t pad;
@@ -103,15 +104,7 @@ struct file_info {
     uint64_t file_no_packed;
   };
 } __attribute__ ((packed)) ;
-
-struct file_info_end {
-  uint8_t hdr_type;
-  uint8_t type;
-  uint16_t hdr_sz; // 4
-  uint32_t hash;  // 8
-  uint64_t file_no;
-  uint64_t sz;   // 24
-}__attribute__ ((packed)) ;
+*/
 
 void file_iotest( void* );
 void file_iotest_finish();

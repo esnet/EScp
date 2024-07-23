@@ -49,7 +49,10 @@ uint64_t metatail = 0;
 uint8_t* metabuf = NULL;
 struct   network_obj* metaknob = NULL;
 
-uint32_t metabuf_sz = 4 * 1024 * 1024;
+const uint32_t METABUF_SZ = 4 * 1024 * 1024;
+
+const uint64_t IS_RECEIVER = (1UL << 63);
+const uint64_t IS_FIHDR_SHORT = (1UL << 62);
 
 /* fc provides file completion information; It is primarily a many to one
  * model where IOW adds to the queue and rust:dtn_complete pulls off the
@@ -157,7 +160,7 @@ struct network_obj {
                            // full decryption/decompression
   uint64_t total_network;
   uint64_t total_disk;
-  uint64_t total_compressed; 
+  uint64_t total_compressed;
 
   struct dtn_args* dtn; // 64
 
@@ -186,9 +189,11 @@ struct crypto_session_init {
 } __attribute__ ((packed)) ;
 
 struct crypto_hdr {
+  /*
   uint16_t hdr_type;
   uint16_t magic;
   uint32_t hdr_sz;
+  */
   uint64_t iv;
 } __attribute__ ((packed)) ;
 
@@ -259,7 +264,7 @@ struct network_obj* network_inittx ( int socket, struct dtn_args* dtn ) {
 
   knob.do_crypto = true;
 
-  aes_gcm_pre_128( dtn->crypto_key, &knob.gkey );
+  isal_aes_gcm_pre_128( dtn->crypto_key, &knob.gkey );
 
   /* Send crypto session init HDR */
   csi.hdr_type = FIHDR_CINIT;
@@ -274,7 +279,7 @@ struct network_obj* network_inittx ( int socket, struct dtn_args* dtn ) {
   file_randrd( key, 20 );
   memcpy( csi.key, key, 20 );
 
-  aes_gcm_enc_128( &knob.gkey, &knob.gctx,
+  isal_aes_gcm_enc_128( &knob.gkey, &knob.gctx,
                    csi.key, csi.key, 20, csi.iv, (uint8_t*) &csi, 16, csi.hash, 16);
 
   /*  hdr_type | hdr_sz | iv | new key | new iv  salt |  Hash
@@ -282,11 +287,11 @@ struct network_obj* network_inittx ( int socket, struct dtn_args* dtn ) {
    *          AAD            | Encrypted              |
    */
 
-  aes_gcm_pre_128( key, &knob.gkey );
+  isal_aes_gcm_pre_128( key, &knob.gkey );
   memcpy( knob.iv, (uint32_t*)(&key[16]), 4 );
   memset( key, 0, 20 );
 
-  VRFY( write( socket, &csi, sizeof(csi) ) == sizeof(csi), );
+  VRFY( write( socket, &csi, sizeof(csi) ) == sizeof(csi), "Init fail" );
 
   return &knob;
 }
@@ -312,17 +317,17 @@ struct network_obj* network_initrx ( int socket,
   VRFY(csi.hdr_sz == sizeof(struct crypto_session_init), "CSI hdr");
   VRFY(read_fixed( socket, ((uint8_t*)&csi)+16, csi.hdr_sz-16 )>1, "CSI read");
 
-  aes_gcm_pre_128( dtn->crypto_key, &temp.gkey );
+  isal_aes_gcm_pre_128( dtn->crypto_key, &temp.gkey );
 
   memcpy( iv, csi.iv, 12 );
   ((uint32_t*)(iv+12))[0] = 1;
 
-  aes_gcm_dec_128( &temp.gkey, &temp.gctx, csi.key, csi.key, 20, iv,
+  isal_aes_gcm_dec_128( &temp.gkey, &temp.gctx, csi.key, csi.key, 20, iv,
                    (uint8_t*) &csi, 16, hash, 16 );
   VRFY( memcmp( hash, csi.hash, 16 ) == 0, "Bad Hash" );
 
   // Set crypto key to &knob.gkey (first 16 bytes) sent by client
-  aes_gcm_pre_128( csi.key, &knob.gkey );
+  isal_aes_gcm_pre_128( csi.key, &knob.gkey );
 
   // Set IV  to last 4 bytes sent by client
   memcpy( knob.iv, &csi.key[16], 4 );
@@ -334,48 +339,50 @@ struct network_obj* network_initrx ( int socket,
 }
 
 void meta_init( struct network_obj* knob ) {
-  char* a = aligned_alloc( 4096, metabuf_sz + 8192 );
+  char* a = aligned_alloc( 4096, METABUF_SZ + 8192 );
   VRFY( a, "bad alloc" );
 
 
   VRFY( mprotect( a, 4096, PROT_NONE ) == 0, "mprotect");
-  VRFY( mprotect( (void*) (((uint64_t)a)+4096L+(metabuf_sz)), 4096, PROT_NONE ) == 0, "mprotect");
+  VRFY( mprotect( (void*) (((uint64_t)a)+4096L+(METABUF_SZ)), 4096, PROT_NONE ) == 0, "mprotect");
 
   atomic_store( &metabuf,  (uint8_t*) (((uint64_t)a)+4096L) );
   atomic_store( &metaknob, knob );
 
-  memset( metabuf, 0, metabuf_sz );
+  memset( metabuf, 0, METABUF_SZ );
 
   knob->block = 'meta';
 }
 
-int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader ) {
+int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
 
-  struct crypto_hdr* chdr = (struct crypto_hdr*) aad;
   struct file_info* fi = (struct file_info*) knob->buf;
   static __thread   struct ZSTD_DCtx_s* dctx = NULL;
 
-  int64_t bytes_read=16;
+  int64_t bytes_read=24;
+  uint64_t aad;
 
   if (knob->do_crypto) {
-    if (chdr->hdr_sz<48) {
-      ERR("[%2d] Invalid hdr_sz", knob->id );
-      return -1;
-    }
 
-    *subheader = chdr->magic;
+    VRFY (read_fixed( knob->socket, &aad, 8) == 8, "Bad read");
+    knob->iv_incr = aad;
 
-    knob->iv_incr = chdr->iv;
+    isal_aes_gcm_init_128( &knob->gkey, &knob->gctx, knob->iv, (void*) &aad, 8 );
 
-    aes_gcm_init_128( &knob->gkey, &knob->gctx, knob->iv, aad, 16 );
-    VRFY (read_fixed( knob->socket, knob->buf, 16 ) > 1,);
-    bytes_read += 16;
+    if (aad && IS_FIHDR_SHORT)
+      *subheader = FIHDR_SHORT;
+    else
+      *subheader = FIHDR_META;
 
-    aes_gcm_dec_128_update(&knob->gkey, &knob->gctx, knob->buf, knob->buf, 16);
+    bytes_read += 8;
+
   } else {
+    VRFY(0, "Network read without crypto not implemented");
+    /*
     memcpy( subheader,  aad, 2 );
     memcpy( knob->buf, aad+2, 14 );
     VRFY(read_fixed( knob->socket, knob->buf+14, 2 ) == 2, );
+    */
   }
 
   if ( !knob->fob && (*subheader ==  FIHDR_SHORT) ) {
@@ -403,8 +410,8 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
 
     VRFY ( buf != NULL, "failed assertion, metabuf!=null" );
 
-    int h = head % (metabuf_sz/64);
-    int t = tail % (metabuf_sz/64);
+    int h = head % (METABUF_SZ/64);
+    int t = tail % (METABUF_SZ/64);
     int increment;
 
     uint32_t sz = ((uint32_t*)knob->buf)[0];
@@ -414,42 +421,45 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
 
     DBG("[%2d] META IN %ld/%ld %lX sz=%d incr=%d", knob->id, head, tail, (uint64_t) buf, sz, increment);
 
-    VRFY( sz < (metabuf_sz/2), "Invalid sz=%d on packet", sz );
+    VRFY( sz < (METABUF_SZ/2), "Invalid sz=%d on packet", sz );
 
-    if ( (h + increment)*64 >= metabuf_sz ) {
+    if ( (h + increment)*64 >= METABUF_SZ ) {
       // writing would overflow metabuf, increment head to start of metabuf
 
       ((uint32_t*) &buf[h*64])[0] = ~0;
-      head += (metabuf_sz/64) - h;
+      head += (METABUF_SZ/64) - h;
       h = 0;
     }
 
-    while ( (tail+(metabuf_sz/64) <= head) ||
+    while ( (tail+(METABUF_SZ/64) <= head) ||
             ( (h<t) && ((h+increment)>=t) )) {
       // Not enough room for metadata, wait for queue to clear
 
       ESCP_DELAY(10);
       tail = atomic_load ( &metatail );
-      t = tail % (metabuf_sz/64);
+      t = tail % (METABUF_SZ/64);
     }
 
     memcpy ( &buf[h*64], knob->buf, 16 );
 
-    VRFY( read_fixed(knob->socket, &buf[(h*64)+16], sz) == sz, );
+    VRFY( read_fixed(knob->socket, &buf[(h*64)+16], sz) == sz, "FIHDR_META read fail");
     if ( knob->do_crypto ) {
-       aes_gcm_dec_128_update( &knob->gkey, &knob->gctx,
+       isal_aes_gcm_dec_128_update( &knob->gkey, &knob->gctx,
           &buf[(h*64)+16], &buf[(h*64)+16], sz );
     }
 
     atomic_store( &metahead, head+increment );
   } else if ( *subheader == FIHDR_SHORT ) {
-    // Read into buffer from storage I/O
+    // Grab buffer from IO engine then read into it
 
-    uint8_t* buffer;
-    uint64_t block_sz=flo2_u64(fi->block_sz_significand, fi->block_sz_exponent);
+    uint8_t* buffer= knob->fob->get( knob->token, FOB_BUF );
+    uint64_t block_sz= fi->sz;
+
+    VRFY (read_fixed( knob->socket, knob->buf, 20) == 20, "Bad read");
+    isal_aes_gcm_dec_128_update(&knob->gkey, &knob->gctx, knob->buf, knob->buf, 20);
 
 
-    bytes_read += block_sz;
+
     VRFY( (knob->token=knob->fob->fetch(knob->fob)) != 0,
           "IO Queue full. XXX: I should wait for it to empty?");
 
@@ -462,26 +472,11 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
     }
     */
 
-    /* NOTE: Encryption is sort of a de-facto requiremnent, although there is
-     *       an intention to not force encryption. However, if compression is
-     *       enabled, you must also use encryption. Compression does not work
-     *       with the weird byte stuffing that regular transfers use; The 16
-     *       byte FIHDR_SHORT hdr, contains offset, file number, and file size,
-     *       three 8-byte fields. To make that work EScp compresses file_size
-     *       using floating point and stuffs those bytes into unused bits in
-     *       offset/file_number.
-     */
+    if ( block_sz & (1<<31) ) {
 
-    buffer = knob->fob->get( knob->token, FOB_BUF );
+      block_sz &= ~(1 << 31);
 
-    if ( block_sz == 0 ) {
-      if (!knob->do_crypto)
-        VRFY( 0, "Compression requires that encryption be enabled");
-
-      block_sz = chdr->hdr_sz - 48;
-      VRFY ( block_sz <= knob->block, "Invalid block_sz=%ld", block_sz);
-
-      DBV("[%2d] Compression Read of %d sz", knob->id, block_sz);
+      DBV("[%2d] Compression Read of sz=%d", knob->id, block_sz);
 
       uint8_t* compressed_data = buffer+knob->block+FIO_COMPRESS_MARGIN-block_sz;
       if (read_fixed(knob->socket, compressed_data, block_sz) != block_sz) {
@@ -495,13 +490,15 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
        *       it bad data, which it does/should do. If the crypto checksum is
        *       invalid we generate an error and stop processing the data.
        */
-      aes_gcm_dec_128_update( &knob->gkey, &knob->gctx,
+      isal_aes_gcm_dec_128_update( &knob->gkey, &knob->gctx,
            compressed_data, compressed_data, block_sz );
 
+      /*
       size_t sz_calculated = ZSTD_findFrameCompressedSize(compressed_data, block_sz);
       VRFY ( sz_calculated <= knob->block, "Bad compression size %zd>=%d: %s",
                                            sz_calculated, knob->block,
                                            ZSTD_getErrorName(sz_calculated) );
+      */
 
       if ( dctx == NULL ) {
         dctx = ZSTD_createDCtx();
@@ -511,18 +508,15 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
       /* Zstd supports in place decompression w/ margin + right aligned src */
       uint64_t res = ZSTD_decompressDCtx(dctx,
                                     buffer, knob->block,
-                                    compressed_data, sz_calculated);
+                                    compressed_data, block_sz);
 
       int zstd_err = ZSTD_isError(res);
       VRFY( zstd_err == 0, "Compression error: %s", ZSTD_getErrorName(zstd_err) );
 
-      int exponent = u64_2flo(&res);
-
-      fi->block_sz_exponent = exponent;
-      fi->block_sz_significand = res;
+      fi->sz = res;
+      bytes_read += block_sz;
 
     } else {
-
       VRFY ( block_sz <= knob->block, "Invalid block_sz=%ld", block_sz);
 
       DBV("[%2d] Read of %d sz", knob->id, block_sz);
@@ -532,20 +526,24 @@ int64_t network_recv( struct network_obj* knob, void* aad, uint16_t* subheader )
       }
 
       if ( knob->do_crypto ) {
-         aes_gcm_dec_128_update( &knob->gkey, &knob->gctx,
+         isal_aes_gcm_dec_128_update( &knob->gkey, &knob->gctx,
            buffer, buffer, block_sz );
       }
+      bytes_read += block_sz;
     }
+
+
   } else {
     VRFY( 0, "[%2d] network_recv: subheader %d not implemented",
           knob->id, *subheader );
   }
 
-  if ( knob->do_crypto ) {
+  // if ( knob->do_crypto ) {
+  {
     uint8_t computed_hash[16];
     uint8_t actual_hash[16];
 
-    aes_gcm_dec_128_finalize( &knob->gkey, &knob->gctx, computed_hash, 16 );
+    isal_aes_gcm_dec_128_finalize( &knob->gkey, &knob->gctx, computed_hash, 16 );
     if (read_fixed(knob->socket, actual_hash, 16)!=16) {
       NFO("[%2d] Couldn't get auth tag... ", knob->id);
       return 0;
@@ -575,32 +573,40 @@ int64_t network_send (
 
   if (knob->do_crypto) {
     if ( !did_header ) {
-      hdr.hdr_type = FIHDR_CRYPT;
-      hdr.magic = subheader;
-      hdr.hdr_sz = total + 32;
 
       if (knob->dtn && knob->dtn->do_server) {
-        knob->iv_incr |= 1UL << 63;
+        knob->iv_incr |= IS_RECEIVER;
+      }
+
+      if (subheader == FIHDR_SHORT) {
+        knob->iv_incr |= IS_FIHDR_SHORT;
       }
 
       hdr.iv = ++knob->iv_incr;
 
-  /*  ---------+--------+----+----+--------------+----------\
-   *  hdr_type | magic  | sz | IV | Payload      | HMAC     |
-   *    2      |   2    | 4  |  8 | sz - 32      |  16      |
-   *          AAD                 | Encrypted    | Auth tag |
-   *  ---------+------------------+--------------+----------/
-   */
+      VRFY ( !(knob->iv_incr & (1UL<<61)), "IV exceeded" );
+
+      /*  /-----+--------------+----------\
+       *  | IV  | Payload      | HMAC     |
+       *  | 8   | sz - 32      | 16       |
+       *  | AAD | Encrypted    | Auth tag |
+       *  \-----+--------------+----------/
+       */
 
       did_header = true;
       sent = write_fixed( knob->socket, &hdr, sizeof(hdr) );
-      if ( sent < 1 )
-        return sent;
 
-      aes_gcm_init_128( &knob->gkey, &knob->gctx, knob->iv, (uint8_t*) &hdr, 16 );
+      if ( sent < sizeof(hdr) ) {
+        if (sent < 0)
+          return sent;
+        else
+          return -1;
+      }
+
+      isal_aes_gcm_init_128( &knob->gkey, &knob->gctx, knob->iv, (uint8_t*) &hdr, sizeof(hdr) );
     }
 
-    aes_gcm_enc_128_update( &knob->gkey, &knob->gctx,
+    isal_aes_gcm_enc_128_update( &knob->gkey, &knob->gctx,
       buf, buf, sz );
 
     res = write_fixed( knob->socket, buf, sz );
@@ -609,7 +615,7 @@ int64_t network_send (
     sent += res;
 
     if (! partial ) {
-      aes_gcm_dec_128_finalize( &knob->gkey, &knob->gctx, hash, 16 );
+      isal_aes_gcm_dec_128_finalize( &knob->gkey, &knob->gctx, hash, 16 );
       res +=  write_fixed( knob->socket, hash, 16 );
 
       if (res < 1)
@@ -647,14 +653,14 @@ void dtn_waituntilready( void* arg ) {
 uint8_t* meta_recv() {
   uint64_t head = atomic_load( &metahead );
   uint64_t tail = atomic_load( &metatail );
-  int t = tail % (metabuf_sz/64);
+  int t = tail % (METABUF_SZ/64);
 
   if ( tail >= head )
     return NULL;
 
   uint32_t sz = atomic_load( (uint32_t*) &metabuf[t*64] );
   if ( sz == ~0 ) {
-      tail += (metabuf_sz/64) - t;
+      tail += (METABUF_SZ/64) - t;
       t = 0;
       atomic_store( &metatail, tail );
   }
@@ -664,7 +670,7 @@ uint8_t* meta_recv() {
 
 void meta_complete() {
   uint64_t tail = atomic_load( &metatail );
-  int t = tail % (metabuf_sz/64);
+  int t = tail % (METABUF_SZ/64);
   uint32_t sz = atomic_load( (uint32_t*) &metabuf[t*64] );
   sz = ntohl(sz);
   int increment = (sz + 63 + 16)/64;
@@ -681,6 +687,8 @@ void meta_send( char* buf, char* hdr, int len ) {
 
   if (!temp_buf)
     temp_buf = aligned_alloc( 16, 1024*1024 );
+
+  VRFY(temp_buf != 0, "Error allocating meta_buf");
 
   if (buf) {
     VRFY(len <= (1024*1024), "meta must be less than 1M");
@@ -710,8 +718,8 @@ void meta_send( char* buf, char* hdr, int len ) {
     memcpy( b, hdr, 6 );
 
     if (buf) {
-      VRFY( network_send(knob, b,   16,  16+len, true,  FIHDR_META) > 0, );
-      VRFY( network_send(knob, temp_buf, len, 16+len, false, FIHDR_META) > 0, );
+      VRFY( network_send(knob, b,   16,  16+len, true,  FIHDR_META) > 0, "meta_send A");
+      VRFY( network_send(knob, temp_buf, len, 16+len, false, FIHDR_META) > 0, "meta_send B");
     } else {
       VRFY( network_send(knob, b,   16,  16, false,  FIHDR_META) > 0, );
     }
@@ -719,7 +727,7 @@ void meta_send( char* buf, char* hdr, int len ) {
 }
 
 void do_meta( struct network_obj* knob ) {
-  uint8_t read_buf[16] __attribute__ ((aligned(16))) = {0};
+  // uint8_t read_buf[16] __attribute__ ((aligned(16))) = {0};
   uint16_t magic;
 
 
@@ -728,11 +736,8 @@ void do_meta( struct network_obj* knob ) {
   VRFY( metabuf == NULL, "do_meta should only be called once" );
   meta_init(knob);
 
-  while (1) {
-    if (read_fixed( knob->socket, read_buf, 16 )>1)
-      network_recv( knob, read_buf, &magic );
-    else
-      return;
+  while ( network_recv( knob, &magic ) > 1 ) {
+    continue;
   }
 }
 
@@ -747,11 +752,9 @@ void* rx_worker( void* arg ) {
   struct file_info* fi;
   struct network_obj* knob=0;
 
-  uint8_t read_buf[16];
 
   struct file_stat_type  fs;
   struct file_stat_type* fs_ptr=0;
-  uint16_t fi_type;
 
   socklen_t rbuf_sz = sizeof(rbuf) ;
 
@@ -767,23 +770,26 @@ void* rx_worker( void* arg ) {
 
   affinity_set( dtn, id );
 
-  while ( 1 ) {
+  {
+    // First message is a CRYPTO_INIT, which we handle as a special case
+
+    uint8_t read_buf[16] = {0};
     uint64_t read_sz=read_fixed( rx->conn, read_buf, 16 );
     VRFY (read_sz == 16, "bad read (network), read=%ld", read_sz );
 
-    if ( !knob ) {
-      knob = network_initrx ( rx->conn, read_buf, dtn );
-      knob->id = id;
-      knob->dtn = dtn;
+    knob = network_initrx ( rx->conn, read_buf, dtn );
+    knob->id = id;
+    knob->dtn = dtn;
+  }
 
-      VRFY(knob, "network init failed");
-      if (dtn->do_crypto)
-        continue;
-    }
+  while ( 1 ) {
+    uint64_t read_sz;
+    uint16_t fi_type;
 
     // network_recv reads in and decrypts next mesasge. If FIHDR_SHORT, also
     // allocate buffer from IO system and copy data to buffer.
-    if ( (read_sz=network_recv(knob, read_buf, &fi_type)) < 1 ) {
+
+    if ( (read_sz=network_recv(knob, &fi_type)) < 1 ) {
       NFO("[%2d] Bad read=%ld", id, read_sz);
       break;
     }
@@ -797,12 +803,14 @@ void* rx_worker( void* arg ) {
 
     VRFY( fi_type == FIHDR_SHORT, "Unkown header type %d", fi_type);
 
-    { // Do FIHDR_SHORT
-      int sz = flo2_u64( fi->block_sz_significand, fi->block_sz_exponent );
-      uint64_t file_no = fi->file_no_packed >> 8;
-      uint64_t offset = fi->offset & ~(0xffffUL);
+    {
+
+      int sz = fi->sz;
+      uint64_t file_no = fi->file_no;
+      uint64_t offset = fi->offset;
       uint64_t res=0;
       int orig_sz = sz;
+
       sz = (sz + 4095) & ~4095; // Note: io_flags & O_DIRECT doesn't get set anymore because we always
                                 //       try to do direct mode... so we always just pad to 4k
 
@@ -1036,34 +1044,19 @@ void* tx_worker( void* args ) {
     {
       uint8_t* buf = fob->get( token, FOB_BUF );
       struct file_info fi = {0};
-      int bytes_sent;
+      int bytes_sent = bytes_read;
 
       uint64_t compressed = (uint64_t) fob->get( token, FOB_COMPRESSED );
 
-      uint64_t significand = bytes_read;
-      int exponent = u64_2flo(&significand);
+      fi.sz = bytes_read;
 
       if (compressed) {
-
-        /* Our hint that data is compressed is that the significand
-         * and exponent are zero. The decompressed size is encoded in
-         * the compressed data.
-         */
-
-        significand = 0;
-        exponent = 0;
+         fi.sz = compressed | (1<<31);
+         bytes_sent = compressed;
       }
 
-      fi.file_no_packed = fs_lcl.file_no << 8ULL;
-      fi.block_sz_exponent = exponent;
-
+      fi.file_no = fs_lcl.file_no;
       fi.offset = offset;
-      fi.block_sz_significand = significand;
-
-      if ( !compressed )
-        bytes_sent = flo2_u64( significand, exponent );
-      else
-        bytes_sent = compressed;
 
       if ( dtn->do_hash ) {
         atomic_fetch_xor( &fs->crc, fob->get( token, FOB_HASH ) );
@@ -1072,10 +1065,8 @@ void* tx_worker( void* args ) {
       DBG("[%2d] FI_HDR sent with fn=%ld offset=%lX, bytes_read=%d, bytes_sent=%d",
           id, fs_lcl.file_no, offset, bytes_read, bytes_sent);
 
-      VRFY(fi.file_no_packed >> 8, "[%2d] ASSERT: file_no != 0, fn=%ld", id, fs_lcl.file_no);
-
-      VRFY( network_send(knob, &fi, 16, 16+bytes_sent, true, FIHDR_SHORT) > 0, );
-      VRFY( network_send(knob, buf, bytes_sent, 16+bytes_sent, false, FIHDR_SHORT) > 0, );
+      VRFY( network_send(knob, &fi, 20, 20+bytes_sent, true, FIHDR_SHORT) > 0, );
+      VRFY( network_send(knob, buf, bytes_sent, 20+bytes_sent, false, FIHDR_SHORT) > 0, );
 
       atomic_fetch_add( &fs->bytes_total, bytes_read );
       atomic_fetch_add( &dtn->bytes_io, bytes_read );
