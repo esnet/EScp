@@ -17,6 +17,7 @@ SCP. Some features include:
   * Authentication to remote systems through SSH
   * Swappable I/O Engines ( Currently: DUMMY & POSIX )
   * Block based interface to transfering data
+  * Compression (using zstd)
   * Checksums, Direct I/O, API's.
 
 In general, the approach taken by EScp is to have algorithms optimized to give
@@ -77,24 +78,23 @@ Arguments:
   <DESTINATION>  Destination host:<path/file> [default: ]
 
 Options:
-  -P, --port <SSH_PORT>        Port [default: 22]
+  -P, --port <SSH_PORT>        SSH Port
       --escp_port <ESCP_PORT>  ESCP Port [default: 1232]
   -v, --verbose                Verbose/Debug output
   -q, --quiet
   -A, --agent                  Enable SSH Agent Forwarding
-  -c, --cipher <CIPHER>        CIPHER used by SSH [default: ]
-  -i, --identity <IDENTITY>    IDENTITY pubkey for SSH auth [default: ]
-  -l, --limit <LIMIT>          LIMIT transfer to (bytes/sec) [default: 0]
+  -c, --cipher <CIPHER>        CIPHER used by SSH
+  -i, --identity <IDENTITY>    IDENTITY pubkey for SSH auth
+  -l, --limit <LIMIT>          LIMIT/thread (bytes/sec) using SO_MAX_PACING_RATE
   -p, --preserve               Preserve source attributes (TODO)
-  -C, --compression            Compression (TODO)
+  -C, --compression            Compression
   -r, --recursive              Copy recursively
-  -o <SSH_OPTION>              SSH_OPTION to SSH [default: ]
+  -o <SSH_OPTION>              SSH_OPTION to SSH
   -S, --ssh <SSH>              SSH binary [default: ssh]
   -D, --escp <ESCP>            EScp binary [default: escp]
       --blocksize <BLOCK_SZ>   [default: 1M]
       --ioengine <IO_ENGINE>   posix,dummy [default: posix]
   -t, --parallel <THREADS>     # of EScp parallel threads [default: 4]
-      --mgmt <MGMT>            mgmt UDS/IPC connection [default: ]
       --bits                   Display speed in bits/s
       --nodirect               Don't enable direct mode
       --nochecksum             Don't enable file checksum

@@ -215,11 +215,11 @@ struct EScp_Args {
    agent: bool,
 
    /// CIPHER used by SSH
-   #[arg(short, long, default_value_t=String::from(""))]
+   #[arg(short, long, hide_default_value=true, default_value_t=String::from(""))]
    cipher: String,
 
    /// IDENTITY pubkey for SSH auth
-   #[arg(short='i', long, default_value_t=String::from(""))]
+   #[arg(short='i', long, hide_default_value=true, default_value_t=String::from(""))]
    identity: String,
 
    /// LIMIT/thread (bytes/sec) using SO_MAX_PACING_RATE
@@ -230,7 +230,7 @@ struct EScp_Args {
    #[arg(short, long, num_args=0)]
    preserve: bool,
 
-   /// Compression (TODO)
+   /// Compression
    #[arg(short='C', long)]
    compression: bool,
 

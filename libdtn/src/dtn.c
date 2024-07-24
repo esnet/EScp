@@ -364,7 +364,9 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
 
   if (knob->do_crypto) {
 
-    VRFY (read_fixed( knob->socket, &aad, 8) == 8, "Bad read");
+    if ( read_fixed( knob->socket, &aad, 8) != 8 )
+      return 0;
+
     knob->iv_incr = aad;
 
     isal_aes_gcm_init_128( &knob->gkey, &knob->gctx, knob->iv, (void*) &aad, 8 );
