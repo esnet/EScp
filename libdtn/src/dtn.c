@@ -1169,12 +1169,12 @@ void tx_start(struct dtn_args* args ) {
           &DTN_THREAD[i], &attr, tx_worker, (void*) &tx_arg[i] ),
           "tx_start: Error spawining tx_worker" );
 
-    snprintf(buf, 15, "TX_%d", i);
+    snprintf(buf, 15, "TX_%d", i % 100);
     pthread_setname_np( DTN_THREAD[i], buf);
   }
 
 
-  snprintf(buf, 15, "META_%d", i);
+  snprintf(buf, 15, "META_%d", i % 100);
   tx_arg[i].dtn = args;
   tx_arg[i].is_meta = true;
   VRFY(  0 == pthread_create(

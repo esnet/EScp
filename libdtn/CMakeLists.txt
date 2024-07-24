@@ -19,8 +19,8 @@ execute_process(
 #set(CMAKE_C_FLAGS_RELEASE "-g -march=sandybridge -O3 -pthread")
 #set(CMAKE_C_FLAGS_DEBUG "-g -march=sandybridge -O3 -pthread")
 
-set(CMAKE_C_FLAGS_RELEASE "-g -march=sandybridge -pthread -O ")
-set(CMAKE_C_FLAGS_DEBUG "-g -march=sandybridge -pthread")
+set(CMAKE_C_FLAGS_RELEASE "-g -march=sandybridge -pthread -O -fPIE")
+set(CMAKE_C_FLAGS_DEBUG "-g -march=sandybridge -pthread -fPIE")
 
 add_definitions("-Wall -Wno-unused-result -Wno-stringop-truncation")
 
@@ -128,7 +128,7 @@ set(SOURCES src/file_io.c src/args.c
             src/engine_posix.c
             src/engine_dummy.c)
 add_library(dtn STATIC ${SOURCES} src/dtn.c)
-add_dependencies(dtn isa-l_crypto_project libnuma_project)
+add_dependencies(dtn isa-l_crypto_project libnuma_project zstd_project)
 
 target_compile_definitions(dtn PUBLIC __ENGINE_POSIX__ __ENGINE_DUMMY__ )
 #target_link_libraries(dtn zstd libnuma liburing isal Threads::Threads "rt")
