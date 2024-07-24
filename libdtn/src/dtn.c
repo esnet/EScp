@@ -359,7 +359,7 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
   struct file_info* fi = (struct file_info*) knob->buf;
   static __thread   struct ZSTD_DCtx_s* dctx = NULL;
 
-  int64_t bytes_read=24;
+  int64_t bytes_read=0;
   uint64_t aad;
 
   if (knob->do_crypto) {
@@ -369,10 +369,12 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
 
     isal_aes_gcm_init_128( &knob->gkey, &knob->gctx, knob->iv, (void*) &aad, 8 );
 
-    if (aad && IS_FIHDR_SHORT)
+    if (aad & IS_FIHDR_SHORT)
       *subheader = FIHDR_SHORT;
     else
       *subheader = FIHDR_META;
+
+    DBG("[%02d] AAD is %zX, %d\n", knob->id, aad, *subheader);
 
     bytes_read += 8;
 
@@ -395,13 +397,19 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
     DBG("[%2d] Init IO mem ", knob->id );
   }
 
-
   if ( *subheader == FIHDR_META ) {
 
     // block intended to have a single writer, thus we treat below as exclusive
 
     if ( knob->block != 'meta' ) {
       meta_init(knob);
+    }
+
+    VRFY (read_fixed( knob->socket, knob->buf, 16) == 16, "Bad read");
+
+    if ( knob->do_crypto ) {
+      isal_aes_gcm_dec_128_update( &knob->gkey, &knob->gctx,
+        knob->buf, knob->buf, 16 );
     }
 
     uint64_t head = atomic_load ( &metahead );
@@ -452,16 +460,16 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
   } else if ( *subheader == FIHDR_SHORT ) {
     // Grab buffer from IO engine then read into it
 
-    uint8_t* buffer= knob->fob->get( knob->token, FOB_BUF );
-    uint64_t block_sz= fi->sz;
+    uint8_t* buffer;
+    uint64_t block_sz;
 
     VRFY (read_fixed( knob->socket, knob->buf, 20) == 20, "Bad read");
     isal_aes_gcm_dec_128_update(&knob->gkey, &knob->gctx, knob->buf, knob->buf, 20);
 
-
-
     VRFY( (knob->token=knob->fob->fetch(knob->fob)) != 0,
           "IO Queue full. XXX: I should wait for it to empty?");
+    buffer = knob->fob->get( knob->token, FOB_BUF );
+    block_sz= fi->sz;
 
     /* XXX: UIO needs something like this:
     while ( (knob->token=knob->fob->fetch(knob->fob)) == 0 ) {
@@ -519,7 +527,7 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
     } else {
       VRFY ( block_sz <= knob->block, "Invalid block_sz=%ld", block_sz);
 
-      DBV("[%2d] Read of %d sz", knob->id, block_sz);
+      DBG("[%2d] Read of %zd sz", knob->id, block_sz);
       if (read_fixed(knob->socket, buffer, block_sz) != block_sz) {
         DBG("[%2d] Returning 0 from network_recv because ... ", knob->id);
         return 0;
@@ -545,11 +553,12 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
 
     isal_aes_gcm_dec_128_finalize( &knob->gkey, &knob->gctx, computed_hash, 16 );
     if (read_fixed(knob->socket, actual_hash, 16)!=16) {
-      NFO("[%2d] Couldn't get auth tag... ", knob->id);
+      VRFY(0, "[%2d] Incorrect number of bytes returned when reading auth tag", knob->id);
       return 0;
     }
     VRFY( memcmp(computed_hash, actual_hash, 16) == 0,
-          "[%2d] Bad auth tag hdr=%d %x%x%x%x!=%x%x%x%x", knob->id, *subheader,
+          "[%2d] Bad auth tag hdr=%d %02X%02X%02X%02X!=%02X%02X%02X%02X",
+          knob->id, *subheader,
           actual_hash[0], actual_hash[1], actual_hash[2], actual_hash[3],
           computed_hash[0], computed_hash[1], computed_hash[2], computed_hash[3]
         );
@@ -580,10 +589,11 @@ int64_t network_send (
 
       if (subheader == FIHDR_SHORT) {
         knob->iv_incr |= IS_FIHDR_SHORT;
+      } else {
+        knob->iv_incr &= ~IS_FIHDR_SHORT;
       }
 
       hdr.iv = ++knob->iv_incr;
-
       VRFY ( !(knob->iv_incr & (1UL<<61)), "IV exceeded" );
 
       /*  /-----+--------------+----------\
@@ -597,29 +607,35 @@ int64_t network_send (
       sent = write_fixed( knob->socket, &hdr, sizeof(hdr) );
 
       if ( sent < sizeof(hdr) ) {
+        NFO("sent < sizeof(hdr)");
         if (sent < 0)
           return sent;
         else
           return -1;
       }
 
-      isal_aes_gcm_init_128( &knob->gkey, &knob->gctx, knob->iv, (uint8_t*) &hdr, sizeof(hdr) );
+      isal_aes_gcm_init_128( &knob->gkey, &knob->gctx, knob->iv, (uint8_t*) &hdr, 8 );
     }
 
     isal_aes_gcm_enc_128_update( &knob->gkey, &knob->gctx,
       buf, buf, sz );
 
     res = write_fixed( knob->socket, buf, sz );
-    if (res < 1)
+    if (res < 1) {
+      NFO("res<1");
       return res;
+    }
     sent += res;
 
     if (! partial ) {
       isal_aes_gcm_dec_128_finalize( &knob->gkey, &knob->gctx, hash, 16 );
+
       res +=  write_fixed( knob->socket, hash, 16 );
 
-      if (res < 1)
+      if (res < 1) {
+        NFO("res<1, partial");
         return res;
+      }
       sent += res;
       did_header = false;
     }
@@ -683,6 +699,18 @@ void meta_send( char* buf, char* hdr, int len ) {
   static char* temp_buf=0;
   static struct network_obj* knob = NULL;
 
+  /* Header is a poorly defined structure, which is as follows:
+   *
+   * /----+------+------\
+   * | Sz | Type | Pad  |
+   * | 4  |  2   | 10   |
+   * \----+------+------/
+   *
+   * Type is used by the higher level app, and sz is the size of the
+   * payload following the header. For instance if sz=0, there would be
+   * no payload.
+   */
+
   // VRFY ( (((uint64_t) buf) & 0xf) == 0, "buf is not aligned correctly" );
 
   if (!temp_buf)
@@ -707,6 +735,7 @@ void meta_send( char* buf, char* hdr, int len ) {
     }
 
     knob = aligned_alloc( 64, sizeof(struct network_obj));
+    VRFY( knob != NULL, "meta_send knob alloc error" );
     memcpy( knob, tmp, sizeof(struct network_obj) );
 
   }
@@ -721,7 +750,7 @@ void meta_send( char* buf, char* hdr, int len ) {
       VRFY( network_send(knob, b,   16,  16+len, true,  FIHDR_META) > 0, "meta_send A");
       VRFY( network_send(knob, temp_buf, len, 16+len, false, FIHDR_META) > 0, "meta_send B");
     } else {
-      VRFY( network_send(knob, b,   16,  16, false,  FIHDR_META) > 0, );
+      VRFY( network_send(knob, b,   16,  16, false,  FIHDR_META) > 0, "meta send C");
     }
   }
 }
@@ -1073,8 +1102,8 @@ void* tx_worker( void* args ) {
 
       fob->complete(fob, token);
 
-      DBV("[%2d] Finish block crc=%08x fn=%d offset=%zx sz=%d sent=%d",
-          id, crc, file_no, offset, bytes_read, bytes_sent);
+      DBG("[%2d] Finish block crc=%08x fn=%zd offset=%zx sz=%d sent=%d",
+          id, fs->crc, fs_lcl.file_no, offset, bytes_read, bytes_sent);
     }
 
   }

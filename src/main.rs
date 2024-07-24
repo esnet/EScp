@@ -494,7 +494,7 @@ fn main() {
       process::exit(0);
     };
 
-    if l < 2 {
+    if l < 2 && !flags.server {
       eprintln!("Error: Not enough arguments\n");
 
       use clap::CommandFactory;
