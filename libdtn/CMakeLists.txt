@@ -63,6 +63,7 @@ ExternalProject_Add(zstd_project
   INSTALL_COMMAND   make -j 24 PREFIX=${CMAKE_CURRENT_BINARY_DIR}/zstd ZSTD_LEGACY_SUPPORT=0 ZSTD_LIB_DEPRECATED=0  ZSTD_LIB_DICTBUILDER=0  lib-nomt install
   BUILD_BYPRODUCTS  libzstd.a
   BUILD_IN_SOURCE   1
+  DOWNLOAD_EXTRACT_TIMESTAMP true
 )
 
 add_library(zstd STATIC IMPORTED)
@@ -78,6 +79,7 @@ ExternalProject_Add(libnuma_project
   INSTALL_COMMAND   make install
   BUILD_BYPRODUCTS  libnuma.a
   BUILD_IN_SOURCE   1
+  DOWNLOAD_EXTRACT_TIMESTAMP true
 )
 
 add_library(libnuma STATIC IMPORTED)
@@ -92,6 +94,7 @@ ExternalProject_Add(isa-l_crypto_project
   INSTALL_COMMAND   make install
   BUILD_BYPRODUCTS  libisal_crypto.a
   BUILD_IN_SOURCE   1
+  DOWNLOAD_EXTRACT_TIMESTAMP true
 )
 
 add_library(isal STATIC IMPORTED)
@@ -120,11 +123,12 @@ find_package(Threads REQUIRED)
 
 include_directories(include ${CMAKE_CURRENT_BINARY_DIR}/isal/include)
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/libnuma/include)
-include_directories(${CMAKE_CURRENT_BINARY_DIR}/uring/include)
+#include_directories(${CMAKE_CURRENT_BINARY_DIR}/uring/include)
 set(SOURCES src/file_io.c src/args.c
             src/engine_posix.c
             src/engine_dummy.c)
-add_library( dtn STATIC ${SOURCES} src/dtn.c)
+add_library(dtn STATIC ${SOURCES} src/dtn.c)
+add_dependencies(dtn isa-l_crypto_project libnuma_project)
 
 target_compile_definitions(dtn PUBLIC __ENGINE_POSIX__ __ENGINE_DUMMY__ )
 #target_link_libraries(dtn zstd libnuma liburing isal Threads::Threads "rt")

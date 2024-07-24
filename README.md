@@ -126,6 +126,11 @@ apt install cmake libtool g++ libnuma-dev nasm autoconf automake \
    curl           # for get rust stanza \
    libclang-dev   # for bindgen
 
+# Install system dependecies (RHEL Family)
+sudo dnf group install "Development Tools"
+dnf install epel-release
+dnf install nasm autoconf automake libtool cmake curl
+
 # Get rust
 curl https://sh.rustup.rs -sSf | sh
 . "$HOME/.cargo/env"

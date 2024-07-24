@@ -234,6 +234,10 @@ struct EScp_Args {
    #[arg(short='C', long)]
    compression: bool,
 
+   /// Sparse-- Don't write out all-zero blocks
+   #[arg(long)]
+   sparse: bool,
+
    /// Copy recursively
    #[arg(short='r', long, num_args=0)]
    recursive: bool,

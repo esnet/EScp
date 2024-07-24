@@ -1153,7 +1153,8 @@ void tx_start(struct dtn_args* args ) {
   char buf[16];
 
   static struct tx_args tx_arg[THREAD_COUNT] = {0};
-DBG("tx_start spawning workers");
+  DBG("tx_start spawning workers");
+
   if (!args->thread_count)
     args->thread_count=1;
 
@@ -1168,12 +1169,12 @@ DBG("tx_start spawning workers");
           &DTN_THREAD[i], &attr, tx_worker, (void*) &tx_arg[i] ),
           "tx_start: Error spawining tx_worker" );
 
-    sprintf(buf, "TX_%d", i);
+    snprintf(buf, 15, "TX_%d", i);
     pthread_setname_np( DTN_THREAD[i], buf);
   }
 
 
-  sprintf(buf, "META_%d", i);
+  snprintf(buf, 15, "META_%d", i);
   tx_arg[i].dtn = args;
   tx_arg[i].is_meta = true;
   VRFY(  0 == pthread_create(
