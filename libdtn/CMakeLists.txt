@@ -19,8 +19,8 @@ execute_process(
 #set(CMAKE_C_FLAGS_RELEASE "-g -march=sandybridge -O3 -pthread")
 #set(CMAKE_C_FLAGS_DEBUG "-g -march=sandybridge -O3 -pthread")
 
-set(CMAKE_C_FLAGS_RELEASE "-g -march=sandybridge -pthread -O -fPIE")
-set(CMAKE_C_FLAGS_DEBUG "-g -march=sandybridge -pthread -fPIE")
+set(CMAKE_C_FLAGS_RELEASE "-g -march=sandybridge -pthread -O -fPIC")
+set(CMAKE_C_FLAGS_DEBUG "-g -march=sandybridge -pthread -fPIC")
 
 add_definitions("-Wall -Wno-unused-result -Wno-stringop-truncation")
 
