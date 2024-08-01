@@ -89,7 +89,8 @@ struct dtn_args {
   int QD;
 
   int compression;
-  int hugepages; 
+  int sparse;
+  int hugepages;
 
   int64_t disable_io;
   uint64_t pacing;

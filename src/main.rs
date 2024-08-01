@@ -234,7 +234,7 @@ struct EScp_Args {
    #[arg(short='C', long)]
    compression: bool,
 
-   /// Sparse-- Don't write out all-zero blocks
+   /// Sparse-- Don't write out block if all zero's
    #[arg(long)]
    sparse: bool,
 
@@ -474,6 +474,7 @@ fn main() {
 
       if flags.verbose   { verbose_logging += 1; }
       if flags.compression { (*args).compression = 1; }
+      if flags.sparse { (*args).sparse = 1; }
       if flags.hugepages > 0  { (*args).hugepages = flags.hugepages as i32; }
       if flags.verbose   { verbose_logging += 1; }
       if flags.quiet     { verbose_logging = 0; }

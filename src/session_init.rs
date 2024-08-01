@@ -33,15 +33,16 @@ impl<'a> Session_Init<'a> {
   pub const VT_DO_CRYPTO: flatbuffers::VOffsetT = 14;
   pub const VT_DO_VERBOSE: flatbuffers::VOffsetT = 16;
   pub const VT_DO_COMPRESSION: flatbuffers::VOffsetT = 18;
-  pub const VT_NO_DIRECT: flatbuffers::VOffsetT = 20;
-  pub const VT_IS_ERROR: flatbuffers::VOffsetT = 22;
-  pub const VT_MESSAGE: flatbuffers::VOffsetT = 24;
-  pub const VT_BIND_INTERFACE: flatbuffers::VOffsetT = 26;
-  pub const VT_PORT_START: flatbuffers::VOffsetT = 28;
-  pub const VT_PORT_END: flatbuffers::VOffsetT = 30;
-  pub const VT_IO_ENGINE: flatbuffers::VOffsetT = 32;
-  pub const VT_THREAD_COUNT: flatbuffers::VOffsetT = 34;
-  pub const VT_BLOCK_SZ: flatbuffers::VOffsetT = 36;
+  pub const VT_DO_SPARSE: flatbuffers::VOffsetT = 20;
+  pub const VT_NO_DIRECT: flatbuffers::VOffsetT = 22;
+  pub const VT_IS_ERROR: flatbuffers::VOffsetT = 24;
+  pub const VT_MESSAGE: flatbuffers::VOffsetT = 26;
+  pub const VT_BIND_INTERFACE: flatbuffers::VOffsetT = 28;
+  pub const VT_PORT_START: flatbuffers::VOffsetT = 30;
+  pub const VT_PORT_END: flatbuffers::VOffsetT = 32;
+  pub const VT_IO_ENGINE: flatbuffers::VOffsetT = 34;
+  pub const VT_THREAD_COUNT: flatbuffers::VOffsetT = 36;
+  pub const VT_BLOCK_SZ: flatbuffers::VOffsetT = 38;
 
   #[inline]
   pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
@@ -66,6 +67,7 @@ impl<'a> Session_Init<'a> {
     builder.add_version_major(args.version_major);
     builder.add_is_error(args.is_error);
     builder.add_no_direct(args.no_direct);
+    builder.add_do_sparse(args.do_sparse);
     builder.add_do_compression(args.do_compression);
     builder.add_do_verbose(args.do_verbose);
     builder.add_do_crypto(args.do_crypto);
@@ -129,6 +131,13 @@ impl<'a> Session_Init<'a> {
     // Created from valid Table for this object
     // which contains a valid value in this slot
     unsafe { self._tab.get::<bool>(Session_Init::VT_DO_COMPRESSION, Some(false)).unwrap()}
+  }
+  #[inline]
+  pub fn do_sparse(&self) -> bool {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<bool>(Session_Init::VT_DO_SPARSE, Some(false)).unwrap()}
   }
   #[inline]
   pub fn no_direct(&self) -> bool {
@@ -210,6 +219,7 @@ impl flatbuffers::Verifiable for Session_Init<'_> {
      .visit_field::<bool>("do_crypto", Self::VT_DO_CRYPTO, false)?
      .visit_field::<bool>("do_verbose", Self::VT_DO_VERBOSE, false)?
      .visit_field::<bool>("do_compression", Self::VT_DO_COMPRESSION, false)?
+     .visit_field::<bool>("do_sparse", Self::VT_DO_SPARSE, false)?
      .visit_field::<bool>("no_direct", Self::VT_NO_DIRECT, false)?
      .visit_field::<bool>("is_error", Self::VT_IS_ERROR, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<&str>>("message", Self::VT_MESSAGE, false)?
@@ -232,6 +242,7 @@ pub struct Session_InitArgs<'a> {
     pub do_crypto: bool,
     pub do_verbose: bool,
     pub do_compression: bool,
+    pub do_sparse: bool,
     pub no_direct: bool,
     pub is_error: bool,
     pub message: Option<flatbuffers::WIPOffset<&'a str>>,
@@ -254,6 +265,7 @@ impl<'a> Default for Session_InitArgs<'a> {
       do_crypto: false,
       do_verbose: false,
       do_compression: false,
+      do_sparse: false,
       no_direct: false,
       is_error: false,
       message: None,
@@ -303,6 +315,10 @@ impl<'a: 'b, 'b> Session_InitBuilder<'a, 'b> {
   #[inline]
   pub fn add_do_compression(&mut self, do_compression: bool) {
     self.fbb_.push_slot::<bool>(Session_Init::VT_DO_COMPRESSION, do_compression, false);
+  }
+  #[inline]
+  pub fn add_do_sparse(&mut self, do_sparse: bool) {
+    self.fbb_.push_slot::<bool>(Session_Init::VT_DO_SPARSE, do_sparse, false);
   }
   #[inline]
   pub fn add_no_direct(&mut self, no_direct: bool) {
@@ -366,6 +382,7 @@ impl core::fmt::Debug for Session_Init<'_> {
       ds.field("do_crypto", &self.do_crypto());
       ds.field("do_verbose", &self.do_verbose());
       ds.field("do_compression", &self.do_compression());
+      ds.field("do_sparse", &self.do_sparse());
       ds.field("no_direct", &self.no_direct());
       ds.field("is_error", &self.is_error());
       ds.field("message", &self.message());

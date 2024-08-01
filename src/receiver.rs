@@ -95,6 +95,10 @@ fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
         unsafe { (*args).compression= 1 };
     }
 
+    if helo.do_sparse() {
+        unsafe { (*args).sparse = 1 };
+    }
+
     if helo.do_crypto() {
       unsafe {
         let ptr: Vec<i8> = helo.crypto_key().unwrap().iter().collect() ;

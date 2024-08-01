@@ -19,7 +19,8 @@ void* file_posixfetch( void* arg ) {
   struct file_object* fob = arg;
   // struct posix_op* op = fob->pvdr;
 
-  if ( (fob->head - fob->tail) >= 1 )
+  VRFY( fob, "Fob should be defined");
+  if ((fob->head - fob->tail) >= 1)
     return 0;
 
   fob->head++;
@@ -88,12 +89,25 @@ void* file_posixsubmit( void* arg, int32_t* sz, uint64_t* offset ) {
   struct posix_op* op = (struct posix_op*) fob->pvdr;
   static __thread struct ZSTD_CCtx_s* zctx = NULL;
   uint64_t csz=0;
+  bool do_write=true;
 
   if ( fob->tail < fob->head ) {
 
-    if ( fob->io_flags & O_WRONLY )
-      *sz = pwrite( op->fd, op->buf, op->sz, op->offset );
-    else {
+    if ( fob->io_flags & O_WRONLY ) {
+      if (fob->sparse) {
+        uint64_t i=0;
+        for (i=0;i < op->sz; i++) {
+          if ( ((uint8_t*)op->buf)[i] != 0 )
+            break;
+        }
+        if (i == op->sz) {
+          *sz = op->sz;
+          do_write = false;
+        }
+      }
+      if (do_write)
+        *sz = pwrite( op->fd, op->buf, op->sz, op->offset );
+    } else {
       *sz = pread( op->fd, op->buf, fob->blk_sz, op->offset );
 
       if (fob->do_hash) {
@@ -119,6 +133,7 @@ void* file_posixsubmit( void* arg, int32_t* sz, uint64_t* offset ) {
           op->compressed=0;
           csz=0;
         }
+
       }
     }
 

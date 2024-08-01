@@ -64,8 +64,10 @@ struct file_object {
   int32_t  io_ret;   // 48
 
   uint32_t thread_count;
-  uint64_t pad1;
-  uint32_t pad2;      // 64
+  uint8_t  sparse;
+  uint8_t  pad3;
+  uint16_t pad2;
+  uint64_t pad1;     // 64
 
 
   void*    pvdr;     // Provider internal ptr

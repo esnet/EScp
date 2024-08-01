@@ -82,7 +82,7 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   }
 
   {
-    let (session_id, start_port, do_verbose, crypto_key, io_engine, nodirect, thread_count, block_sz, do_hash, do_compression );
+    let (session_id, start_port, do_verbose, crypto_key, io_engine, nodirect, thread_count, block_sz, do_hash, do_compression, do_sparse );
 
     crypto_key = vec![ 0i8; 16 ];
 
@@ -97,10 +97,17 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       do_hash = (*args).do_hash;
       thread_count = (*args).thread_count;
       block_sz = (*args).block;
+
       if (*args).compression > 0
         { do_compression = true; }
       else
         { do_compression = false; }
+
+      if (*args).sparse > 0
+        { do_sparse = true; }
+      else
+        { do_sparse = false; }
+
       do_verbose = verbose_logging  > 0;
       std::intrinsics::copy_nonoverlapping( (*args).crypto_key.as_ptr() , crypto_key.as_ptr() as *mut u8, 16 );
     }
@@ -123,6 +130,7 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
         thread_count,
         block_sz,
         do_compression,
+        do_sparse,
         ..Default::default()
       }
     );

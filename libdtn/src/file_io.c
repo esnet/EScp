@@ -375,15 +375,16 @@ struct file_object* file_memoryinit( void* arg, int id ) {
   memset( fob, 0, sizeof(struct file_object) );
 
   f.io_type = dtn->io_engine;
-  f.QD = dtn->QD;
-  f.blk_sz = dtn->block;
-  f.io_flags = dtn->flags;
-  f.thread_count = dtn->thread_count;
-  f.args = &dtn->io_engine_name[5];
-  f.id = id;
+  f.QD          = dtn->QD;
+  f.blk_sz      = dtn->block;
+  f.io_flags    = dtn->flags;
+  f.thread_count= dtn->thread_count;
+  f.args        = &dtn->io_engine_name[5];
+  f.id          = id;
   f.compression = dtn->compression;
-  f.hugepages = dtn->hugepages;
-  f.do_hash = dtn->do_hash;
+  f.sparse      = dtn->sparse;
+  f.hugepages   = dtn->hugepages;
+  f.do_hash     = dtn->do_hash;
 
   switch (f.io_type) {
 #ifdef __ENGINE_POSIX__
