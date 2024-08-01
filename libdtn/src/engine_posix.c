@@ -19,7 +19,7 @@ void* file_posixfetch( void* arg ) {
   struct file_object* fob = arg;
   // struct posix_op* op = fob->pvdr;
 
-  VRFY( fob, "Fob should be defined");
+  VRFY( fob, "Fob undefined");
   if ((fob->head - fob->tail) >= 1)
     return 0;
 

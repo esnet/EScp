@@ -904,8 +904,10 @@ pub struct file_object {
     pub io_flags: i32,
     pub io_ret: i32,
     pub thread_count: u32,
+    pub sparse: u8,
+    pub pad3: u8,
+    pub pad2: u16,
     pub pad1: u64,
-    pub pad2: u32,
     pub pvdr: *mut ::core::ffi::c_void,
     pub args: *mut ::core::ffi::c_char,
     pub open: ::core::option::Option<
@@ -967,7 +969,7 @@ fn bindgen_test_layout_file_object() {
     let ptr = UNINIT.as_ptr();
     assert_eq!(
         ::core::mem::size_of::<file_object>(),
-        200usize,
+        192usize,
         concat!("Size of: ", stringify!(file_object))
     );
     assert_eq!(
@@ -1086,6 +1088,36 @@ fn bindgen_test_layout_file_object() {
         )
     );
     assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).sparse) as usize - ptr as usize },
+        52usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(file_object),
+            "::",
+            stringify!(sparse)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).pad3) as usize - ptr as usize },
+        53usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(file_object),
+            "::",
+            stringify!(pad3)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).pad2) as usize - ptr as usize },
+        54usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(file_object),
+            "::",
+            stringify!(pad2)
+        )
+    );
+    assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).pad1) as usize - ptr as usize },
         56usize,
         concat!(
@@ -1096,18 +1128,8 @@ fn bindgen_test_layout_file_object() {
         )
     );
     assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).pad2) as usize - ptr as usize },
-        64usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(file_object),
-            "::",
-            stringify!(pad2)
-        )
-    );
-    assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).pvdr) as usize - ptr as usize },
-        72usize,
+        64usize,
         concat!(
             "Offset of field: ",
             stringify!(file_object),
@@ -1117,7 +1139,7 @@ fn bindgen_test_layout_file_object() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).args) as usize - ptr as usize },
-        80usize,
+        72usize,
         concat!(
             "Offset of field: ",
             stringify!(file_object),
@@ -1127,7 +1149,7 @@ fn bindgen_test_layout_file_object() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).open) as usize - ptr as usize },
-        88usize,
+        80usize,
         concat!(
             "Offset of field: ",
             stringify!(file_object),
@@ -1137,7 +1159,7 @@ fn bindgen_test_layout_file_object() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).fopendir) as usize - ptr as usize },
-        96usize,
+        88usize,
         concat!(
             "Offset of field: ",
             stringify!(file_object),
@@ -1147,7 +1169,7 @@ fn bindgen_test_layout_file_object() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).readdir) as usize - ptr as usize },
-        104usize,
+        96usize,
         concat!(
             "Offset of field: ",
             stringify!(file_object),
@@ -1157,7 +1179,7 @@ fn bindgen_test_layout_file_object() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).close_fd) as usize - ptr as usize },
-        112usize,
+        104usize,
         concat!(
             "Offset of field: ",
             stringify!(file_object),
@@ -1167,7 +1189,7 @@ fn bindgen_test_layout_file_object() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).close) as usize - ptr as usize },
-        120usize,
+        112usize,
         concat!(
             "Offset of field: ",
             stringify!(file_object),
@@ -1177,7 +1199,7 @@ fn bindgen_test_layout_file_object() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).truncate) as usize - ptr as usize },
-        128usize,
+        120usize,
         concat!(
             "Offset of field: ",
             stringify!(file_object),
@@ -1187,7 +1209,7 @@ fn bindgen_test_layout_file_object() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).fstat) as usize - ptr as usize },
-        136usize,
+        128usize,
         concat!(
             "Offset of field: ",
             stringify!(file_object),
@@ -1197,7 +1219,7 @@ fn bindgen_test_layout_file_object() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).fetch) as usize - ptr as usize },
-        144usize,
+        136usize,
         concat!(
             "Offset of field: ",
             stringify!(file_object),
@@ -1207,7 +1229,7 @@ fn bindgen_test_layout_file_object() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).flush) as usize - ptr as usize },
-        152usize,
+        144usize,
         concat!(
             "Offset of field: ",
             stringify!(file_object),
@@ -1217,7 +1239,7 @@ fn bindgen_test_layout_file_object() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).set) as usize - ptr as usize },
-        160usize,
+        152usize,
         concat!(
             "Offset of field: ",
             stringify!(file_object),
@@ -1227,7 +1249,7 @@ fn bindgen_test_layout_file_object() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).get) as usize - ptr as usize },
-        168usize,
+        160usize,
         concat!(
             "Offset of field: ",
             stringify!(file_object),
@@ -1237,7 +1259,7 @@ fn bindgen_test_layout_file_object() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).submit) as usize - ptr as usize },
-        176usize,
+        168usize,
         concat!(
             "Offset of field: ",
             stringify!(file_object),
@@ -1247,7 +1269,7 @@ fn bindgen_test_layout_file_object() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).complete) as usize - ptr as usize },
-        184usize,
+        176usize,
         concat!(
             "Offset of field: ",
             stringify!(file_object),
@@ -1257,7 +1279,7 @@ fn bindgen_test_layout_file_object() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).cleanup) as usize - ptr as usize },
-        192usize,
+        184usize,
         concat!(
             "Offset of field: ",
             stringify!(file_object),

@@ -9,6 +9,6 @@ fn main() -> shadow_rs::SdResult<()>  {
     println!("cargo:rustc-link-arg-bins=-lc");
     println!("cargo:rustc-link-arg-bins=-no-pie");
     // Command::new("sh").args(["mk.sh", "argument"]).status().unwrap();
-    // println!("cargo:rerun-if-changed=build/libdtn.a");
+    println!("cargo:rerun-if-changed=build/libdtn.a");
     shadow_rs::new()
 }
