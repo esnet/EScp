@@ -84,6 +84,51 @@ void file_posixflush( void* arg ) {
   return ;
 }
 
+#ifdef __AVX__
+#include <emmintrin.h>
+#include <smmintrin.h>
+inline int memcmp_zero( void* dst, uint64_t sz ) {
+
+  // __m128i zero = {0};
+  __m128i a,b,c,d;
+
+  uint64_t offset;
+
+  for ( offset = 0; offset < sz; offset += 64 ) {
+    uint64_t* src = (uint64_t*)(((uint64_t) dst) + offset);
+
+    a = _mm_load_si128 ( (void*) src );
+    b = _mm_load_si128 ( (void*) (((uint64_t) src) +  16) );
+    c = _mm_load_si128 ( (void*) (((uint64_t) src) +  32) );
+    d = _mm_load_si128 ( (void*) (((uint64_t) src) +  48) );
+
+    // on paper: test_all_ones has better throughput than test all zeroes
+
+    int res = _mm_test_all_ones(~a);
+    res &=  _mm_test_all_ones(~b);
+    res &=  _mm_test_all_ones(~c);
+    res &=  _mm_test_all_ones(~d);
+
+    if (!res)
+      return 1;
+  }
+
+  return 0; // If all ZERO
+
+}
+
+#else
+#warning Compiling with slow memcmp_zero. Sparse detection will be *slow*.
+inline int memcmp_zero( void* dst, uint64_t sz ) {
+  // Note: This algorithm is stupidly slow.
+  for (i=0;i < op->sz; i++) {
+    if ( ((uint8_t*)op->buf)[i] != 0 )
+      return 1;
+  }
+  return 0;
+}
+#endif
+
 void* file_posixsubmit( void* arg, int32_t* sz, uint64_t* offset ) {
   struct file_object* fob = arg;
   struct posix_op* op = (struct posix_op*) fob->pvdr;
@@ -95,24 +140,18 @@ void* file_posixsubmit( void* arg, int32_t* sz, uint64_t* offset ) {
 
     if ( fob->io_flags & O_WRONLY ) {
       if (fob->sparse) {
-        uint64_t i=0;
-        for (i=0;i < op->sz; i++) {
-          if ( ((uint8_t*)op->buf)[i] != 0 )
-            break;
-        }
-        if (i == op->sz) {
+        int res = memcmp_zero( op->buf, op->sz );
+        if (res == 0) {
           *sz = op->sz;
           do_write = false;
         }
       }
-      if (do_write)
-        *sz = pwrite( op->fd, op->buf, op->sz, op->offset );
-    } else {
-      *sz = pread( op->fd, op->buf, fob->blk_sz, op->offset );
 
-      if (fob->do_hash) {
+      if (do_write)
+        *sz = pread( op->fd, op->buf, fob->blk_sz, op->offset );
+
+      if (fob->do_hash)
         op->hash = file_hash(op->buf, *sz, *offset/fob->blk_sz);
-      }
 
       if (fob->compression) {
 
