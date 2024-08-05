@@ -376,7 +376,7 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
     else
       *subheader = FIHDR_META;
 
-    DBG("[%02d] AAD is %zX, %d\n", knob->id, aad, *subheader);
+    DBV("[%02d] AAD is %zX, %d\n", knob->id, aad, *subheader);
 
     bytes_read += 8;
 
@@ -893,12 +893,9 @@ void* rx_worker( void* arg ) {
           else
             fc_push( file_no, fs.bytes, 0 );
 
-          if (fs.bytes != written) {
-            fob->truncate(fob, fs.bytes);
-            DBG("[%2d] FIHDR_SHORT: close with truncate fn=%ld ", id, file_no);
-          } else {
-            DBG("[%2d] FIHDR_SHORT: close on fn=%ld ", id, file_no);
-          }
+          // Always truncate, even though it may not be needed in some cases
+          fob->truncate(fob, fs.bytes);
+          DBG("[%2d] FIHDR_SHORT: close with truncate fn=%ld ", id, file_no);
 
           file_incrementtail();
           fob->close(fob);
