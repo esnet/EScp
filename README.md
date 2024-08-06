@@ -389,6 +389,80 @@ reviewed. If you want more information, check `network_recv` or
 `network_initrx` in `libdtn/src/dtn.c`.
 
 
+DEV NOTES
+=========
+
+Compression:
+
+  EScp supports compression, however:
+
+  We use zstd simplified API. It would be better to use the streaming API
+  (to conserve state between frames), but it requires testing that our input
+  state matches our output state. At a very basic level, we don't do
+  compression if our compressed data is larger than our un-compressed data.
+
+  If we took our existing design and switched to streaming it, it is possible
+  that we would lose state between the compressor and decompressor as the
+  thrown away data isn't transferred.
+
+Checksums:
+
+  We should write out checksums to a file, and have a tool (i.e. EScp flag)
+  that allows for verification of file checksums.
+
+Sparse Files:
+
+  Currently, the receiver checks to see if a block of data contains all zeroes,
+  and if it does it then skips the block (assuming engine support).
+
+  It would be better if the sender just didn't send the block if it contains
+  all zeroes.
+
+  Also, while the application probably allows sparse file support without
+  compression, the only way that sparse files currently make sense is if you
+  enable compression as otherwise you send the entire sparse file(bad) and then
+  don't write empty data (good).
+
+Session Init/Finish:
+
+  There are some timeouts that shouldn't exist. For instance, a file transfer
+  always takes at least 0.2 seconds because that is the rate at which the
+  status bar updates.
+
+Zombie Receiver:
+
+  There are a few cases where you can end up with a Zombie receiver. If the
+  sender is closed the receiver should always follow suit in short order.
+
+Error Messages:
+
+  VRFY macro is used to terminate execution if the receiver runs into a
+  condition in which it is impossible to continue. That error message should
+  be gracefully sent to sender before terminating.
+
+NUMA Pinning:
+
+  It would be nice to do NUMA pinning automatically. The library I foound to
+  probe our hardware resources had too many dependencies, but, if a light
+  weight method to that existed, that would be interesting.
+
+SHM Engine:
+
+  Earlier versions of EScp contained a SHM engine to allow applications to
+  write directly to an EScp transfer stream. This engine was overly
+  complicated because of the Python Layer, but, it should now be possible to
+  do in a relatively light weight fashion.
+
+Test Harness:
+
+  Testing right now is against a series of data sets and somewhat manual.
+  Obviously this is less than ideal.
+
+Versioning:
+
+  Better messages are needed when versions don't match.
+
+
 HARD LIMITS
 ===========
 
@@ -404,7 +478,7 @@ AUTHOR
 
 EScp is written by Charles Shiflett with the support of [ESnet](es.net). EScp
 is a side project and is not in any way an official or supported project of
-ESnet, The University of California, Lawrence Berkeley National Lab, nor the
+ESnet, The University of California, Lawrence Berkeley National Lab, or the
 US Department of Energy.
 
 I'd like to thank my team at ESnet; Anne White, Goran Pejović, Dhivakaran
