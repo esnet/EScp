@@ -29,7 +29,7 @@ a specific platform that is not yet supported, please reach out to the author
 and/or create an issue on github that describes what you would like and how
 you would like to use EScp.
 
-Release Notes
+RELEASE NOTES
 =============
 
 EScp is tested on Linux and it has successfully transferred PBs of data and
@@ -65,7 +65,7 @@ cpumask: FFFF
 nodemask: 1
 ```
 
-Usage
+USAGE
 =====
 
 ```
@@ -392,6 +392,7 @@ reviewed. If you want more information, check `network_recv` or
 DEV NOTES
 =========
 
+```
 Compression:
 
   EScp supports compression, however:
@@ -461,6 +462,7 @@ Test Harness:
 Versioning:
 
   Better messages are needed when versions don't match.
+```
 
 
 HARD LIMITS
