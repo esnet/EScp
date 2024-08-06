@@ -88,6 +88,7 @@ Options:
   -l, --limit <LIMIT>          LIMIT/thread (bytes/sec) using SO_MAX_PACING_RATE
   -p, --preserve               Preserve source attributes (TODO)
   -C, --compression            Compression
+      --sparse                 Sparse file support, use with compression
   -r, --recursive              Copy recursively
   -o <SSH_OPTION>              SSH_OPTION to SSH
   -S, --ssh <SSH>              SSH binary [default: ssh]
