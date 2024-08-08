@@ -261,7 +261,7 @@ struct EScp_Args {
          help="posix,dummy")]
    io_engine: String,
 
-   /// # of EScp parallel threads
+   /// # of IO worker threads
    #[arg(short='t', long="parallel", default_value_t = 4 )]
    threads: u32,
 
@@ -400,50 +400,6 @@ fn main() {
     ("shmem", 4),
   ]);
 
-  /*
-  if cmd == "dtn" {
-    let flags = DTN_Args::parse();
-    // println!("Files={:?}", flags.file );
-
-    if flags.license {
-      print_license();
-      process::exit(0);
-    };
-
-    unsafe {
-      if flags.verbose { verbose_logging += 1; }
-
-      (*args).thread_count = flags.threads as i32;
-      (*args).do_server = flags.server_mode;
-      (*args).block = int_from_human(flags.block_sz.clone()) as i32;
-      (*args).QD = flags.QD as i32;
-      if flags.io_only.len() > 0 {
-        (*args).disable_io = int_from_human(flags.io_only.clone()) as i64;
-      } else {
-        (*args).disable_io = -1;
-      }
-
-      if flags.server_mode || ( (*args).disable_io > 42 ) {
-        (*args).flags |= libc::O_CREAT | libc::O_WRONLY | libc::O_TRUNC;
-      }
-
-      let io_engine = flags.io_engine.to_lowercase();
-      (*args).io_engine = io_engine_names.get(&io_engine.as_str()).cloned().unwrap_or(-1);
-
-      if (*args).io_engine  == -1 {
-        info!("io_engine='{}' not in compiled io_engines {:?}", io_engine, io_engine_names.keys());
-        process::exit(0);
-      }
-
-      (*args).io_engine_name = io_engine.as_ptr() as *mut i8;
-      (*args).window = int_from_human(flags.window.clone()) as u32;
-
-      print_args( args );
-      // do_dtn( args, flags );
-    }
-
-  } else
-  */
   {
     let mut flags = EScp_Args::parse();
 

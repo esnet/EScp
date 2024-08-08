@@ -199,32 +199,6 @@ struct crypto_hdr {
 
 uint64_t global_iv=0;
 
-int u64_2flo( uint64_t* target ) {
-  int exponent = 64 - __builtin_clzl( *target );
-  uint64_t orig = *target;
-
-  if (exponent <= 16)
-    return 0;
-
-  exponent = exponent - 16;
-  *target >>= exponent;
-
-  if (orig & ((1 << exponent) -1)) {
-    ++*target;
-
-    if (*target >= (1 << 16)) {
-      exponent++;
-      *target>>=1;;
-    }
-  }
-
-  return exponent;
-};
-
-uint64_t flo2_u64( int significand, int exponent ) {
-  return (uint64_t) significand << (uint64_t) exponent;
-}
-
 static inline int io_fixed(
     int fd, void* buf, int sz, ssize_t (*func) (int, void*, size_t) )
 {
@@ -782,8 +756,6 @@ void* rx_worker( void* arg ) {
   struct file_object* fob;
   struct file_info* fi;
   struct network_obj* knob=0;
-
-
   struct file_stat_type  fs;
   struct file_stat_type* fs_ptr=0;
 
@@ -796,10 +768,9 @@ void* rx_worker( void* arg ) {
   }
 
   id = atomic_fetch_add(&dtn->thread_id, 1);
+  affinity_set( dtn, id );
 
   DBG("[%2d] Accept connection", id);
-
-  affinity_set( dtn, id );
 
   {
     // First message is a CRYPTO_INIT, which we handle as a special case
@@ -1265,30 +1236,37 @@ int rx_start( void* fn_arg ) {
 
   while(1) {
     char buf[16];
+    struct pollfd fds[1] = {0};
+    int res;
 
     pthread_attr_t attr;
     pthread_attr_init(&attr);
     socklen_t saddr_sz = sizeof(struct sockaddr_in);
 
-    fcntl( sock, F_SETFL, O_NONBLOCK );
-    while (1) {
-      rx_arg[i].conn = accept( sock, (struct sockaddr *) saddr, &saddr_sz );
-      rx_arg[i].dtn = args;
-      if (rx_arg[i].conn > 0)
-        break;
+    fds[0].fd     = sock;
+    fds[0].events = POLLIN;
+
+    res = poll( fds, 1, 5 * 1000 /* 5s */ );
+    if (res == -1) {
       if (args->thread_count && (i >= args->thread_count)) {
         DBG("Finished spawning workers");
         return 0;
       }
-      ESCP_DELAY(1);
+      VRFY( 0, "Timed out trying to spawn receiver" );
+    }
+
+    fcntl( sock, F_SETFL, O_NONBLOCK );
+    rx_arg[i].conn = accept( sock, (struct sockaddr *) saddr, &saddr_sz );
+    rx_arg[i].dtn = args;
+    if (rx_arg[i].conn <= 0) {
+      DBG("Got an error accepting socket: %s", strerror(rx_arg[i].conn));
+      continue;
     }
 
     if (  pthread_create(
             &DTN_THREAD[i], &attr, rx_worker, (void*) &rx_arg[i] )
        ) {
-      perror("pthread_create");
-      close(rx_arg[i].conn);
-      continue;
+      VRFY(0, "pthread_create");
     }
 
     sprintf(buf, "RX_%d", i);

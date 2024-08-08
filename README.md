@@ -154,8 +154,11 @@ cargo install cargo-rpm
 cargo rpm init
 cargo rpm build
 
-# Then install as
-sudo dpkg -i target/debian/escp_0.7.0_amd64.deb
+# Then install as (Update the version as appropriate):
+sudo dpkg -i target/debian/escp_0.7.0_amd64.deb # Debian
+# or
+dnf install target/release/rpmbuild/RPMS/x86_64/escp-0.8.0*.rpm # Redhat Family
+
 
 # For development
 cargo install bindgen-cli --version 0.68.1
@@ -503,12 +506,21 @@ SHA256                                                            NAME
 c91d47a3b0c6578e7a727af26700dabd79e0acbf0db7eeffbf3151b48980b8a6  EScp-0.7.0.zip
 ```
 
-Chages from 0.7.0 to 0.7.1:
+Changes from 0.7.1 to 0.8.0 (TBD):
+  * Change to On-Wire format; Drops un-needed crypto wrapper. Change other
+    message headers.
+  * Add Compression (Using zstd)
+  * Add Sparse File support
+  * Add receiver timeout + keepalive (Avoids Zombie Receivers)
+  * Session Init Changes
+  * 
+
+Changes from 0.7.0 to 0.7.1 (20 June 2024):
   * Checksum feature enabled
   * Change how transfer progress is displayed when calculating files
   * Code cleanup w/ clippy & cargo audit
 
-Chages from 0.6.0 to 0.7.0:
+Changes from 0.6.0 to 0.7.0 (5 June 2024):
   * Complete rewrite of python code
   * Change to fully lockless design
     - Previous versions locked when iterating through files
