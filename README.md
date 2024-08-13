@@ -434,11 +434,6 @@ Session Init/Finish:
   always takes at least 0.2 seconds because that is the rate at which the
   status bar updates.
 
-Zombie Receiver:
-
-  There are a few cases where you can end up with a Zombie receiver. If the
-  sender is closed the receiver should always follow suit in short order.
-
 Error Messages:
 
   VRFY macro is used to terminate execution if the receiver runs into a
@@ -507,6 +502,7 @@ c91d47a3b0c6578e7a727af26700dabd79e0acbf0db7eeffbf3151b48980b8a6  EScp-0.7.0.zip
 ```
 
 Changes from 0.7.1 to 0.8.0 (TBD):
+  * Breaks compatability with previous versions
   * Change to On-Wire format; Drops un-needed crypto wrapper. Change other
     message headers.
   * Add Compression (Using zstd)

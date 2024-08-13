@@ -59,6 +59,7 @@ include!("sender.rs");
 const msg_session_init:u16      = 8;
 const msg_file_spec:u16         =16;
 const msg_file_stat:u16         =17;
+const msg_keepalive:u16         =18;
 const msg_session_complete:u16  = 1;
 const msg_session_terminate:u16 = 9;
 

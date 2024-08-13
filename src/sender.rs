@@ -385,8 +385,13 @@ fn file_check(
     let b = unsafe { slice::from_raw_parts(ptr, 6).to_vec() };
     let (sz, t) = from_header( b );
 
+
     if t != msg_file_stat {
-      info!("file_check: Got unexpected type={t}, ignoring");
+      if t == msg_keepalive {
+        debug!("file_check: Got keepalive, ignoring");
+      } else {
+        info!("file_check: Got unexpected type={t}, ignoring");
+      }
       break;
     }
 

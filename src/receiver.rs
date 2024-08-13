@@ -192,6 +192,7 @@ fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   debug!("Finished Session Init bytes={:?}", buf.len() );
 
   let mut filecount=0;
+  let mut last_send = std::time::Instant::now();
 
   loop { // Until file transfer is finished
     let ptr = unsafe{ meta_recv() };
@@ -200,10 +201,11 @@ fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
     if ptr.is_null() {
       debug!("Check file completion");
 
-      let mut fct = 20;
+      let mut fct = 5; // Our timeout here is intentionally short as long
+                       // timeouts interfere with our ability to open files 
       let loop_start = std::time::Instant::now();
       let mut did_init= false;
-      let mut builder = flatbuffers::FlatBufferBuilder::with_capacity(8192);
+      let mut builder = flatbuffers::FlatBufferBuilder::with_capacity(16384);
 
       loop { // Check for file completion notices
         let (mut file_no, mut bytes,mut crc,mut completion) = (0,0,0,0);
@@ -237,11 +239,19 @@ fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
                 complete: completion,
                 ..Default::default()
               }));
+
+          if loop_start.elapsed().as_secs_f32() > ((fct as f32)/1001.0) {
+            debug!("fc: setting finish_fc because loop timeout is exceeded");
+            finish_fc = true;
+          }
         }
 
-        if loop_start.elapsed().as_secs_f32() > 0.002 {
-          debug!("fc: setting finish_fc because loop timeout is exceeded");
-          finish_fc = true;
+        if last_send.elapsed().as_secs_f32() > 2.0 {
+          let hdr = to_header( 0, msg_keepalive );
+          unsafe {
+            meta_send( std::ptr::null_mut::<i8>(), hdr.as_ptr() as *mut i8, 0 );
+          }
+          last_send = std::time::Instant::now();
         }
 
         if did_init && finish_fc {
@@ -255,10 +265,11 @@ fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
           builder.finish( bu, None );
           let buf = builder.finished_data();
           let hdr = to_header( buf.len() as u32, msg_file_stat );
-          debug!("fc: Sending fc_state data for {} files, size is {}", v.len(), buf.len());
+          info!("fc: Sending fc_state data for {} files, size is {}", v.len(), buf.len());
           unsafe {
             meta_send( buf.as_ptr() as *mut i8, hdr.as_ptr() as *mut i8, buf.len() as i32 );
           }
+          last_send = std::time::Instant::now();
         }
 
         if finish_fc {
