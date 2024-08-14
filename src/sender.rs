@@ -885,13 +885,28 @@ fn iterate_files ( flags: &EScp_Args,
       builder.finish( bu, None );
 
       let buf = builder.finished_data();
-      let hdr = to_header( buf.len() as u32, msg_file_spec );
 
-      debug!("iterate_files: Sending file meta data for {}/{}, size is {}", counter, files_total, buf.len());
-      unsafe {
-        meta_send( buf.as_ptr() as *mut i8, hdr.as_ptr() as *mut i8, buf.len() as i32 );
+      if buf.len() > 320 {
+
+        let mut dst:[u8; 16384] = [0; 16384];
+        let res = zstd_safe::compress( &mut dst, buf, 3 );
+
+        let compressed_sz = res.expect("Compression failed");
+        let hdr = to_header( compressed_sz as u32, msg_file_spec | msg_compressed );
+        debug!("iterate_files: Sending compressed meta for {}/{}, size {}/{}", counter, files_total, buf.len(), compressed_sz);
+        unsafe {
+          meta_send( dst.as_ptr() as *mut i8, hdr.as_ptr() as *mut i8, compressed_sz as i32 );
+        }
+
+      } else {
+        let hdr = to_header( buf.len() as u32, msg_file_spec );
+
+        debug!("iterate_files: Sending file meta data for {}/{}, size is {}", counter, files_total, buf.len());
+        unsafe {
+          meta_send( buf.as_ptr() as *mut i8, hdr.as_ptr() as *mut i8, buf.len() as i32 );
+        }
+
       }
-
       counter -= iterations;
 
     }

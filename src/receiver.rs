@@ -265,7 +265,7 @@ fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
           builder.finish( bu, None );
           let buf = builder.finished_data();
           let hdr = to_header( buf.len() as u32, msg_file_stat );
-          info!("fc: Sending fc_state data for {} files, size is {}", v.len(), buf.len());
+          debug!("fc: Sending fc_state data for {} files, size is {}", v.len(), buf.len());
           unsafe {
             meta_send( buf.as_ptr() as *mut i8, hdr.as_ptr() as *mut i8, buf.len() as i32 );
           }
@@ -281,8 +281,18 @@ fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
     }
 
     let b = unsafe { slice::from_raw_parts(ptr, 6).to_vec() };
-    let (sz, t) = from_header( b );
-    let c = unsafe { slice::from_raw_parts(ptr.add(16), sz as usize).to_vec() };
+    let (sz, mut t) = from_header( b );
+    let mut c = unsafe { slice::from_raw_parts(ptr.add(16), sz as usize).to_vec() };
+
+    if (t & msg_compressed) == msg_compressed {
+      let mut dst:[u8; 131072] = [0; 131072];
+      let res = zstd_safe::decompress(dst.as_mut_slice(), c.as_mut_slice());
+      let decompressed_sz = res.expect("decompress failed");
+      c = Vec::from(dst);
+      c.truncate(decompressed_sz);
+      t = t & !msg_compressed;
+      debug!("Decompressed message {}/{}", sz, decompressed_sz);
+    }
 
     if t == msg_file_spec {
 

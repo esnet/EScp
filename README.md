@@ -342,6 +342,7 @@ running escp through a debugger. As an example:
 ```
   # Start server
   rust-gdb --args escp --mgmt /path/to/mgmt/socket --server dont care:
+  # break rust_panic
 
   # Start client
   rust-gdb --args escp --mgmt /path/to/mgmt/socket file localhost:
@@ -509,7 +510,6 @@ Changes from 0.7.1 to 0.8.0 (TBD):
   * Add Sparse File support
   * Add receiver timeout + keepalive (Avoids Zombie Receivers)
   * Session Init Changes
-  * 
 
 Changes from 0.7.0 to 0.7.1 (20 June 2024):
   * Checksum feature enabled

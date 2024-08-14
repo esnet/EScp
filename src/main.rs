@@ -8,6 +8,7 @@ include!("license.rs");
 extern crate clap;
 extern crate flatbuffers;
 extern crate rand;
+pub use zstd_safe;
 
 // use hwloc::Topology;
 use clap::Parser;
@@ -56,12 +57,13 @@ mod logging;
 include!("receiver.rs");
 include!("sender.rs");
 
-const msg_session_init:u16      = 8;
-const msg_file_spec:u16         =16;
-const msg_file_stat:u16         =17;
-const msg_keepalive:u16         =18;
-const msg_session_complete:u16  = 1;
-const msg_session_terminate:u16 = 9;
+const msg_session_init:u16      =  8;
+const msg_file_spec:u16         = 16;
+const msg_file_stat:u16         = 17;
+const msg_keepalive:u16         = 18;
+const msg_compressed:u16        =128;
+const msg_session_complete:u16  =  1;
+const msg_session_terminate:u16 =  9;
 
 const config_items: &[&str]= &[ "cpumask", "nodemask" ];
 

@@ -30,6 +30,7 @@ yaml-rust2 = "*"
 hex = "*"
 crossbeam-channel = "0.5"
 clean-path = "*"
+zstd-safe = "*"
 
 [profile.release]
 opt-level = 'z'     # Optimize for size

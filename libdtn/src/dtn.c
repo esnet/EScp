@@ -792,8 +792,7 @@ void* rx_worker( void* arg ) {
     // allocate buffer from IO system and copy data to buffer.
 
     if ( (read_sz=network_recv(knob, &fi_type)) < 1 ) {
-      NFO("[%2d] Bad read=%ld", id, read_sz);
-      break;
+      VRFY(0, "[%2d] Bad read=%ld", id, read_sz);
     }
 
     fob = knob->fob;
