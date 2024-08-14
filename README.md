@@ -365,6 +365,12 @@ socket over TCP using socat:
   socat UNIX-RECVFROM:/tmp/foo.sock TCP4:yikes.com:1234
 ```
 
+Things to watch out for with debug logs:
+  1) It will slow down EScp, in some cases noticably as all RUST based
+     events are written out sequentially.
+  2) libDTN events are logged to a circular buffer. This buffer can overflow
+     and if an overflow occurs the oldest log entries will be
+
 
 SECURITY
 ========
@@ -424,10 +430,8 @@ Sparse Files:
   It would be better if the sender just didn't send the block if it contains
   all zeroes.
 
-  Also, while the application probably allows sparse file support without
-  compression, the only way that sparse files currently make sense is if you
-  enable compression as otherwise you send the entire sparse file(bad) and then
-  don't write empty data (good).
+  Also, while EScp allows sparse file support without compression, doing so
+  probably doesn't make much sense.
 
 Session Init/Finish:
 
@@ -445,7 +449,7 @@ NUMA Pinning:
 
   It would be nice to do NUMA pinning automatically. The library I foound to
   probe our hardware resources had too many dependencies, but, if a light
-  weight method to that existed, that would be interesting.
+  weight method to do that existed, that would be interesting.
 
 SHM Engine:
 
@@ -456,8 +460,7 @@ SHM Engine:
 
 Test Harness:
 
-  Testing right now is against a series of data sets and somewhat manual.
-  Obviously this is less than ideal.
+  Testing right now is against a series of data sets and manual.
 
 Versioning:
 
@@ -472,7 +475,7 @@ HARD LIMITS
  * A max of 2^56 files can be transferred per session.
  * AES-GCM uses a 2^64 counter, which limits the number of blocks sent
    in a transfer session to 2^64.
- * Approx. 28 transfer threads
+ * Limited to 28 transfer threads
 
 
 AUTHOR
