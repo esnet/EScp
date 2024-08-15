@@ -78,6 +78,7 @@ struct dtn_args {
   bool do_ssh;
   bool do_crypto;
   bool do_hash;
+  bool do_preserve;
   bool nodirect;
   bool recursive;
 

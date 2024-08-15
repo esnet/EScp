@@ -959,6 +959,18 @@ pub struct file_object {
             arg2: *mut ::core::ffi::c_void,
         ) -> *mut ::core::ffi::c_void,
     >,
+    pub preserve: ::core::option::Option<
+        unsafe extern "C" fn(
+            fd: i32,
+            mode: u32,
+            uid: u32,
+            gid: u32,
+            atim_sec: i64,
+            atim_nano: i64,
+            mtim_sec: i64,
+            mtim_nano: i64,
+        ) -> *mut ::core::ffi::c_void,
+    >,
     pub cleanup: ::core::option::Option<
         unsafe extern "C" fn(arg1: *mut ::core::ffi::c_void) -> *mut ::core::ffi::c_void,
     >,
@@ -969,7 +981,7 @@ fn bindgen_test_layout_file_object() {
     let ptr = UNINIT.as_ptr();
     assert_eq!(
         ::core::mem::size_of::<file_object>(),
-        192usize,
+        200usize,
         concat!("Size of: ", stringify!(file_object))
     );
     assert_eq!(
@@ -1278,8 +1290,18 @@ fn bindgen_test_layout_file_object() {
         )
     );
     assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).cleanup) as usize - ptr as usize },
+        unsafe { ::core::ptr::addr_of!((*ptr).preserve) as usize - ptr as usize },
         184usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(file_object),
+            "::",
+            stringify!(preserve)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).cleanup) as usize - ptr as usize },
+        192usize,
         concat!(
             "Offset of field: ",
             stringify!(file_object),
@@ -1368,6 +1390,7 @@ pub struct dtn_args {
     pub do_ssh: bool,
     pub do_crypto: bool,
     pub do_hash: bool,
+    pub do_preserve: bool,
     pub nodirect: bool,
     pub recursive: bool,
     pub file_count: ::core::ffi::c_int,
@@ -1474,8 +1497,18 @@ fn bindgen_test_layout_dtn_args() {
         )
     );
     assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).nodirect) as usize - ptr as usize },
+        unsafe { ::core::ptr::addr_of!((*ptr).do_preserve) as usize - ptr as usize },
         4usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(dtn_args),
+            "::",
+            stringify!(do_preserve)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).nodirect) as usize - ptr as usize },
+        5usize,
         concat!(
             "Offset of field: ",
             stringify!(dtn_args),
@@ -1485,7 +1518,7 @@ fn bindgen_test_layout_dtn_args() {
     );
     assert_eq!(
         unsafe { ::core::ptr::addr_of!((*ptr).recursive) as usize - ptr as usize },
-        5usize,
+        6usize,
         concat!(
             "Offset of field: ",
             stringify!(dtn_args),

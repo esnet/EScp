@@ -218,6 +218,25 @@ void* file_posixcomplete( void* arg, void* arg2 ) {
   return 0;
 }
 
+
+void* file_posixpreserve(int32_t fd, uint32_t mode, uint32_t uid, uint32_t gid, int64_t atim_sec, int64_t atim_nano, int64_t mtim_sec, int64_t mtim_nano) {
+
+  int res =0;
+
+  struct timespec times[2];
+  times[0].tv_sec  = atim_sec;
+  times[0].tv_nsec = atim_nano;
+  times[1].tv_sec  = mtim_sec;
+  times[1].tv_nsec = mtim_nano;
+
+  res |= futimens( fd, times );
+  res |= fchmod( fd, mode );
+  res |= fchown( fd, uid, gid );
+
+  return (void*) ((uint64_t)res);
+
+};
+
 int file_posixinit( struct file_object* fob ) {
   struct posix_op *op;
 
@@ -259,6 +278,7 @@ int file_posixinit( struct file_object* fob ) {
 
   fob->truncate = file_posixtruncate;
   fob->fstat    = fstat;
+  fob->preserve = file_posixpreserve;
 
   return 0;
 }

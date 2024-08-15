@@ -183,10 +183,8 @@ impl<'a> File<'a> {
   pub const VT_ATIM_NANO: flatbuffers::VOffsetT = 18;
   pub const VT_MTIM_SEC: flatbuffers::VOffsetT = 20;
   pub const VT_MTIM_NANO: flatbuffers::VOffsetT = 22;
-  pub const VT_CTIM_SEC: flatbuffers::VOffsetT = 24;
-  pub const VT_CTIM_NANO: flatbuffers::VOffsetT = 26;
-  pub const VT_CRC: flatbuffers::VOffsetT = 28;
-  pub const VT_COMPLETE: flatbuffers::VOffsetT = 30;
+  pub const VT_CRC: flatbuffers::VOffsetT = 24;
+  pub const VT_COMPLETE: flatbuffers::VOffsetT = 26;
 
   #[inline]
   pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
@@ -198,8 +196,6 @@ impl<'a> File<'a> {
     args: &'args FileArgs<'args>
   ) -> flatbuffers::WIPOffset<File<'bldr>> {
     let mut builder = FileBuilder::new(_fbb);
-    builder.add_ctim_nano(args.ctim_nano);
-    builder.add_ctim_sec(args.ctim_sec);
     builder.add_mtim_nano(args.mtim_nano);
     builder.add_mtim_sec(args.mtim_sec);
     builder.add_atim_nano(args.atim_nano);
@@ -210,8 +206,8 @@ impl<'a> File<'a> {
     builder.add_crc(args.crc);
     builder.add_gid(args.gid);
     builder.add_uid(args.uid);
-    if let Some(x) = args.name { builder.add_name(x); }
     builder.add_mode(args.mode);
+    if let Some(x) = args.name { builder.add_name(x); }
     builder.finish()
   }
 
@@ -231,25 +227,25 @@ impl<'a> File<'a> {
     unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<&str>>(File::VT_NAME, None)}
   }
   #[inline]
-  pub fn mode(&self) -> i8 {
+  pub fn mode(&self) -> u32 {
     // Safety:
     // Created from valid Table for this object
     // which contains a valid value in this slot
-    unsafe { self._tab.get::<i8>(File::VT_MODE, Some(0)).unwrap()}
+    unsafe { self._tab.get::<u32>(File::VT_MODE, Some(0)).unwrap()}
   }
   #[inline]
-  pub fn uid(&self) -> i32 {
+  pub fn uid(&self) -> u32 {
     // Safety:
     // Created from valid Table for this object
     // which contains a valid value in this slot
-    unsafe { self._tab.get::<i32>(File::VT_UID, Some(0)).unwrap()}
+    unsafe { self._tab.get::<u32>(File::VT_UID, Some(0)).unwrap()}
   }
   #[inline]
-  pub fn gid(&self) -> i32 {
+  pub fn gid(&self) -> u32 {
     // Safety:
     // Created from valid Table for this object
     // which contains a valid value in this slot
-    unsafe { self._tab.get::<i32>(File::VT_GID, Some(0)).unwrap()}
+    unsafe { self._tab.get::<u32>(File::VT_GID, Some(0)).unwrap()}
   }
   #[inline]
   pub fn sz(&self) -> i64 {
@@ -259,46 +255,32 @@ impl<'a> File<'a> {
     unsafe { self._tab.get::<i64>(File::VT_SZ, Some(0)).unwrap()}
   }
   #[inline]
-  pub fn atim_sec(&self) -> u64 {
+  pub fn atim_sec(&self) -> i64 {
     // Safety:
     // Created from valid Table for this object
     // which contains a valid value in this slot
-    unsafe { self._tab.get::<u64>(File::VT_ATIM_SEC, Some(0)).unwrap()}
+    unsafe { self._tab.get::<i64>(File::VT_ATIM_SEC, Some(0)).unwrap()}
   }
   #[inline]
-  pub fn atim_nano(&self) -> u64 {
+  pub fn atim_nano(&self) -> i64 {
     // Safety:
     // Created from valid Table for this object
     // which contains a valid value in this slot
-    unsafe { self._tab.get::<u64>(File::VT_ATIM_NANO, Some(0)).unwrap()}
+    unsafe { self._tab.get::<i64>(File::VT_ATIM_NANO, Some(0)).unwrap()}
   }
   #[inline]
-  pub fn mtim_sec(&self) -> u64 {
+  pub fn mtim_sec(&self) -> i64 {
     // Safety:
     // Created from valid Table for this object
     // which contains a valid value in this slot
-    unsafe { self._tab.get::<u64>(File::VT_MTIM_SEC, Some(0)).unwrap()}
+    unsafe { self._tab.get::<i64>(File::VT_MTIM_SEC, Some(0)).unwrap()}
   }
   #[inline]
-  pub fn mtim_nano(&self) -> u64 {
+  pub fn mtim_nano(&self) -> i64 {
     // Safety:
     // Created from valid Table for this object
     // which contains a valid value in this slot
-    unsafe { self._tab.get::<u64>(File::VT_MTIM_NANO, Some(0)).unwrap()}
-  }
-  #[inline]
-  pub fn ctim_sec(&self) -> u64 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u64>(File::VT_CTIM_SEC, Some(0)).unwrap()}
-  }
-  #[inline]
-  pub fn ctim_nano(&self) -> u64 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u64>(File::VT_CTIM_NANO, Some(0)).unwrap()}
+    unsafe { self._tab.get::<i64>(File::VT_MTIM_NANO, Some(0)).unwrap()}
   }
   #[inline]
   pub fn crc(&self) -> u32 {
@@ -325,16 +307,14 @@ impl flatbuffers::Verifiable for File<'_> {
     v.visit_table(pos)?
      .visit_field::<u64>("fino", Self::VT_FINO, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
-     .visit_field::<i8>("mode", Self::VT_MODE, false)?
-     .visit_field::<i32>("uid", Self::VT_UID, false)?
-     .visit_field::<i32>("gid", Self::VT_GID, false)?
+     .visit_field::<u32>("mode", Self::VT_MODE, false)?
+     .visit_field::<u32>("uid", Self::VT_UID, false)?
+     .visit_field::<u32>("gid", Self::VT_GID, false)?
      .visit_field::<i64>("sz", Self::VT_SZ, false)?
-     .visit_field::<u64>("atim_sec", Self::VT_ATIM_SEC, false)?
-     .visit_field::<u64>("atim_nano", Self::VT_ATIM_NANO, false)?
-     .visit_field::<u64>("mtim_sec", Self::VT_MTIM_SEC, false)?
-     .visit_field::<u64>("mtim_nano", Self::VT_MTIM_NANO, false)?
-     .visit_field::<u64>("ctim_sec", Self::VT_CTIM_SEC, false)?
-     .visit_field::<u64>("ctim_nano", Self::VT_CTIM_NANO, false)?
+     .visit_field::<i64>("atim_sec", Self::VT_ATIM_SEC, false)?
+     .visit_field::<i64>("atim_nano", Self::VT_ATIM_NANO, false)?
+     .visit_field::<i64>("mtim_sec", Self::VT_MTIM_SEC, false)?
+     .visit_field::<i64>("mtim_nano", Self::VT_MTIM_NANO, false)?
      .visit_field::<u32>("crc", Self::VT_CRC, false)?
      .visit_field::<u32>("complete", Self::VT_COMPLETE, false)?
      .finish();
@@ -344,16 +324,14 @@ impl flatbuffers::Verifiable for File<'_> {
 pub struct FileArgs<'a> {
     pub fino: u64,
     pub name: Option<flatbuffers::WIPOffset<&'a str>>,
-    pub mode: i8,
-    pub uid: i32,
-    pub gid: i32,
+    pub mode: u32,
+    pub uid: u32,
+    pub gid: u32,
     pub sz: i64,
-    pub atim_sec: u64,
-    pub atim_nano: u64,
-    pub mtim_sec: u64,
-    pub mtim_nano: u64,
-    pub ctim_sec: u64,
-    pub ctim_nano: u64,
+    pub atim_sec: i64,
+    pub atim_nano: i64,
+    pub mtim_sec: i64,
+    pub mtim_nano: i64,
     pub crc: u32,
     pub complete: u32,
 }
@@ -371,8 +349,6 @@ impl<'a> Default for FileArgs<'a> {
       atim_nano: 0,
       mtim_sec: 0,
       mtim_nano: 0,
-      ctim_sec: 0,
-      ctim_nano: 0,
       crc: 0,
       complete: 0,
     }
@@ -393,44 +369,36 @@ impl<'a: 'b, 'b> FileBuilder<'a, 'b> {
     self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(File::VT_NAME, name);
   }
   #[inline]
-  pub fn add_mode(&mut self, mode: i8) {
-    self.fbb_.push_slot::<i8>(File::VT_MODE, mode, 0);
+  pub fn add_mode(&mut self, mode: u32) {
+    self.fbb_.push_slot::<u32>(File::VT_MODE, mode, 0);
   }
   #[inline]
-  pub fn add_uid(&mut self, uid: i32) {
-    self.fbb_.push_slot::<i32>(File::VT_UID, uid, 0);
+  pub fn add_uid(&mut self, uid: u32) {
+    self.fbb_.push_slot::<u32>(File::VT_UID, uid, 0);
   }
   #[inline]
-  pub fn add_gid(&mut self, gid: i32) {
-    self.fbb_.push_slot::<i32>(File::VT_GID, gid, 0);
+  pub fn add_gid(&mut self, gid: u32) {
+    self.fbb_.push_slot::<u32>(File::VT_GID, gid, 0);
   }
   #[inline]
   pub fn add_sz(&mut self, sz: i64) {
     self.fbb_.push_slot::<i64>(File::VT_SZ, sz, 0);
   }
   #[inline]
-  pub fn add_atim_sec(&mut self, atim_sec: u64) {
-    self.fbb_.push_slot::<u64>(File::VT_ATIM_SEC, atim_sec, 0);
+  pub fn add_atim_sec(&mut self, atim_sec: i64) {
+    self.fbb_.push_slot::<i64>(File::VT_ATIM_SEC, atim_sec, 0);
   }
   #[inline]
-  pub fn add_atim_nano(&mut self, atim_nano: u64) {
-    self.fbb_.push_slot::<u64>(File::VT_ATIM_NANO, atim_nano, 0);
+  pub fn add_atim_nano(&mut self, atim_nano: i64) {
+    self.fbb_.push_slot::<i64>(File::VT_ATIM_NANO, atim_nano, 0);
   }
   #[inline]
-  pub fn add_mtim_sec(&mut self, mtim_sec: u64) {
-    self.fbb_.push_slot::<u64>(File::VT_MTIM_SEC, mtim_sec, 0);
+  pub fn add_mtim_sec(&mut self, mtim_sec: i64) {
+    self.fbb_.push_slot::<i64>(File::VT_MTIM_SEC, mtim_sec, 0);
   }
   #[inline]
-  pub fn add_mtim_nano(&mut self, mtim_nano: u64) {
-    self.fbb_.push_slot::<u64>(File::VT_MTIM_NANO, mtim_nano, 0);
-  }
-  #[inline]
-  pub fn add_ctim_sec(&mut self, ctim_sec: u64) {
-    self.fbb_.push_slot::<u64>(File::VT_CTIM_SEC, ctim_sec, 0);
-  }
-  #[inline]
-  pub fn add_ctim_nano(&mut self, ctim_nano: u64) {
-    self.fbb_.push_slot::<u64>(File::VT_CTIM_NANO, ctim_nano, 0);
+  pub fn add_mtim_nano(&mut self, mtim_nano: i64) {
+    self.fbb_.push_slot::<i64>(File::VT_MTIM_NANO, mtim_nano, 0);
   }
   #[inline]
   pub fn add_crc(&mut self, crc: u32) {
@@ -468,8 +436,6 @@ impl core::fmt::Debug for File<'_> {
       ds.field("atim_nano", &self.atim_nano());
       ds.field("mtim_sec", &self.mtim_sec());
       ds.field("mtim_nano", &self.mtim_nano());
-      ds.field("ctim_sec", &self.ctim_sec());
-      ds.field("ctim_nano", &self.ctim_nano());
       ds.field("crc", &self.crc());
       ds.field("complete", &self.complete());
       ds.finish()

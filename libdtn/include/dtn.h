@@ -81,6 +81,7 @@ struct file_object {
   void* (*submit)  (void*, int32_t* sz, uint64_t* offset);
   void* (*complete)(void*, void*);
 
+  void* (*preserve)   (int32_t fd, uint32_t mode, uint32_t uid, uint32_t gid, int64_t atim_sec, int64_t atim_nano, int64_t mtim_sec, int64_t mtim_nano);
   void* (*cleanup) (void*);
 
 
@@ -119,6 +120,7 @@ struct dtn_args {
   bool do_ssh;
   bool do_crypto;
   bool do_hash;
+  bool do_preserve;
   bool nodirect;
   bool recursive;
 

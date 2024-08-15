@@ -227,7 +227,7 @@ struct EScp_Args {
    #[arg(short, long, hide_default_value=true, default_value_t = String::from("0"))]
    limit: String,
 
-   /// Preserve source attributes (TODO)
+   /// Preserve source attributes
    #[arg(short, long, num_args=0)]
    preserve: bool,
 
@@ -431,6 +431,7 @@ pub fn start_escp() {
 
       if flags.verbose   { verbose_logging += 1; }
       if flags.compression { (*args).compression = 1; }
+      if flags.preserve { (*args).do_preserve= true; }
       if flags.sparse {
         if !flags.compression {
           eprintln!("Warning: Sparse enabled without compression.")

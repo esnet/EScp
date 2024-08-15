@@ -100,6 +100,10 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
         unsafe { (*args).sparse = 1 };
     }
 
+    if helo.do_preserve() {
+        unsafe { (*args).do_preserve= true };
+    }
+
     if helo.do_crypto() {
       unsafe {
         let ptr: Vec<i8> = helo.crypto_key().unwrap().iter().collect() ;
@@ -364,6 +368,19 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
               info!("Got an error opening file {:?} {:?}",
                     filename, err);
               return;
+            }
+
+            if (*args).do_preserve {
+              let preserve = (*(*args).fob).preserve.unwrap();
+              let res = preserve( fd, entry.mode(), entry.uid(), entry.gid(),
+                entry.atim_sec(), entry.atim_nano(), entry.mtim_sec(),
+                entry.mtim_nano() );
+              debug!("Preserve: fn={} mode={} uid={} gid={} atim_s={} atim_ns={}",
+                entry.fino(), entry.mode(), entry.uid(), entry.gid(),
+                entry.atim_sec(), entry.atim_nano() );
+              if res != std::ptr::null_mut() {
+                info!("Preserve encountered an error");
+              }
             }
 
             debug!("Add file {full_path}:{fino} with {:#X} sz={sz} fd={fd}",

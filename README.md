@@ -516,6 +516,7 @@ Changes from 0.7.1 to 0.8.0 (TBD):
   * Add Sparse File support
   * Add receiver timeout + keepalive (Avoids Zombie Receivers)
   * Session Init Changes
+  * Add preserve support
 
 Changes from 0.7.0 to 0.7.1 (20 June 2024):
   * Checksum feature enabled

@@ -117,6 +117,10 @@ int file_dummyclosefd( int size) {
   return 0;
 }
 
+void* file_dummypreserve(int32_t fd, uint32_t mode, uint32_t uid, uint32_t gid, int64_t atim_sec, int64_t atim_nano, int64_t mtim_sec, int64_t mtim_nano) {
+  return 0;
+}
+
 int file_dummyinit( struct file_object* fob ) {
   struct posix_op *op;
 
@@ -148,6 +152,7 @@ int file_dummyinit( struct file_object* fob ) {
   fob->fopendir = fdopendir;
   fob->readdir  = readdir;
 
+  fob->preserve = file_dummypreserve;
 
   return 0;
 }

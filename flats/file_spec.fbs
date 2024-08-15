@@ -2,8 +2,7 @@
 
 To (re)compile:
 
-  flatc -r -b file_spec.fbs
-  mv file_spec_generated.rs ../src/file_spec.rs
+  flatc -r -b file_spec.fbs && mv file_spec_generated.rs ../src/escp/file_spec.rs
 
 flatc is very sensitive to the version of flatbuffers used (See Readme.md)
 You may need to manually compile flatc from:
@@ -43,17 +42,15 @@ table ESCP_file_list {
 table File {
   fino: uint64;        // EScp mapping of blocks to files
   name: string;        // Gets combined with root above. Ideally basename
-  mode: int8;
-  uid:  int32;
-  gid:  int32;
+  mode: uint32;
+  uid:  uint32;
+  gid:  uint32;
   sz:   int64;
 
-  atim_sec:  uint64;
-  atim_nano: uint64;
-  mtim_sec:  uint64;
-  mtim_nano: uint64;
-  ctim_sec:  uint64;
-  ctim_nano: uint64;
+  atim_sec:  int64;
+  atim_nano: int64;
+  mtim_sec:  int64;
+  mtim_nano: int64;
 
   crc:       uint32;
   complete:  uint32;

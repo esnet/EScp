@@ -84,7 +84,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   }
 
   {
-    let (session_id, start_port, do_verbose, crypto_key, io_engine, nodirect, thread_count, block_sz, do_hash, do_compression, do_sparse );
+    let (session_id, start_port, do_verbose, crypto_key, io_engine, nodirect, thread_count, block_sz, do_hash, do_compression, do_sparse, do_preserve );
 
     crypto_key = vec![ 0i8; 16 ];
 
@@ -100,6 +100,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       thread_count = (*args).thread_count;
       block_sz = (*args).block;
 
+      do_preserve = (*args).do_preserve;
       do_compression = (*args).compression > 0;
       do_sparse = (*args).sparse > 0;
       do_verbose = verbose_logging  > 0;
@@ -126,6 +127,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
         block_sz,
         do_compression,
         do_sparse,
+        do_preserve,
         ..Default::default()
       }
     );
@@ -819,17 +821,17 @@ fn iterate_files ( flags: &EScp_Args,
       files_total += 1;
       bytes_total += st.st_size;
 
-      vec.push_back( (fino, fi, st.st_size ) );
+      vec.push_back( (fino, fi, st) );
 
       counter += 1;
       if counter > counter_max {
-        counter_max = 100;
+        counter_max = 300;
         break;
       }
     }
 
     if counter > 0 {
-      vec.make_contiguous().sort();
+      vec.make_contiguous().sort_by_key(|k| (*k).0);
 
       let mut v = Vec::new();
       let mut iterations = 0;
@@ -848,14 +850,32 @@ fn iterate_files ( flags: &EScp_Args,
 
 
         let name = Some(builder.create_string((*b).as_str()));
-        v.push(
-        file_spec::File::create( &mut builder,
-          &file_spec::FileArgs{
-                fino: *a,
-                name,
-                sz: *c,
-                ..Default::default()
-          }));
+        if flags.preserve {
+          v.push(
+          file_spec::File::create( &mut builder,
+            &file_spec::FileArgs{
+                  fino: *a,
+                  name,
+                  sz: c.st_size,
+                  mode: c.st_mode,
+                  uid: c.st_uid,
+                  gid: c.st_gid,
+                  atim_sec: c.st_atim.tv_sec,
+                  atim_nano: c.st_atim.tv_nsec,
+                  mtim_sec: c.st_mtim.tv_sec,
+                  mtim_nano: c.st_mtim.tv_nsec,
+                  ..Default::default()
+            }));
+        } else {
+          v.push(
+          file_spec::File::create( &mut builder,
+            &file_spec::FileArgs{
+                  fino: *a,
+                  name,
+                  sz: c.st_size,
+                  ..Default::default()
+            }));
+        }
       }
 
       if iterations == 0 {
@@ -867,7 +887,7 @@ fn iterate_files ( flags: &EScp_Args,
       }
 
       let root = Some(builder.create_string((dest_path).as_str()));
-      let fi   = Some( builder.create_vector( &v ) );
+      let fi   = Some(builder.create_vector( &v ));
       let bu = file_spec::ESCP_file_list::create(
         &mut builder, &file_spec::ESCP_file_listArgs{
           root,
@@ -875,7 +895,6 @@ fn iterate_files ( flags: &EScp_Args,
           complete: do_break,
           ..Default::default()
         }
-
       );
       builder.finish( bu, None );
 
