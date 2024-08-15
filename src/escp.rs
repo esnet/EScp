@@ -52,8 +52,8 @@ macro_rules! sess_init {
 }
 
 mod logging;
-include!("receiver.rs");
-include!("sender.rs");
+mod receiver;
+mod sender;
 
 const msg_session_init:u16      =  8;
 const msg_file_spec:u16         = 16;
@@ -150,9 +150,9 @@ fn do_escp(args: *mut dtn_args, flags: &EScp_Args) {
   unsafe impl Sync for logging::dtn_args_wrapper {}
 
   if unsafe { (*args).do_server } {
-    escp_receiver( safe_args, flags );
+    receiver::escp_receiver( safe_args, flags );
   } else {
-    escp_sender( safe_args, flags );
+    sender::escp_sender( safe_args, flags );
   }
 }
 

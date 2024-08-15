@@ -1,4 +1,6 @@
-fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
+use super::*;
+
+pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   let args = safe_args.args;
   let (host,dest_tmp,dest);
   let mut fc_hash: HashMap<u64, (u64, u32, u32)> = HashMap::new();

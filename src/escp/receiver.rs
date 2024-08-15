@@ -1,3 +1,4 @@
+use super::*;
 
 fn start_receiver( args: logging::dtn_args_wrapper ) {
   debug!("start_receiver started");
@@ -15,7 +16,7 @@ fn start_receiver( args: logging::dtn_args_wrapper ) {
   debug!("start_receiver complete");
 }
 
-fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
+pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   let args = safe_args.args;
 
   let (mut sin, mut sout, file, file2, listener, stream);
