@@ -4,7 +4,7 @@ fn start_receiver( args: logging::dtn_args_wrapper ) {
 
   let ret;
   unsafe{
-    ret = rx_start( args.args as *mut dtn_args );
+    ret = rx_start( args.args );
   }
   if ret != 0 {
     error!("Failed to start receiver");
@@ -147,7 +147,7 @@ fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
 
   let mut connection_count=0;
   unsafe {
-    (*(args as *mut dtn_args)).sock_store[connection_count] =  dns_lookup( bind_interface.as_ptr() as *mut i8 , p.as_ptr() as *mut i8);
+    (*args).sock_store[connection_count] =  dns_lookup( bind_interface.as_ptr() as *mut i8 , p.as_ptr() as *mut i8);
     connection_count += 1;
     (*args).sock_store_count = connection_count as i32;
     (*args).flags |= libc::O_CREAT|libc::O_WRONLY|libc::O_TRUNC;
@@ -290,7 +290,7 @@ fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       let decompressed_sz = res.expect("decompress failed");
       c = Vec::from(dst);
       c.truncate(decompressed_sz);
-      t = t & !msg_compressed;
+      t &= !msg_compressed;
       debug!("Decompressed message {}/{}", sz, decompressed_sz);
     }
 
@@ -396,7 +396,7 @@ fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
 
   unsafe {
     debug!("Calling finish transfer");
-    finish_transfer( args as *mut dtn_args, filecount );
+    finish_transfer( args, filecount );
   }
 
   debug!("Transfer Complete. Sending Session Finished Message.");

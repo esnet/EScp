@@ -88,7 +88,7 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
 
     unsafe {
       (*args).do_crypto = true;
-      tx_init(args as *mut dtn_args);
+      tx_init(args);
       (*args).session_id = rand::random::<u64>();
       session_id = (*args).session_id;
       start_port = (*args).active_port;
@@ -98,17 +98,10 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       thread_count = (*args).thread_count;
       block_sz = (*args).block;
 
-      if (*args).compression > 0
-        { do_compression = true; }
-      else
-        { do_compression = false; }
-
-      if (*args).sparse > 0
-        { do_sparse = true; }
-      else
-        { do_sparse = false; }
-
+      do_compression = (*args).compression > 0;
+      do_sparse = (*args).sparse > 0;
       do_verbose = verbose_logging  > 0;
+
       std::intrinsics::copy_nonoverlapping( (*args).crypto_key.as_ptr() , crypto_key.as_ptr() as *mut u8, 16 );
     }
 
@@ -195,12 +188,12 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       let host_str = CString::new( host ).unwrap();
 
       debug!("Sender params: {:?} {:?}", host_str, d_str);
-      (*(args as *mut dtn_args)).sock_store[0] =  dns_lookup( host_str.as_ptr() as *mut i8 , d_str.as_ptr() as *mut i8);
+      (*(args)).sock_store[0] =  dns_lookup( host_str.as_ptr() as *mut i8 , d_str.as_ptr() as *mut i8);
       (*args).sock_store_count = 1;
       (*args).active_port = helo.port_start() as u16;
 
       debug!("Starting Sender");
-      tx_start (args as *mut dtn_args);
+      tx_start(args);
     }
   }
 
@@ -239,7 +232,7 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   }
 
   let mut files_total = 0;
-  let bytes_total = iterate_files( &flags, safe_args, dest.to_string(),
+  let bytes_total = iterate_files( flags, safe_args, dest.to_string(),
                                    &fi,
                                    &mut files_total,
                                    &mut fc_hash,
@@ -272,7 +265,7 @@ fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       }
  }
 
-    let bytes_now = unsafe { get_bytes_io( args as *mut dtn_args ) };
+    let bytes_now = unsafe { get_bytes_io( args ) };
     if (last_update.elapsed().as_secs_f32() > 0.2) || (bytes_now>=bytes_total) {
 
       if bytes_now == 0 {
@@ -604,7 +597,7 @@ fn iterate_file_worker(
         break;
       }
 
-      let res = ((*(*(args.args as *mut dtn_args)).fob).fstat.unwrap())( fd, &mut st as * mut _ );
+      let res = ((*(*(args.args)).fob).fstat.unwrap())( fd, &mut st as * mut _ );
       if res == -1 {
         error!("trying to stat {:?} {}", c_str,
                   std::io::Error::last_os_error().raw_os_error().unwrap() );
@@ -761,7 +754,7 @@ fn iterate_files ( flags: &EScp_Args,
       let tot  = unsafe { CStr::from_ptr(a).to_str().unwrap() };
       let mut transfer = String::from("");
 
-      let bytes_now = unsafe { get_bytes_io(args.args as *mut dtn_args) };
+      let bytes_now = unsafe { get_bytes_io(args.args) };
       if bytes_now > 0 {
 
         let duration = start.elapsed();
