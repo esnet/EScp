@@ -1,9 +1,7 @@
-#![allow(non_upper_case_globals)]
-#![allow(non_camel_case_types)]
-#![allow(non_snake_case)]
+#![allow(non_snake_case, unused_imports, dead_code, non_camel_case_types, non_upper_case_globals)]
+include!("escp/bindings.rs");
 
-include!("../bindings.rs");
-include!("license.rs");
+mod license;
 
 extern crate clap;
 extern crate flatbuffers;
@@ -79,7 +77,7 @@ fn _print_type_of<T>(_: &T) {
     println!("{}", std::any::type_name::<T>())
 }
 
-fn int_from_human ( str: String  ) -> u64 {
+pub fn int_from_human ( str: String  ) -> u64 {
   /* Examples:  IN -> OUT
                  1 -> 1
              1kbit -> 1000
@@ -358,7 +356,7 @@ fn load_yaml(file_str: &str) -> HashMap<String, String> {
     map
 }
 
-fn main() {
+pub fn start_escp() {
 
 
   let config = load_yaml("/etc/escp.conf");
@@ -433,11 +431,11 @@ fn main() {
 
       if flags.verbose   { verbose_logging += 1; }
       if flags.compression { (*args).compression = 1; }
-      if flags.sparse { 
-        if !flags.compression { 
+      if flags.sparse {
+        if !flags.compression {
           eprintln!("Warning: Sparse enabled without compression.")
         }
-        (*args).sparse = 1; 
+        (*args).sparse = 1;
       }
       if flags.hugepages > 0  { (*args).hugepages = flags.hugepages as i32; }
       if flags.verbose   { verbose_logging += 1; }
@@ -459,7 +457,7 @@ fn main() {
     }
 
     if flags.license {
-      print_license();
+      license::print_license();
       process::exit(0);
     };
 

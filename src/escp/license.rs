@@ -1,4 +1,4 @@
-fn print_license() {
+pub fn print_license() {
   let license = r#"
 ESnet Secure Copy (EScp) Copyright (c) 2021-24, The Regents of the
 University of California, through Lawrence Berkeley National Laboratory

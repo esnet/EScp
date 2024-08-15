@@ -162,7 +162,7 @@ dnf install target/release/rpmbuild/RPMS/x86_64/escp-0.8.0*.rpm # Redhat Family
 
 # For development
 cargo install bindgen-cli --version 0.68.1
-bindgen libdtn/include/dtn.h -o bindings.rs --use-core  --generate-cstr
+bindgen libdtn/include/dtn.h -o src/escp/bindings.rs --use-core  --generate-cstr
 
 # flatc version 23.5.26
 # You will need to grab the tagged version in GIT and compile it.
@@ -369,7 +369,10 @@ Things to watch out for with debug logs:
   1) It will slow down EScp, in some cases noticably as all RUST based
      events are written out sequentially.
   2) libDTN events are logged to a circular buffer. This buffer can overflow
-     and if an overflow occurs the oldest log entries will be
+     and if an overflow occurs the oldest log entries will be deleted.
+  3) libDTN logs are not timestamped, although they are sequential. The
+     timestamp comes from the RUST backend when the message is pulled off
+     the queue.
 
 
 SECURITY
