@@ -656,7 +656,7 @@ fn iterate_file_worker(
         debug!("addfile:  {fname}:{fino} sz={:?}", st.st_size);
 
         _ = msg_in.send( (fname, fino, st) );
-        file_addfile( fino, fd, 0, st.st_size );
+        file_addfile( fino, fd, st.st_size, 0, 0, 0, 0 );
       } else {
         debug!("addfile:  {fname}:NONE sz=NIL");
         _ = msg_in.send( (fname, 0, st) );

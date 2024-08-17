@@ -109,7 +109,8 @@ int file_dummyinit( struct file_object* fob );
 int32_t file_hash( void* block, int sz, int seed );
 
 
-struct file_stat_type* file_addfile(uint64_t fileno, int fd, uint32_t crc, int64_t);
+struct file_stat_type* file_addfile(uint64_t fileno, int fd,
+  int64_t sz, int64_t as, int64_t an, int64_t ms, int64_t mn);
 struct file_stat_type* file_next( int id );
 struct file_stat_type* file_wait( uint64_t fileno );
 

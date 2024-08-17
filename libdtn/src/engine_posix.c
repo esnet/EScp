@@ -230,8 +230,12 @@ void* file_posixpreserve(int32_t fd, uint32_t mode, uint32_t uid, uint32_t gid, 
   times[1].tv_nsec = mtim_nano;
 
   res |= futimens( fd, times );
-  res |= fchmod( fd, mode );
-  res |= fchown( fd, uid, gid );
+
+  if (mode != ~0)
+    res |= fchmod( fd, mode );
+
+  if (uid != ~0)
+    res |= fchown( fd, uid, gid );
 
   return (void*) ((uint64_t)res);
 

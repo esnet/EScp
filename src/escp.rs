@@ -28,12 +28,10 @@ use log::{{debug, info, error}};
 
 
 
-#[allow(dead_code, unused_imports)]
-#[allow(clippy::all)]
+#[allow(dead_code, unused_imports, clippy::all)]
 mod file_spec;
 
-#[allow(dead_code, unused_imports)]
-#[allow(clippy::all)]
+#[allow(dead_code, unused_imports, clippy::all)]
 mod session_init;
 
 macro_rules! sess_init {

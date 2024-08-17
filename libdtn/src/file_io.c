@@ -128,8 +128,9 @@ void file_incrementfilecount() {
   }
 }
 
-struct file_stat_type* file_addfile( uint64_t fileno, int fd, uint32_t crc,
-                                     int64_t file_sz ) {
+struct file_stat_type* file_addfile( uint64_t fileno, int fd, int64_t file_sz,
+    int64_t atim_sec, int64_t atim_nano, int64_t mtim_sec, int64_t mtim_nano )
+  {
   struct file_stat_type fs = {0};
   int i;
   uint64_t zero = 0;
@@ -138,7 +139,6 @@ struct file_stat_type* file_addfile( uint64_t fileno, int fd, uint32_t crc,
   slot = xorshift64s(&slot);
 
   uint64_t fc, ft;
-
 
   while (1) {
     // If Queue full, idle
@@ -170,12 +170,18 @@ struct file_stat_type* file_addfile( uint64_t fileno, int fd, uint32_t crc,
   fs.bytes = file_sz;
   fs.position = FS_MASK(slot);
   fs.poison = 0xC0DAB1E;
+  fs.atim_sec  = atim_sec;
+  fs.atim_nano = atim_nano;
+  fs.mtim_sec  = mtim_sec;
+  fs.mtim_nano = mtim_nano;
 
   memcpy_avx( &file_stat[FS_MASK(slot)], &fs );
+  memcpy_avx( (void*)(((uint64_t)(&file_stat[FS_MASK(slot)]))+64),
+              (void*)(((uint64_t)(&fs))+64) );
   atomic_fetch_add( &file_claim, 1 );
 
-  DBG("file_addfile fn=%ld, fd=%d crc=%X slot=%ld cc=%d",
-      fileno, fd, crc, FS_MASK(slot), i);
+  DBG("file_addfile fn=%ld, fd=%d slot=%ld cc=%d as=%zd",
+      fileno, fd, FS_MASK(slot), i, atim_sec);
 
   file_incrementfilecount();
 

@@ -107,28 +107,30 @@ struct file_stat_type {
   uint64_t state        __attribute__ ((aligned(64)));
 
   uint64_t file_no;
-  uint64_t bytes;
+  uint64_t bytes;        // File sz from file meta data
 
   uint64_t block_offset; // 32
-  uint64_t bytes_total;
+  uint64_t bytes_total;  // Incremented after successful I/O
 
   int32_t  fd;
-  uint32_t position;
+  uint32_t position;     // Self referential
   uint32_t poison;
-  uint32_t crc; // 56
-  uint64_t pad;
+  uint32_t crc;
+  uint64_t pad; // 64
 
-  // Reader atomically increments this to find next read location
-  // Future: Writer sets to sz from fi_end message.
-  // uint64_t block_offset __attribute__ ((aligned(64)));
+  int64_t atim_sec;
+  int64_t atim_nano;
+  int64_t mtim_sec;
+  int64_t mtim_nano; // 96
 
-  // Each time an I/O successfully completes this gets incremented
-  // uint64_t bytes_total  __attribute__ ((aligned(64)));
+  uint32_t uid;
+  uint32_t gid;
+  uint32_t mode;
+  uint32_t pad2;    // 112
 
-  /*
-  // Atomic XOR of block file_hash
-  uint64_t crc          __attribute__ ((aligned(64)));
-  */
+  uint64_t pad3[2]; // 128
+
+
 
 } __attribute__ ((packed)) ;
 
@@ -155,7 +157,8 @@ int file_dummyinit( struct file_object* fob );
 int32_t file_hash( void* block, int sz, int seed );
 
 
-struct file_stat_type* file_addfile(uint64_t fileno, int fd, uint32_t crc, int64_t);
+struct file_stat_type* file_addfile(uint64_t fileno, int fd,
+  int64_t sz, int64_t as, int64_t an, int64_t ms, int64_t mn);
 struct file_stat_type* file_next( int id, struct file_stat_type* );
 struct file_stat_type* file_wait( uint64_t fileno, struct file_stat_type*, int id);
 

@@ -307,6 +307,10 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
 
       for entry in fs.files().unwrap() {
         let mut full_path;
+        let (mut atim_sec,
+             mut atim_nano,
+             mut mtim_sec,
+             mut mtim_nano) = ( 0, 0, 0, 0 );
 
         unsafe{
           let filename = entry.name().unwrap();
@@ -372,9 +376,14 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
 
             if (*args).do_preserve {
               let preserve = (*(*args).fob).preserve.unwrap();
+
+              atim_sec = entry.atim_sec();
+              atim_nano= entry.atim_nano();
+              mtim_sec = entry.mtim_sec();
+              mtim_nano= entry.mtim_nano();
+
               let res = preserve( fd, entry.mode(), entry.uid(), entry.gid(),
-                entry.atim_sec(), entry.atim_nano(), entry.mtim_sec(),
-                entry.mtim_nano() );
+                atim_sec, atim_nano, mtim_sec, mtim_nano );
               debug!("Preserve: fn={} mode={} uid={} gid={} atim_s={} atim_ns={}",
                 entry.fino(), entry.mode(), entry.uid(), entry.gid(),
                 entry.atim_sec(), entry.atim_nano() );
@@ -386,7 +395,8 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
             debug!("Add file {full_path}:{fino} with {:#X} sz={sz} fd={fd}",
                    (*args).flags, fino=entry.fino(), sz=entry.sz() );
 
-            file_addfile( entry.fino(), fd, 0, entry.sz() );
+            file_addfile( entry.fino(), fd, entry.sz(),
+              atim_sec, atim_nano, mtim_sec, mtim_nano );
             filecount += 1;
 
             break;

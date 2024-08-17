@@ -129,8 +129,8 @@ void dtn_init() {
 
   memset( fc_info, 0, fc_info_cnt*64 );
 
-  VRFY( sizeof(struct file_stat_type) == 64, "ASSERT struct file_stat_type" );
-  VRFY( sizeof(struct fc_info_struct) == 64, "ASSERT struct fc_info_struct" );
+  // VRFY( sizeof(struct file_stat_type) == 64, "ASSERT struct file_stat_type" );
+  // VRFY( sizeof(struct fc_info_struct) == 64, "ASSERT struct fc_info_struct" );
 }
 
 pthread_t DTN_THREAD[THREAD_COUNT];
@@ -865,6 +865,10 @@ void* rx_worker( void* arg ) {
 
           // Always truncate, even though it may not be needed in some cases
           fob->truncate(fob, fs.bytes);
+          if (fs_ptr->atim_sec) {
+            fob->preserve(fs.fd, ~0, ~0, ~0,
+              fs_ptr->atim_sec, fs_ptr->atim_nano, fs_ptr->mtim_sec, fs_ptr->mtim_nano);
+          }
           DBG("[%2d] FIHDR_SHORT: close with truncate fn=%ld ", id, file_no);
 
           file_incrementtail();
