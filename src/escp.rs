@@ -209,18 +209,6 @@ struct EScp_Args {
    #[arg(short, long, num_args=0)]
    quiet: bool,
 
-   /// Enable SSH Agent Forwarding
-   #[arg(short='A', long="agent")]
-   agent: bool,
-
-   /// CIPHER used by SSH
-   #[arg(short, long, hide_default_value=true, default_value_t=String::from(""))]
-   cipher: String,
-
-   /// IDENTITY pubkey for SSH auth
-   #[arg(short='i', long, hide_default_value=true, default_value_t=String::from(""))]
-   identity: String,
-
    /// LIMIT/thread (bytes/sec) using SO_MAX_PACING_RATE
    #[arg(short, long, hide_default_value=true, default_value_t = String::from("0"))]
    limit: String,
@@ -279,6 +267,30 @@ struct EScp_Args {
    #[arg(long, help="Don't enable file checksum")]
    nochecksum: bool,
 
+   /// Enable SSH Agent Forwarding
+   #[arg(short='A', long="agent")]
+   agent: bool,
+
+   /// CIPHER used by SSH
+   #[arg(short, long, hide_default_value=true, default_value_t=String::from(""))]
+   cipher: String,
+
+   /// IDENTITY pubkey for SSH auth
+   #[arg(short='i', long, hide_default_value=true, default_value_t=String::from(""))]
+   identity: String,
+
+   /// SSH_CONFIG passed to SSH
+   #[arg(short='F', long="ssh_config", default_value_t=String::from(""))]
+   ssh_config: String,
+
+   /// JUMP_HOST used by SSH
+   #[arg(short='J', long="jump_host", default_value_t=String::from(""))]
+   jump_host: String,
+
+   /// Enable batch_mode on SSH
+   #[arg(short='B', hide=true )]
+   batch_mode: bool,
+
    #[arg(short='L', long, help="Display License")]
    license: bool,
 
@@ -286,21 +298,20 @@ struct EScp_Args {
    #[arg(long, hide=true )]
    server: bool,
 
-   #[arg(short='O', hide=true )]
-   O: bool,
-
-   #[arg(short='B', hide=true )]
-   batch_mode: bool,
+   /// TODO: Copy files from src to dest via this host
+   #[arg(short='3')]
+   three: bool,
 
    /// Everything below here ignored; added for compatibility with SCP
    #[arg(short, hide=true)]
-   s: bool,
+   s: bool, // SFTP protocol is not supported
 
-   #[arg(short='F', long="sftp", hide=true, default_value_t=String::from("escp"))]
-   F: String,
+   #[arg(short='O', hide=true )]
+   O: bool, // SCP protocol is not supported
 
-   #[arg(short='T', hide=true)]
-   strict_filename: bool,
+   // We only support linux w/o remote shell mangling
+   #[arg(short='T', hide=true)] 
+   disable_strict_filename: bool,
 
    #[arg(short='4', hide=true)]
    ipv4: bool,
@@ -315,8 +326,6 @@ struct EScp_Args {
 
 /* ToDo:
  *  - 3
- *  - "-F" ssh_config
- *  - "-J"
  *
  */
 
@@ -439,6 +448,7 @@ pub fn start_escp() {
       if flags.hugepages > 0  { (*args).hugepages = flags.hugepages as i32; }
       if flags.verbose   { verbose_logging += 1; }
       if flags.quiet     { verbose_logging = 0; }
+
       (*args).nodirect = flags.nodirect;
       (*args).do_hash  = !flags.nochecksum;
       if flags.recursive  { (*args).recursive = true; }

@@ -416,31 +416,26 @@ Compression:
   state matches our output state. At a very basic level, we don't do
   compression if our compressed data is larger than our un-compressed data.
 
-  If we took our existing design and switched to streaming it, it is possible
-  that we would lose state between the compressor and decompressor as the
-  thrown away data isn't transferred.
+  If we took our existing design and switched to streaming it, we would need
+  to handle lossing state between the compressor and decompressor.
 
 Checksums:
 
-  We should write out checksums to a file, and have a tool (i.e. EScp flag)
-  that allows for verification of file checksums.
+  Write checksums to file? We don't right now because there is no tool to do
+  anything with those checksums, but... Maybe we should support the option?
+  The checksums are not cryptographic in nature.
 
 Sparse Files:
 
   Currently, the receiver checks to see if a block of data contains all zeroes,
-  and if it does it then skips the block (assuming engine support).
-
-  It would be better if the sender just didn't send the block if it contains
-  all zeroes.
+  and if it does it then skips the block (assuming engine support). In theory,
+  it would be better if the sender just didn't send the block if it contains
+  all zeroes, but you would still need some way to tell the reveiver not to
+  wait on the data. Obviously, that is possible, but not sure it is worth the
+  complexity for that particular use case.
 
   Also, while EScp allows sparse file support without compression, doing so
   probably doesn't make much sense.
-
-Session Init/Finish:
-
-  There are some timeouts that shouldn't exist. For instance, a file transfer
-  always takes at least 0.2 seconds because that is the rate at which the
-  status bar updates.
 
 Error Messages:
 
@@ -465,9 +460,6 @@ Test Harness:
 
   Testing right now is against a series of data sets and manual.
 
-Versioning:
-
-  Better messages are needed when versions don't match.
 ```
 
 
@@ -516,7 +508,7 @@ Changes from 0.7.1 to 0.8.0 (TBD):
   * Add Sparse File support
   * Add receiver timeout + keepalive (Avoids Zombie Receivers)
   * Session Init Changes
-  * Add preserve support
+  * Add Preserve support
 
 Changes from 0.7.0 to 0.7.1 (20 June 2024):
   * Checksum feature enabled

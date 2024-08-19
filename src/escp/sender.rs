@@ -50,6 +50,14 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       ssh_args.extend(["-o", "BatchMode=True"]);
     }
 
+    if !flags.ssh_config.is_empty() {
+      ssh_args.extend(["-F", flags.ssh_config.as_str() ]);
+    }
+
+    if !flags.jump_host.is_empty() {
+      ssh_args.extend(["-J", flags.jump_host.as_str() ]);
+    }
+
     if !flags.cipher.is_empty() {
       ssh_args.extend(["-c", flags.cipher.as_str()]);
     }
@@ -259,7 +267,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       // Note the delay below; file_check usually delays for interval specified
       if file_check(
         &mut fc_hash,
-        std::time::Instant::now() + std::time::Duration::from_millis(20),
+        std::time::Instant::now() + std::time::Duration::from_millis(1),
         &mut files_ok,
         &fc_out
       ) != 1 {
@@ -267,7 +275,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
         thread::sleep(std::time::Duration::from_millis(2));
         process::exit(1);
       }
- }
+   }
 
     let bytes_now = unsafe { get_bytes_io( args ) };
     if (last_update.elapsed().as_secs_f32() > 0.2) || (bytes_now>=bytes_total) {

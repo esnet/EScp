@@ -1,5 +1,5 @@
 mod escp;
 
 fn main() {
-  escp::start_escp();
+  escp::start_escp()
 }
