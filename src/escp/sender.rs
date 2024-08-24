@@ -17,7 +17,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
 
   (_, dest) = dest_tmp.split_at(1);
 
-  logging::initialize_logging("/tmp/escp.log.", safe_args);
+  logging::initialize_logging(flags.log_file.as_str(), safe_args);
   debug!("Transfer to host: {}, dest_files: {} ", host, dest );
 
   let (mut sin, mut sout, mut serr, file, proc, stream, fd);
@@ -92,9 +92,14 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   }
 
   {
-    let (session_id, start_port, do_verbose, crypto_key, io_engine, nodirect, thread_count, block_sz, do_hash, do_compression, do_sparse, do_preserve );
+    let (session_id, start_port, do_verbose, crypto_key, io_engine, nodirect,
+         thread_count, block_sz, do_hash, do_compression, do_sparse,
+         do_preserve, log_file
+        );
 
     crypto_key = vec![ 0i8; 16 ];
+
+    let mut builder = flatbuffers::FlatBufferBuilder::with_capacity(128);
 
     unsafe {
       (*args).do_crypto = true;
@@ -112,11 +117,11 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       do_compression = (*args).compression > 0;
       do_sparse = (*args).sparse > 0;
       do_verbose = verbose_logging  > 0;
+      log_file = Some(builder.create_string(flags.log_file.as_str()));
 
       std::intrinsics::copy_nonoverlapping( (*args).crypto_key.as_ptr() , crypto_key.as_ptr() as *mut u8, 16 );
     }
 
-    let mut builder = flatbuffers::FlatBufferBuilder::with_capacity(128);
     let ckey = Some( builder.create_vector( &crypto_key ) );
 
     let bu = session_init::Session_Init::create(
@@ -136,6 +141,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
         do_compression,
         do_sparse,
         do_preserve,
+        log_file,
         ..Default::default()
       }
     );

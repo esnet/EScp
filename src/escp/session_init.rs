@@ -37,13 +37,14 @@ impl<'a> Session_Init<'a> {
   pub const VT_DO_SPARSE: flatbuffers::VOffsetT = 22;
   pub const VT_NO_DIRECT: flatbuffers::VOffsetT = 24;
   pub const VT_IS_ERROR: flatbuffers::VOffsetT = 26;
-  pub const VT_MESSAGE: flatbuffers::VOffsetT = 28;
-  pub const VT_BIND_INTERFACE: flatbuffers::VOffsetT = 30;
-  pub const VT_PORT_START: flatbuffers::VOffsetT = 32;
-  pub const VT_PORT_END: flatbuffers::VOffsetT = 34;
-  pub const VT_IO_ENGINE: flatbuffers::VOffsetT = 36;
-  pub const VT_THREAD_COUNT: flatbuffers::VOffsetT = 38;
-  pub const VT_BLOCK_SZ: flatbuffers::VOffsetT = 40;
+  pub const VT_LOG_FILE: flatbuffers::VOffsetT = 28;
+  pub const VT_MESSAGE: flatbuffers::VOffsetT = 30;
+  pub const VT_BIND_INTERFACE: flatbuffers::VOffsetT = 32;
+  pub const VT_PORT_START: flatbuffers::VOffsetT = 34;
+  pub const VT_PORT_END: flatbuffers::VOffsetT = 36;
+  pub const VT_IO_ENGINE: flatbuffers::VOffsetT = 38;
+  pub const VT_THREAD_COUNT: flatbuffers::VOffsetT = 40;
+  pub const VT_BLOCK_SZ: flatbuffers::VOffsetT = 42;
 
   #[inline]
   pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
@@ -63,6 +64,7 @@ impl<'a> Session_Init<'a> {
     builder.add_port_start(args.port_start);
     if let Some(x) = args.bind_interface { builder.add_bind_interface(x); }
     if let Some(x) = args.message { builder.add_message(x); }
+    if let Some(x) = args.log_file { builder.add_log_file(x); }
     if let Some(x) = args.crypto_key { builder.add_crypto_key(x); }
     builder.add_version_minor(args.version_minor);
     builder.add_version_major(args.version_major);
@@ -163,6 +165,13 @@ impl<'a> Session_Init<'a> {
     unsafe { self._tab.get::<bool>(Session_Init::VT_IS_ERROR, Some(false)).unwrap()}
   }
   #[inline]
+  pub fn log_file(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<&str>>(Session_Init::VT_LOG_FILE, None)}
+  }
+  #[inline]
   pub fn message(&self) -> Option<&'a str> {
     // Safety:
     // Created from valid Table for this object
@@ -232,6 +241,7 @@ impl flatbuffers::Verifiable for Session_Init<'_> {
      .visit_field::<bool>("do_sparse", Self::VT_DO_SPARSE, false)?
      .visit_field::<bool>("no_direct", Self::VT_NO_DIRECT, false)?
      .visit_field::<bool>("is_error", Self::VT_IS_ERROR, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<&str>>("log_file", Self::VT_LOG_FILE, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<&str>>("message", Self::VT_MESSAGE, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<&str>>("bind_interface", Self::VT_BIND_INTERFACE, false)?
      .visit_field::<i32>("port_start", Self::VT_PORT_START, false)?
@@ -256,6 +266,7 @@ pub struct Session_InitArgs<'a> {
     pub do_sparse: bool,
     pub no_direct: bool,
     pub is_error: bool,
+    pub log_file: Option<flatbuffers::WIPOffset<&'a str>>,
     pub message: Option<flatbuffers::WIPOffset<&'a str>>,
     pub bind_interface: Option<flatbuffers::WIPOffset<&'a str>>,
     pub port_start: i32,
@@ -280,6 +291,7 @@ impl<'a> Default for Session_InitArgs<'a> {
       do_sparse: false,
       no_direct: false,
       is_error: false,
+      log_file: None,
       message: None,
       bind_interface: None,
       port_start: 0,
@@ -345,6 +357,10 @@ impl<'a: 'b, 'b> Session_InitBuilder<'a, 'b> {
     self.fbb_.push_slot::<bool>(Session_Init::VT_IS_ERROR, is_error, false);
   }
   #[inline]
+  pub fn add_log_file(&mut self, log_file: flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(Session_Init::VT_LOG_FILE, log_file);
+  }
+  #[inline]
   pub fn add_message(&mut self, message: flatbuffers::WIPOffset<&'b  str>) {
     self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(Session_Init::VT_MESSAGE, message);
   }
@@ -402,6 +418,7 @@ impl core::fmt::Debug for Session_Init<'_> {
       ds.field("do_sparse", &self.do_sparse());
       ds.field("no_direct", &self.no_direct());
       ds.field("is_error", &self.is_error());
+      ds.field("log_file", &self.log_file());
       ds.field("message", &self.message());
       ds.field("bind_interface", &self.bind_interface());
       ds.field("port_start", &self.port_start());

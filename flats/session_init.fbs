@@ -18,6 +18,7 @@ table Session_Init {
   do_sparse:        bool;
   no_direct:        bool;
   is_error:         bool;
+  log_file:       string;
   message:        string;
   bind_interface: string;
   port_start:      int32;

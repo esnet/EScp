@@ -202,9 +202,13 @@ struct EScp_Args {
    #[arg(long="escp_port", default_value_t = 1232)]
    escp_port: u16,
 
-   /// Verbose/Debug output
+   /// Verbose/Debug output (use with logfile)
    #[arg(short, long, num_args=0)]
    verbose: bool,
+
+   /// Log to FILE (or syslog LOCALN where N between 0-7)
+   #[arg(long="logfile", default_value_t=String::from(""), hide_default_value=true)]
+   log_file: String,
 
    #[arg(short, long, num_args=0)]
    quiet: bool,
@@ -299,7 +303,7 @@ struct EScp_Args {
    server: bool,
 
    /// TODO: Copy files from src to dest via this host
-   #[arg(short='3')]
+   #[arg(short='3', hide=true)]
    three: bool,
 
    /// Everything below here ignored; added for compatibility with SCP
@@ -310,7 +314,7 @@ struct EScp_Args {
    O: bool, // SCP protocol is not supported
 
    // We only support linux w/o remote shell mangling
-   #[arg(short='T', hide=true)] 
+   #[arg(short='T', hide=true)]
    disable_strict_filename: bool,
 
    #[arg(short='4', hide=true)]
@@ -436,7 +440,12 @@ pub fn start_escp() {
         process::exit(0);
       }
 
-      if flags.verbose   { verbose_logging += 1; }
+      if flags.verbose   {
+        if flags.log_file.is_empty() {
+          eprintln!("Warning: verbose logging enabled but no log file output.")
+        }
+        verbose_logging += 1;
+      }
       if flags.compression { (*args).compression = 1; }
       if flags.preserve { (*args).do_preserve= true; }
       if flags.sparse {

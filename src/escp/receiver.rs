@@ -131,7 +131,7 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
 
     bind_interface = CString::new( helo.bind_interface().unwrap_or("") ).unwrap();
 
-    logging::initialize_logging( "/tmp/escp.log.", safe_args);
+    logging::initialize_logging( helo.log_file().unwrap_or(""), safe_args);
 
      debug!("Session init {:016X?}", helo.session_id());
   } else {

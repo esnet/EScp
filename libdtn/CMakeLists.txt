@@ -132,7 +132,3 @@ add_dependencies(dtn isa-l_crypto_project libnuma_project zstd_project)
 
 target_compile_definitions(dtn PUBLIC __ENGINE_POSIX__ __ENGINE_DUMMY__ )
 #target_link_libraries(dtn zstd libnuma liburing isal Threads::Threads "rt")
-
-# And tests (Needs updating)
-enable_testing ()
-

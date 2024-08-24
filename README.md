@@ -51,8 +51,8 @@ releases.
 The tagged releases have been tested and should work under most conditions,
 however, error messages are not always handled gracefully. Check the logs
 on *both* the client and receiver. If you enabled verbose logging search for
-`[ERROR]`. If you find that EScp is still not working, please file a bug
-report. Logs presently are directed to /tmp/escp.log.{client,server}.
+ERROR. If you find that EScp is still not working, please file a bug
+report.
 
 If you found this software useful and/or have any questions/requests, please
 reach out.
@@ -329,10 +329,7 @@ DEBUGGING
 Your first step is to enable verbose logs;
 
 ```
-  escp -v
-```
-
-This will create files /tmp/escp.log.client and /tmp/escp.log.server;
+  escp -v --logfile /path/to/logs
 
 If this does not resolve your issue, consider reaching out or attempting
 to debug using system debuggers. Typically this involves compiling code
