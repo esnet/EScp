@@ -506,6 +506,7 @@ Changes from 0.7.1 to 0.8.0 (TBD):
   * Add receiver timeout + keepalive (Avoids Zombie Receivers)
   * Session Init Changes
   * Add Preserve support
+  * Only log to file/syslog if specified on command line
 
 Changes from 0.7.0 to 0.7.1 (20 June 2024):
   * Checksum feature enabled

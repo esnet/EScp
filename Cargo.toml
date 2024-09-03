@@ -31,6 +31,7 @@ hex = "*"
 crossbeam-channel = "0.5"
 clean-path = "*"
 zstd-safe = "*"
+chrono = "*"
 
 [profile.release]
 opt-level = 'z'     # Optimize for size

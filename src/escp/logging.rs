@@ -8,6 +8,7 @@ use log4rs::config::{Appender, Config, Root};
 */
 
 extern crate log;
+extern crate chrono;
 
 use syslog::{Facility, Formatter3164, BasicLogger};
 use log::{SetLoggerError, LevelFilter, info, Record, Metadata};
@@ -31,8 +32,10 @@ impl log::Log for MyLogger {
   }
 
   fn log(&self, record: &Record) {
+    // use chrono::prelude::*;
+    let now = chrono::Local::now();
     unsafe {
-      let m = format!("[{}] {}\n", record.level(), record.args());
+      let m = format!("{} [{}] {}\n", now.format("%y%m%d.%H%M%S.%6f").to_string(), record.level(), record.args());
       let msg = CString::new( m.as_str() ).unwrap();
       let res = libc::write( logger_fd, msg.as_ptr() as *const libc::c_void, m.len() );
       if res < 1 {
@@ -117,24 +120,6 @@ pub fn initialize_logging( base_path: &str, args: dtn_args_wrapper ) {
       let _ = log::set_boxed_logger(Box::new(&MY_LOGGER))
             .map(|()| log::set_max_level(log_level));
     }
-
-    /*
-    eprintln!("syslog={}", syslog);
-
-    let logfile = FileAppender::builder()
-        .encoder(Box::new(PatternEncoder::new("{d(%Y%m%d.%H%M%S%.6f)} [{l}] {T} {f}:{L} {m}\n")))
-        .build(base_path.to_owned() + ident)
-        .unwrap();
-
-    let config = Config::builder()
-        .appender(Appender::builder().build("logfile", Box::new(logfile)))
-        .build(Root::builder()
-                   .appender("logfile")
-                   .build(log_level))
-                   .unwrap();
-
-    log4rs::init_config(config).unwrap();
-    */
 
     log::info!("Starting {} {}. GIT {} {}",
       env!("CARGO_PKG_NAME"),
