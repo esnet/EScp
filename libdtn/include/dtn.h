@@ -87,8 +87,7 @@ struct file_object {
 
 };
 
-void file_iotest( void* );
-void file_iotest_finish();
+void file_completetransfer();
 
 void file_randrd( void* buf, int count );
 void file_prng( void* buf, int sz );

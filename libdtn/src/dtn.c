@@ -44,6 +44,11 @@ int      thread_id      __attribute__ ((aligned(64))) = 0;
 int      meminit        __attribute__ ((aligned(64))) = 0;
 uint64_t tx_filesclosed __attribute__ ((aligned(64))) = 0;
 
+uint64_t bytes_network    __attribute__ ((aligned(64))) = 0;
+uint64_t bytes_disk       __attribute__ ((aligned(64))) = 0;
+uint64_t bytes_compressed __attribute__ ((aligned(64))) = 0;
+uint64_t threads_finished __attribute__ ((aligned(64))) = 0;
+
 uint64_t metahead __attribute__ ((aligned(64))) = 0;
 uint64_t metatail = 0;
 uint8_t* metabuf = NULL;
@@ -74,6 +79,8 @@ void fc_push( uint64_t file_no, uint64_t bytes, uint32_t crc ) {
   uint64_t tail = atomic_load( &fc_info_tail );
   uint64_t h = head % fc_info_cnt;
   struct fc_info_struct fc __attribute__ ((aligned(64))) = {0};
+
+  DBG("fc_push: %ld, %ld, %08x", file_no, bytes, crc);
 
   while ((tail + fc_info_cnt) <= head) {
     // Wait until tail catches up
@@ -151,18 +158,15 @@ struct network_obj {
   int32_t socket;
   uint32_t block;
 
-  uint32_t bytes_network;
-  uint32_t bytes_disk;
-  uint32_t bytes_compressed;
+  uint64_t bytes_network;
+  uint64_t bytes_disk;
+  uint64_t bytes_compressed;
 
   uint64_t timestamp;      // Set by RX when message mostly received.
                            // I.e. after decrypting header but before
                            // full decryption/decompression
-  uint64_t total_network;
-  uint64_t total_disk;
-  uint64_t total_compressed;
 
-  struct dtn_args* dtn; // 64
+  struct dtn_args* dtn;
 
   struct gcm_context_data gctx;
   struct gcm_key_data gkey;
@@ -335,11 +339,20 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
 
   int64_t bytes_read=0;
   uint64_t aad;
+  uint64_t metahead_incr;
+
+  int err;
 
   if (knob->do_crypto) {
 
-    if ( read_fixed( knob->socket, &aad, 8) != 8 )
+    if ( (err=read_fixed( knob->socket, &aad, 8)) != 8 ) {
+      if (err) {
+        DBG("[%02d] Error reading from socket %d:%s\n", knob->id, err, strerror(errno));
+      } else {
+        DBG("[%02d] Got an empty read", knob->id);
+      }
       return 0;
+    }
 
     knob->iv_incr = aad;
 
@@ -355,12 +368,14 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
     bytes_read += 8;
 
   } else {
+
     VRFY(0, "Network read without crypto not implemented");
     /*
     memcpy( subheader,  aad, 2 );
     memcpy( knob->buf, aad+2, 14 );
     VRFY(read_fixed( knob->socket, knob->buf+14, 2 ) == 2, );
     */
+
   }
 
   if ( !knob->fob && (*subheader ==  FIHDR_SHORT) ) {
@@ -432,7 +447,7 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
           &buf[(h*64)+16], &buf[(h*64)+16], sz );
     }
 
-    atomic_store( &metahead, head+increment );
+    metahead_incr = head + increment; 
   } else if ( *subheader == FIHDR_SHORT ) {
     // Grab buffer from IO engine then read into it
 
@@ -457,14 +472,14 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
     */
 
     if ( block_sz & (1<<31) ) {
+      int rs;
 
       block_sz &= ~(1 << 31);
 
       DBV("[%2d] Compression Read of sz=%d", knob->id, block_sz);
-
       uint8_t* compressed_data = buffer+knob->block+FIO_COMPRESS_MARGIN-block_sz;
-      if (read_fixed(knob->socket, compressed_data, block_sz) != block_sz) {
-        DBG("[%2d] Returning 0 from network_recv because ... ", knob->id);
+      if ((rs=read_fixed(knob->socket, compressed_data, block_sz)) != block_sz) {
+        DBG("[%2d] network_recv: Ret 0 in compression read (rs=%d)!=(block_sz=%zd)", knob->id, rs, block_sz);
         return 0;
       }
 
@@ -476,13 +491,6 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
        */
       isal_aes_gcm_dec_128_update( &knob->gkey, &knob->gctx,
            compressed_data, compressed_data, block_sz );
-
-      /*
-      size_t sz_calculated = ZSTD_findFrameCompressedSize(compressed_data, block_sz);
-      VRFY ( sz_calculated <= knob->block, "Bad compression size %zd>=%d: %s",
-                                           sz_calculated, knob->block,
-                                           ZSTD_getErrorName(sz_calculated) );
-      */
 
       if ( dctx == NULL ) {
         dctx = ZSTD_createDCtx();
@@ -500,12 +508,17 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
       fi->sz = res;
       bytes_read += block_sz;
 
+      knob->bytes_compressed += block_sz;
+      knob->bytes_disk +=  res;
+
     } else {
+      int rs;
+
       VRFY ( block_sz <= knob->block, "Invalid block_sz=%ld", block_sz);
 
       DBG("[%2d] Read of %zd sz", knob->id, block_sz);
       if (read_fixed(knob->socket, buffer, block_sz) != block_sz) {
-        DBG("[%2d] Returning 0 from network_recv because ... ", knob->id);
+        DBG("[%2d] network_recv: Ret 0 in data read (rs=%d)!=(block_sz=%zd)", knob->id, rs, block_sz);
         return 0;
       }
 
@@ -516,6 +529,8 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
       bytes_read += block_sz;
     }
 
+    knob->bytes_compressed += block_sz;
+    knob->bytes_disk +=  block_sz;
 
   } else {
     VRFY( 0, "[%2d] network_recv: subheader %d not implemented",
@@ -539,6 +554,10 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
           computed_hash[0], computed_hash[1], computed_hash[2], computed_hash[3]
         );
     bytes_read += 16;
+  }
+
+  if ( *subheader == FIHDR_META ) {
+    atomic_store( &metahead, metahead_incr );
   }
 
   return bytes_read;
@@ -792,9 +811,11 @@ void* rx_worker( void* arg ) {
     // allocate buffer from IO system and copy data to buffer.
 
     if ( (read_sz=network_recv(knob, &fi_type)) < 1 ) {
-      VRFY(0, "[%2d] Bad read=%ld", id, read_sz);
+      DBG("[%2d] Bad read=%ld, closing writer", id, read_sz);
+      break;
     }
 
+    knob->bytes_network += read_sz;
     fob = knob->fob;
     fi = (struct file_info*) knob->buf;
 
@@ -880,10 +901,18 @@ void* rx_worker( void* arg ) {
     }
   }
 
+  /*
   if (rx->conn > 1)
     close( rx->conn );
+  */
 
-  DBG("[%2d] Return from RX worker thread ... ", id);
+  atomic_fetch_add(&bytes_network, knob->bytes_network);
+  NFO("[%2d] Increment by %zd... ", id, knob->bytes_network);
+  atomic_fetch_add(&bytes_disk, knob->bytes_disk);
+  atomic_fetch_add(&bytes_compressed, knob->bytes_compressed);
+
+  atomic_fetch_add(&threads_finished, 1);
+
   return 0;
 }
 
@@ -1081,6 +1110,8 @@ void* tx_worker( void* args ) {
 
   }
 
+  DBG("[%2d] Thread exiting", id );
+  sleep(2);
   DBG("[%2d] Thread exited", id );
   return 0;
 }
@@ -1102,7 +1133,7 @@ void finish_transfer( struct dtn_args* args, uint64_t filecount ) {
 
     if (files_closed >= filecount) {
       DBG("[--] finish_transfer complete");
-      return;
+      break;
     }
 
     if ((j & 0x3ff ) == 0x3ff) {
@@ -1112,8 +1143,29 @@ void finish_transfer( struct dtn_args* args, uint64_t filecount ) {
     ESCP_DELAY(1)
   }
 
-  for (int i=0; i < args->thread_count; i++)
-    pthread_join( DTN_THREAD[i], NULL );
+  {
+    int64_t tc_last=~0;
+    while(1) {
+      uint64_t thread_count = atomic_load( &threads_finished );
+      if (thread_count >= (args->thread_id -1))
+        break;
+
+      ESCP_DELAY(1)
+      if (tc_last != thread_count) {
+        tc_last = thread_count;
+        NFO("wait on thread '%d/%zd'", args->thread_id-1, thread_count);
+      }
+    }
+  }
+
+  DBG("bytes_network=%zd bytes_disk=%zd bytes_compressed=%zd TC=%d",
+    atomic_load(&bytes_network), atomic_load(&bytes_disk),
+    atomic_load(&bytes_compressed), atomic_load(&args->thread_id)-1 );
+
+  NFO("bytes_network=%zd bytes_disk=%zd bytes_compressed=%zd TC=%d",
+    atomic_load(&bytes_network), atomic_load(&bytes_disk),
+    atomic_load(&bytes_compressed), atomic_load(&args->thread_id)-1 );
+
 }
 
 void tx_start(struct dtn_args* args ) {
@@ -1180,7 +1232,6 @@ int rx_start( void* fn_arg ) {
   DBG("Start: rx_start");
 
   dtn_init();
-  args->thread_count=0;
 
   port = ntohs(saddr->sin_port);
   if ( saddr->sin_family == AF_INET )
@@ -1250,18 +1301,19 @@ int rx_start( void* fn_arg ) {
     fds[0].events = POLLIN;
 
     res = poll( fds, 1, 5 * 1000 /* 5s */ );
+    if (res == 0) {
+      VRFY( 0, "Timed out waiting for connection. %d/%d", i, args->thread_count );
+    }
+
     if (res == -1) {
-      if (args->thread_count && (i >= args->thread_count)) {
-        DBG("Finished spawning workers");
-        return 0;
-      }
-      VRFY( 0, "Timed out trying to spawn receiver" );
+      VRFY( 0, "Poll returned an error while waiting for connection" );
     }
 
     fcntl( sock, F_SETFL, O_NONBLOCK );
     rx_arg[i].conn = accept( sock, (struct sockaddr *) saddr, &saddr_sz );
     rx_arg[i].dtn = args;
     if (rx_arg[i].conn <= 0) {
+      DBG("I/TC %d/%d", i, args->thread_count);
       DBG("Got an error accepting socket: %s", strerror(rx_arg[i].conn));
       continue;
     }
@@ -1276,6 +1328,13 @@ int rx_start( void* fn_arg ) {
     pthread_setname_np( DTN_THREAD[i], buf);
 
     i = (i+1) % THREAD_COUNT;
+
+    if (args->thread_count && (i > args->thread_count)) {
+      // We spawn thread_count+1, One receiver is for meta data
+
+      DBG("Finished spawning workers %d/%d", i, args->thread_count);
+      return 0;
+    }
   }
 
   return 0;

@@ -133,7 +133,7 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
 
     logging::initialize_logging( helo.log_file().unwrap_or(""), safe_args);
 
-     debug!("Session init {:016X?}", helo.session_id());
+     debug!("Session init {:016X?} {}", helo.session_id(), helo.thread_count());
   } else {
     error!("Expected session init message");
     process::exit(-1);
@@ -162,7 +162,7 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   debug!("Spawning receiver");
 
   _ = thread::Builder::new().name("rcvr".to_string()).spawn(
-        move || start_receiver( safe_args ) );
+        move || start_receiver( safe_args ));
 
   let port;
   unsafe {
@@ -199,12 +199,17 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   let mut filecount=0;
   let mut last_send = std::time::Instant::now();
 
-  loop { // Until file transfer is finished
+  loop {
+
+    // We loop here to handle both RX & TX of transfer meta data until
+    // our transfer is marked complete.
+
     let ptr = unsafe{ meta_recv() };
     let mut v = Vec::new();
 
     if ptr.is_null() {
-      debug!("Check file completion");
+      // If file completion queue has data for us; 
+      //   - send completion notice to sender
 
       let mut fct = 5; // Our timeout here is intentionally short as long
                        // timeouts interfere with our ability to open files 
@@ -212,7 +217,7 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       let mut did_init= false;
       let mut builder = flatbuffers::FlatBufferBuilder::with_capacity(16384);
 
-      loop { // Check for file completion notices
+      loop {
         let (mut file_no, mut bytes,mut crc,mut completion) = (0,0,0,0);
         let mut finish_fc = false;
 
@@ -284,6 +289,8 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
 
       continue;
     }
+
+    // Handle message from sender
 
     let b = unsafe { slice::from_raw_parts(ptr, 6).to_vec() };
     let (sz, mut t) = from_header( b );
@@ -419,7 +426,7 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       break;
     }
 
-    debug!("Got message from sender sz={sz}, type={t}");
+    debug!("Got unhandled message from sender sz={sz}, type={t}");
   }
 
   unsafe {
@@ -434,6 +441,7 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
     meta_send( std::ptr::null_mut::<i8>(), hdr.as_ptr() as *mut i8, 0_i32 );
   }
 
+  thread::sleep(std::time::Duration::from_millis(2000));
 
 }
 

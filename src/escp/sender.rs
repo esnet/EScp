@@ -370,6 +370,11 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
     }
   }
 
+  // Tell TX readers to finish
+  unsafe {
+    file_completetransfer();
+  }
+
   info!("Waiting for ACK");
   // Wait for ACK
 

@@ -135,9 +135,6 @@ struct file_stat_type {
 } __attribute__ ((packed)) ;
 
 
-void file_iotest( void* );
-void file_iotest_finish();
-
 void file_randrd( void* buf, int count );
 void file_prng( void* buf, int sz );
 

@@ -39,9 +39,11 @@
 
 
 /*
-// The AVX routines are sort of stand-ins for atomically do something with
-// a cacheline of memory. Should be replaced with something less platform
-// dependant.
+
+// The AVX routines are preferred, but need a way of automatically picking the
+// correct routine. Since we don't do that, we just default to SSE  given that
+// many x86 architectures still don't support AVX/AVX512
+
 void memcpy_avx( void* dst, void* src ) {
           __m512i a;
 
@@ -89,6 +91,8 @@ uint64_t file_count __attribute__ ((aligned(64)));
 uint64_t file_head  __attribute__ ((aligned(64)));
 uint64_t file_tail  __attribute__ ((aligned(64)));
 
+uint64_t transfer_complete __attribute__ ((aligned(64))) = 0;
+
 struct file_stat_type file_activefile[THREAD_COUNT] = {0};
 
 static inline uint64_t xorshift64s(uint64_t* x) {
@@ -96,6 +100,10 @@ static inline uint64_t xorshift64s(uint64_t* x) {
   *x ^= *x << 25; // b
   *x ^= *x >> 27; // c
   return *x * 0x2545F4914F6CDD1DUL;
+}
+
+void file_completetransfer() {
+    atomic_fetch_add( &transfer_complete, 1 );
 }
 
 void file_incrementfilecount() {
@@ -285,6 +293,10 @@ struct file_stat_type* file_next( int id, struct file_stat_type* test_fs ) {
     }
 
     // Got nothing, wait and try again later.
+    if ( atomic_load( &transfer_complete ) ) {
+      DBG("[%2d] file_next got transfer_complete flag", id );
+      return 0;
+    }
     ESCP_DELAY(1);
   }
 
