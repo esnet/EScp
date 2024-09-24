@@ -11,7 +11,7 @@ except:
 
 
 try: 
-  for j in range(8):
+  for j in range(1):
     os.mkdir("/tmp/test_src_1k/%d" % j)
     for i in range(1024*128):
       with open( "/tmp/test_src_1k/%d/test_%07d" % (j, i), "wb") as fi:

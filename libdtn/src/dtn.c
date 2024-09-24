@@ -341,15 +341,15 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
   uint64_t aad;
   uint64_t metahead_incr;
 
-  int err;
 
   if (knob->do_crypto) {
+    int rsz;
 
-    if ( (err=read_fixed( knob->socket, &aad, 8)) != 8 ) {
-      if (err) {
-        DBG("[%02d] Error reading from socket %d:%s\n", knob->id, err, strerror(errno));
+    if ( (rsz=read_fixed( knob->socket, &aad, 8)) != 8 ) {
+      if (rsz) {
+        DBG("[%2d] Error reading from socket %d:%s\n", knob->id, rsz, strerror(errno));
       } else {
-        DBG("[%02d] Got an empty read", knob->id);
+        DBG("[%2d] Got an empty read", knob->id);
       }
       return 0;
     }
@@ -363,7 +363,7 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
     else
       *subheader = FIHDR_META;
 
-    DBV("[%02d] AAD is %zX, %d\n", knob->id, aad, *subheader);
+    DBV("[%2d] AAD is %zX, %d\n", knob->id, aad, *subheader);
 
     bytes_read += 8;
 
@@ -512,7 +512,7 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
       knob->bytes_disk +=  res;
 
     } else {
-      int rs;
+      int rs=0;
 
       VRFY ( block_sz <= knob->block, "Invalid block_sz=%ld", block_sz);
 
@@ -1006,13 +1006,13 @@ void* tx_worker( void* args ) {
       fs = file_next( id, &fs_lcl );
 
       if ( !fs ) {
-        DBG("[%2d] Finished reading file(s), exiting...", id );
+        DBG("[%2d] tx_worker exiting; Finished reading file(s)", id );
         break;
       }
     }
 
     if (!fs_lcl.fd) {
-      DBG("[%2d] tx_worker exiting because fd provided is zero", id );
+      DBG("[%2d] tx_worker exiting; fd provided is zero", id );
       break;
     }
 
@@ -1313,7 +1313,7 @@ int rx_start( void* fn_arg ) {
     rx_arg[i].conn = accept( sock, (struct sockaddr *) saddr, &saddr_sz );
     rx_arg[i].dtn = args;
     if (rx_arg[i].conn <= 0) {
-      DBG("I/TC %d/%d", i, args->thread_count);
+      DBV("I/TC %d/%d", i, args->thread_count);
       DBG("Got an error accepting socket: %s", strerror(rx_arg[i].conn));
       continue;
     }
@@ -1329,7 +1329,7 @@ int rx_start( void* fn_arg ) {
 
     i = (i+1) % THREAD_COUNT;
 
-    if (args->thread_count && (i > args->thread_count)) {
+    if (args->thread_count && (i > (args->thread_count+1))) {
       // We spawn thread_count+1, One receiver is for meta data
 
       DBG("Finished spawning workers %d/%d", i, args->thread_count);
