@@ -95,6 +95,13 @@ struct file_object {
 
 };
 
+struct meta_info {
+  uint32_t sz;
+  uint16_t hdr;
+  uint16_t pad;
+  uint64_t pad2;
+} __attribute__ ((packed)) ;
+
 struct file_info {
   uint64_t offset;
   uint64_t file_no;

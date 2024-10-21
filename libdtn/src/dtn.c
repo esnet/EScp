@@ -40,19 +40,19 @@
 
 #pragma GCC diagnostic ignored "-Wmultichar"
 
-int      thread_id      __attribute__ ((aligned(64))) = 0;
-int      meminit        __attribute__ ((aligned(64))) = 0;
-uint64_t tx_filesclosed __attribute__ ((aligned(64))) = 0;
+static int      thread_id      __attribute__ ((aligned(64))) = 0;
+static int      meminit        __attribute__ ((aligned(64))) = 0;
+static uint64_t tx_filesclosed __attribute__ ((aligned(64))) = 0;
 
-uint64_t bytes_network    __attribute__ ((aligned(64))) = 0;
-uint64_t bytes_disk       __attribute__ ((aligned(64))) = 0;
-uint64_t bytes_compressed __attribute__ ((aligned(64))) = 0;
-uint64_t threads_finished __attribute__ ((aligned(64))) = 0;
+static uint64_t bytes_network    __attribute__ ((aligned(64))) = 0;
+static uint64_t bytes_disk       __attribute__ ((aligned(64))) = 0;
+static uint64_t bytes_compressed __attribute__ ((aligned(64))) = 0;
+static uint64_t threads_finished __attribute__ ((aligned(64))) = 0;
 
-uint64_t metahead __attribute__ ((aligned(64))) = 0;
-uint64_t metatail = 0;
-uint8_t* metabuf = NULL;
-struct   network_obj* metaknob = NULL;
+static uint64_t metahead __attribute__ ((aligned(64))) = 0;
+static uint64_t metatail = 0;
+static uint8_t* metabuf = NULL;
+static struct   network_obj* metaknob = NULL;
 
 const uint32_t METABUF_SZ = 4 * 1024 * 1024;
 
@@ -341,13 +341,13 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
   uint64_t aad;
   uint64_t metahead_incr;
 
+  int err;
 
   if (knob->do_crypto) {
-    int rsz;
 
-    if ( (rsz=read_fixed( knob->socket, &aad, 8)) != 8 ) {
-      if (rsz) {
-        DBG("[%2d] Error reading from socket %d:%s\n", knob->id, rsz, strerror(errno));
+    if ( (err=read_fixed( knob->socket, &aad, 8)) != 8 ) {
+      if (err) {
+        DBG("[%2d] Error reading from socket %d:%s\n", knob->id, err, strerror(errno));
       } else {
         DBG("[%2d] Got an empty read", knob->id);
       }
@@ -403,6 +403,15 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
         knob->buf, knob->buf, 16 );
     }
 
+    {
+      struct meta_info* mi = (struct meta_info*) knob->buf;
+      if (mi->hdr == 0xB43) {
+        DBG("[%2d] BYE received.", knob->id);
+        bytes_read |= 0xB43UL << 32UL;
+        goto network_recv_finalize;
+      }
+    }
+
     uint64_t head = atomic_load ( &metahead );
     uint64_t tail = atomic_load ( &metatail );
     uint8_t* buf  = atomic_load ( &metabuf  );
@@ -447,7 +456,7 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
           &buf[(h*64)+16], &buf[(h*64)+16], sz );
     }
 
-    metahead_incr = head + increment; 
+    metahead_incr = head + increment;
   } else if ( *subheader == FIHDR_SHORT ) {
     // Grab buffer from IO engine then read into it
 
@@ -456,6 +465,9 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
 
     VRFY (read_fixed( knob->socket, knob->buf, 20) == 20, "Bad read");
     isal_aes_gcm_dec_128_update(&knob->gkey, &knob->gctx, knob->buf, knob->buf, 20);
+    bytes_read += 20;
+
+
 
     VRFY( (knob->token=knob->fob->fetch(knob->fob)) != 0,
           "IO Queue full. XXX: I should wait for it to empty?");
@@ -506,18 +518,16 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
       VRFY( zstd_err == 0, "Compression error: %s", ZSTD_getErrorName(zstd_err) );
 
       fi->sz = res;
-      bytes_read += block_sz;
 
-      knob->bytes_compressed += block_sz;
       knob->bytes_disk +=  res;
 
     } else {
-      int rs=0;
+      int rs;
 
       VRFY ( block_sz <= knob->block, "Invalid block_sz=%ld", block_sz);
 
       DBG("[%2d] Read of %zd sz", knob->id, block_sz);
-      if (read_fixed(knob->socket, buffer, block_sz) != block_sz) {
+      if ((rs=read_fixed(knob->socket, buffer, block_sz)) != block_sz) {
         DBG("[%2d] network_recv: Ret 0 in data read (rs=%d)!=(block_sz=%zd)", knob->id, rs, block_sz);
         return 0;
       }
@@ -526,16 +536,20 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
          isal_aes_gcm_dec_128_update( &knob->gkey, &knob->gctx,
            buffer, buffer, block_sz );
       }
-      bytes_read += block_sz;
+      knob->bytes_disk +=  block_sz;
     }
 
+    DBG("[%2d] network_recv: block_sz=%zd", knob->id, block_sz);
+
+    bytes_read += block_sz;
     knob->bytes_compressed += block_sz;
-    knob->bytes_disk +=  block_sz;
 
   } else {
     VRFY( 0, "[%2d] network_recv: subheader %d not implemented",
           knob->id, *subheader );
   }
+
+network_recv_finalize:
 
   // if ( knob->do_crypto ) {
   {
@@ -694,19 +708,16 @@ void meta_send( char* buf, char* hdr, int len ) {
   static char* temp_buf=0;
   static struct network_obj* knob = NULL;
 
-  /* Header is a poorly defined structure, which is as follows:
+  /* Header is minimally defined as:
    *
    * /----+------+------\
    * | Sz | Type | Pad  |
    * | 4  |  2   | 10   |
    * \----+------+------/
    *
-   * Type is used by the higher level app, and sz is the size of the
-   * payload following the header. For instance if sz=0, there would be
-   * no payload.
+   * For the most part, metadata is sent directly to the higher level app.
+   * However, see struct meta_info. sz is bytes after 16 byte header.
    */
-
-  // VRFY ( (((uint64_t) buf) & 0xf) == 0, "buf is not aligned correctly" );
 
   if (!temp_buf)
     temp_buf = aligned_alloc( 16, 1024*1024 );
@@ -735,7 +746,7 @@ void meta_send( char* buf, char* hdr, int len ) {
 
   }
 
-  DBG("[%2d] meta_send: %ld sz=%d", knob->id, (uint64_t) buf, len);
+  DBG("[%2d] META OUT: %ld sz=%d(%d)", knob->id, (uint64_t) buf, len, len+16);
 
   {
     char b[16] __attribute__ ((aligned(16))) = {0};
@@ -815,9 +826,17 @@ void* rx_worker( void* arg ) {
       break;
     }
 
+    if ( read_sz & (0xB43UL << 32ULL) ) {
+      read_sz &= 32ULL - 1;
+      knob->bytes_network += read_sz;
+      break;
+    }
+
     knob->bytes_network += read_sz;
     fob = knob->fob;
     fi = (struct file_info*) knob->buf;
+
+    DBG("Got a new ... %zd %d", read_sz, fi_type);
 
     if (fi_type == FIHDR_META)
       // Nothing to do, network_recv has already copied META
@@ -907,11 +926,11 @@ void* rx_worker( void* arg ) {
   */
 
   atomic_fetch_add(&bytes_network, knob->bytes_network);
-  NFO("[%2d] Increment by %zd... ", id, knob->bytes_network);
   atomic_fetch_add(&bytes_disk, knob->bytes_disk);
   atomic_fetch_add(&bytes_compressed, knob->bytes_compressed);
 
   atomic_fetch_add(&threads_finished, 1);
+  NFO("[%2d] rx_worker: finish %zd %zd %zd", id, knob->bytes_network, knob->bytes_disk, knob->bytes_compressed);
 
   return 0;
 }
@@ -1006,13 +1025,13 @@ void* tx_worker( void* args ) {
       fs = file_next( id, &fs_lcl );
 
       if ( !fs ) {
-        DBG("[%2d] tx_worker exiting; Finished reading file(s)", id );
+        DBG("[%2d] Finished reading file(s), exiting...", id );
         break;
       }
     }
 
     if (!fs_lcl.fd) {
-      DBG("[%2d] tx_worker exiting; fd provided is zero", id );
+      DBG("[%2d] tx_worker exiting because fd provided is zero", id );
       break;
     }
 
@@ -1110,9 +1129,14 @@ void* tx_worker( void* args ) {
 
   }
 
-  DBG("[%2d] Thread exiting", id );
-  sleep(2);
-  DBG("[%2d] Thread exited", id );
+  {
+    struct meta_info mi = {0};
+    mi.hdr=0xB43;
+    VRFY( network_send(knob, &mi, 16, 16, false, FIHDR_META) > 0, );
+  }
+
+  DBG("[%2d] Thread complete and exiting.", id );
+
   return 0;
 }
 
@@ -1147,13 +1171,13 @@ void finish_transfer( struct dtn_args* args, uint64_t filecount ) {
     int64_t tc_last=~0;
     while(1) {
       uint64_t thread_count = atomic_load( &threads_finished );
-      if (thread_count >= (args->thread_id -1))
+      if (thread_count >= (args->thread_id-1))
         break;
 
       ESCP_DELAY(1)
       if (tc_last != thread_count) {
         tc_last = thread_count;
-        NFO("wait on thread '%d/%zd'", args->thread_id-1, thread_count);
+        NFO("wait on thread '%d/%zd'", (args->thread_id-1), thread_count);
       }
     }
   }
@@ -1313,7 +1337,7 @@ int rx_start( void* fn_arg ) {
     rx_arg[i].conn = accept( sock, (struct sockaddr *) saddr, &saddr_sz );
     rx_arg[i].dtn = args;
     if (rx_arg[i].conn <= 0) {
-      DBV("I/TC %d/%d", i, args->thread_count);
+      DBG("I/TC %d/%d", i, args->thread_count);
       DBG("Got an error accepting socket: %s", strerror(rx_arg[i].conn));
       continue;
     }
@@ -1329,7 +1353,7 @@ int rx_start( void* fn_arg ) {
 
     i = (i+1) % THREAD_COUNT;
 
-    if (args->thread_count && (i > (args->thread_count+1))) {
+    if (args->thread_count && (i > args->thread_count)) {
       // We spawn thread_count+1, One receiver is for meta data
 
       DBG("Finished spawning workers %d/%d", i, args->thread_count);

@@ -170,8 +170,9 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
         let mut b = Vec::new();
         _ = serr.read_to_end( &mut b );
         let s = String::from_utf8_lossy(&b);
-        error!("SSH returned {}", s );
-        eprint!("{}", s);
+        error!("SSH to remote returned an error: {}", s.trim() );
+        eprint!("Remote server returned an error '{}'\n{}\n", s.trim(),
+          "Is 𝘌𝘚𝘤𝘱 installed on remote host?");
         return
       }
     }
@@ -358,12 +359,15 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       debug!("Exiting because file_check returned EOQ");
       break;
     }
+
+    debug!("Loopping {files_ok} / {files_now}");
   }
 
   // Finished sending data
   {
     // Let receiver know that we think the session is complete
 
+    debug!("Send msg_session_complete");
     let hdr = to_header( 0, msg_session_complete );
     unsafe {
       meta_send( std::ptr::null_mut::<i8>(), hdr.as_ptr() as *mut i8, 0_i32 );

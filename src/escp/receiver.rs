@@ -426,6 +426,11 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       break;
     }
 
+    if t == 0 {
+      debug!("Got t=0 sz={sz}, type={t}");
+      break;
+    }
+
     debug!("Got unhandled message from sender sz={sz}, type={t}");
   }
 
