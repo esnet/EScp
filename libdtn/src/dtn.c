@@ -1135,7 +1135,7 @@ void* tx_worker( void* args ) {
     VRFY( network_send(knob, &mi, 16, 16, false, FIHDR_META) > 0, );
   }
 
-  DBG("[%2d] Thread complete and exiting.", id );
+  NFO("[%2d] tx_worker: finish", id );
 
   return 0;
 }
@@ -1177,7 +1177,7 @@ void finish_transfer( struct dtn_args* args, uint64_t filecount ) {
       ESCP_DELAY(1)
       if (tc_last != thread_count) {
         tc_last = thread_count;
-        NFO("wait on thread '%d/%zd'", (args->thread_id-1), thread_count);
+        DBG("wait on thread '%d/%zd'", (args->thread_id-1), thread_count);
       }
     }
   }

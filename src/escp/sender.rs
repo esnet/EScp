@@ -326,7 +326,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       _ = fi.flush();
 
       if bytes_now >= bytes_total {
-        let s = format!("\rComplete: {tot_str}B in {files_total} files at {rate_str}{units}/s in {:0.1}s {:38}\n",
+        let s = format!("\rSent    : {tot_str}B in {files_total} files at {rate_str}{units}/s in {:0.1}s {:38}",
           duration.as_secs_f32(), "");
         _ = fi.write(s.as_bytes());
         _ = fi.flush();
@@ -379,7 +379,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
     file_completetransfer();
   }
 
-  info!("Waiting for ACK");
+  debug!("Waiting for ACK");
   // Wait for ACK
 
   while unsafe{ meta_recv() }.is_null() {
@@ -388,7 +388,12 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
 
   unsafe { meta_complete(); }
 
-  info!("Finished transfer");
+  _ = fi.write("\rComplete\n".as_bytes());
+  _ = fi.flush();
+  info!("Transfer complete");
+
+  thread::sleep(std::time::Duration::from_millis(20)); // Pause for logs
+  process::exit(0); // Don't wait for threads
 }
 
 fn file_check(
