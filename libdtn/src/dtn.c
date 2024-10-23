@@ -460,7 +460,7 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
   } else if ( *subheader == FIHDR_SHORT ) {
     // Grab buffer from IO engine then read into it
 
-    uint8_t* buffer;
+    uint8_t* buffer=0;
     uint64_t block_sz;
 
     VRFY (read_fixed( knob->socket, knob->buf, 20) == 20, "Bad read");
@@ -491,7 +491,7 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
       DBV("[%2d] Compression Read of sz=%d", knob->id, block_sz);
       uint8_t* compressed_data = buffer+knob->block+FIO_COMPRESS_MARGIN-block_sz;
       if ((rs=read_fixed(knob->socket, compressed_data, block_sz)) != block_sz) {
-        DBG("[%2d] network_recv: Ret 0 in compression read (rs=%d)!=(block_sz=%zd)", knob->id, rs, block_sz);
+        DBG("[%2d] network_recv: bad data in compression read (rs=%d)!=(block_sz=%zd)", knob->id, rs, block_sz);
         return 0;
       }
 
@@ -528,7 +528,8 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
 
       DBG("[%2d] Read of %zd sz", knob->id, block_sz);
       if ((rs=read_fixed(knob->socket, buffer, block_sz)) != block_sz) {
-        DBG("[%2d] network_recv: Ret 0 in data read (rs=%d)!=(block_sz=%zd)", knob->id, rs, block_sz);
+        VRFY( 0, "bad" );
+        DBG("[%2d] network_recv: bad data from socket (rs=%d)!=(block_sz=%zd) se=%s s=%d/0x%016zX", knob->id, rs, block_sz, strerror(errno), knob->socket, (uint64_t) buffer);
         return 0;
       }
 
@@ -555,12 +556,14 @@ network_recv_finalize:
   {
     uint8_t computed_hash[16];
     uint8_t actual_hash[16];
+    int rs=0;
 
     isal_aes_gcm_dec_128_finalize( &knob->gkey, &knob->gctx, computed_hash, 16 );
-    if (read_fixed(knob->socket, actual_hash, 16)!=16) {
-      VRFY(0, "[%2d] Incorrect number of bytes returned when reading auth tag", knob->id);
+    if ((rs=read_fixed(knob->socket, actual_hash, 16))!=16) {
+      VRFY(0, "[%2d] Incorrect number of bytes (%d) returned when reading auth tag %s", knob->id, rs);
       return 0;
     }
+
     VRFY( memcmp(computed_hash, actual_hash, 16) == 0,
           "[%2d] Bad auth tag hdr=%d %02X%02X%02X%02X!=%02X%02X%02X%02X",
           knob->id, *subheader,
@@ -1119,7 +1122,7 @@ void* tx_worker( void* args ) {
       VRFY( network_send(knob, buf, bytes_sent, 20+bytes_sent, false, FIHDR_SHORT) > 0, );
 
       atomic_fetch_add( &fs->bytes_total, bytes_read );
-      atomic_fetch_add( &dtn->bytes_io, bytes_read );
+      atomic_fetch_add( &dtn->bytes_io,    bytes_read );
 
       fob->complete(fob, token);
 
@@ -1181,10 +1184,6 @@ void finish_transfer( struct dtn_args* args, uint64_t filecount ) {
       }
     }
   }
-
-  DBG("bytes_network=%zd bytes_disk=%zd bytes_compressed=%zd TC=%d",
-    atomic_load(&bytes_network), atomic_load(&bytes_disk),
-    atomic_load(&bytes_compressed), atomic_load(&args->thread_id)-1 );
 
   NFO("bytes_network=%zd bytes_disk=%zd bytes_compressed=%zd TC=%d",
     atomic_load(&bytes_network), atomic_load(&bytes_disk),

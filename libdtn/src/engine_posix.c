@@ -246,6 +246,7 @@ int file_posixinit( struct file_object* fob ) {
 
   op = malloc( sizeof(struct posix_op) );
   VRFY( op, "bad malloc" );
+  memset( op, 0, sizeof(struct posix_op) );
 
   int flags = MAP_SHARED|MAP_ANONYMOUS;
 

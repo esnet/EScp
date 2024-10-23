@@ -76,7 +76,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       ssh_args.push(flags.escp.as_str());
     }
 
-    ssh_args.extend([ "--server", "ignore", "me:" ]);
+    ssh_args.extend([ "--server"]);
     debug!("Executing SSH with args: {:?} ", ssh_args );
 
     proc = Popen::create( &ssh_args, PopenConfig {
@@ -315,7 +315,8 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
         let tmp = human_write( bytes_now as u64, true );
         tot_str= CStr::from_ptr(tmp).to_str().unwrap();
 
-        debug!("{}/{}", bytes_now, bytes_total);
+        let files_now = tx_getclosed();
+        debug!("transfer progress: {}/{} {}/{}", bytes_now, bytes_total, files_now, files_ok);
       }
 
       let units = if flags.bits { "bits" } else { "B" };
