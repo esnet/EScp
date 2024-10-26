@@ -507,6 +507,12 @@ Changes from 0.7.1 to 0.8.0 (TBD):
   * Session Init Changes
   * Add Preserve support
   * Only log to file/syslog if specified on command line
+  * Improve counters on receivers:
+    - `bytes_network`    shows bytes transmitted over the wire
+    - `bytes_disk`       shows bytes written to disk
+    - `bytes_compressed` total of "data" bytes sent over the wire
+    - Summary written to receiver log (if logging to a file/syslog)
+  * Change how sender/receiver negotiate session end (improves reliability)
 
 Changes from 0.7.0 to 0.7.1 (20 June 2024):
   * Checksum feature enabled

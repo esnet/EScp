@@ -446,6 +446,9 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
     meta_send( std::ptr::null_mut::<i8>(), hdr.as_ptr() as *mut i8, 0_i32 );
   }
 
+  info!("Transfer Complete!");
+  thread::sleep(std::time::Duration::from_millis(500)); // Wait: queues to clear
+
 }
 
 

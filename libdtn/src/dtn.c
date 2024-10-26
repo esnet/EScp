@@ -560,7 +560,7 @@ network_recv_finalize:
 
     isal_aes_gcm_dec_128_finalize( &knob->gkey, &knob->gctx, computed_hash, 16 );
     if ((rs=read_fixed(knob->socket, actual_hash, 16))!=16) {
-      VRFY(0, "[%2d] Incorrect number of bytes (%d) returned when reading auth tag %s", knob->id, rs);
+      VRFY(0, "[%2d] Incorrect number of bytes (%d) returned when reading auth tag", knob->id, rs);
       return 0;
     }
 

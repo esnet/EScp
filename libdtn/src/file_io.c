@@ -86,10 +86,10 @@ void memset_avx( void* dst ) {
 // much less than HSZ (which must be ^2 aligned).
 struct file_stat_type file_stat[FILE_STAT_COUNT_HSZ]={0};
 
-uint64_t file_claim __attribute__ ((aligned(64)));
-uint64_t file_count __attribute__ ((aligned(64)));
-uint64_t file_head  __attribute__ ((aligned(64)));
-uint64_t file_tail  __attribute__ ((aligned(64)));
+uint64_t file_claim __attribute__ ((aligned(64))) = 0;
+uint64_t file_count __attribute__ ((aligned(64))) = 0;
+uint64_t file_head  __attribute__ ((aligned(64))) = 0;
+uint64_t file_tail  __attribute__ ((aligned(64))) = 0;
 
 uint64_t transfer_complete __attribute__ ((aligned(64))) = 0;
 
@@ -131,8 +131,11 @@ void file_incrementfilecount() {
   cur -= 1;
 
   if (orig != cur) {
-    if (atomic_fetch_add( &file_count, cur - orig ))
+    if ( atomic_compare_exchange_weak(&file_count, &orig, cur) ) {
       DBG("Increment file_count from %ld to %ld", orig, cur);
+    } else {
+     return file_incrementfilecount();
+    }
   }
 }
 
@@ -249,23 +252,22 @@ struct file_stat_type* file_next( int id, struct file_stat_type* test_fs ) {
   //
   DBV("[%2d] Enter file_next", id);
 
-  uint64_t fc,fh,slot;
+  int64_t fc,fh,slot;
   int i,j,k=0;;
 
   while (1) {
-    fc = atomic_load( &file_count );
-    fh = atomic_load( &file_head );
+    fc = atomic_load( &file_count ); // In order increment of available files
+    fh = atomic_load( &file_head );  // file claimed by file_next
 
     // First try to attach to a new file
-
     if ( (fc-fh) > THREAD_COUNT ) {
-      // No worries about blasting past file_count, just grab and go
-      fh = atomic_fetch_add( &file_head, 1 );
+      // There are many available files, anything we grab is fine
+      fh = atomic_fetch_add( &file_head, 1 ); // fh = old value
       break;
     }
 
     if ( (fc-fh) > 0 ) {
-      // Increment carefully
+      // Between 1 and THREAD_COUNT, grab next available file
       if ( atomic_compare_exchange_weak( &file_head, &fh, fh+1) )
         break;
       continue;
@@ -303,17 +305,18 @@ struct file_stat_type* file_next( int id, struct file_stat_type* test_fs ) {
   // We got a file_no, now we need to translate it into a slot.
 
   slot = ++fh;
+  DBG("[%2d] Trying to claim slot %zd, %zd, %zd", id, slot, fc, fh-1);
 
   while (1) {
 
     slot = fh;
     for (i=0; i<FILE_STAT_COUNT_CC; i++) {
       uint64_t fs_init;
-      slot = xorshift64s(&slot);
+      slot = xorshift64s( (uint64_t*) &slot);
 
       memcpy_avx( test_fs, &file_stat[FS_MASK(slot)] );
       if (test_fs->file_no != fh) {
-        continue; // This indicates we had a hash collision and need to fetch the next item
+        continue; // Possible hash collision; Try next item
       }
 
       fs_init = FS_INIT;
@@ -327,7 +330,7 @@ struct file_stat_type* file_next( int id, struct file_stat_type* test_fs ) {
         NFO("[%2d] Failed to convert fn=%ld, slot=%ld", id, test_fs->file_no, FS_MASK(slot));
       }
     }
-    usleep(1);
+    ESCP_DELAY(1);
   }
 
   VRFY( 0, "[%2d] Error claiming file fn=%ld", id, fh );

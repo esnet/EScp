@@ -327,7 +327,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       _ = fi.flush();
 
       if bytes_now >= bytes_total {
-        let s = format!("\rSent    : {tot_str}B in {files_total} files at {rate_str}{units}/s in {:0.1}s {:38}",
+        let s = format!("\rSent    : {tot_str}B in {files_total} files at {rate_str}{units}/s in {:0.1}s {:12}\r",
           duration.as_secs_f32(), "");
         _ = fi.write(s.as_bytes());
         _ = fi.flush();
