@@ -1,4 +1,15 @@
 use super::*;
+use std::sync::atomic::AtomicU64;
+
+static GLOBAL_FILEOPEN_COUNT: usize = 4; // # threads to use for opening files
+static GLOBAL_DIROPEN_COUNT: usize = 2;  // # Threads to iterate directory
+
+static GLOBAL_FILEOPEN_CLEANUP: AtomicU64 = AtomicU64::new(0);
+static GLOBAL_FILEOPEN_TAIL:    AtomicU64 = AtomicU64::new(0);
+static GLOBAL_FILEOPEN_ID:      AtomicU64 = AtomicU64::new(0);
+static GLOBAL_FILEOPEN_MASK:    AtomicU64 = AtomicU64::new(0);
+static GLOBAL_FINO: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 
 pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   let args = safe_args.args;
@@ -563,7 +574,8 @@ fn iterate_file_worker(
   let mode:i32 = 0;
   let (mut direct_mode, mut recursive) = (true, false);
   let open;
-
+  let mut exit_ready = false;
+  let id = GLOBAL_FILEOPEN_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
   unsafe {
     if (*args.args).nodirect  { direct_mode = false; }
@@ -576,24 +588,34 @@ fn iterate_file_worker(
 
   loop {
 
-
-    match files_out.recv_timeout(std::time::Duration::from_millis(100)) {
+    match files_out.recv_timeout(std::time::Duration::from_millis(4)) {
       Ok((value, p)) => { (filename, prefix) = (value, p); }
       Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
 
-        // We could conceivably have something happen where one worker could be
-        // very slow, nothing is in the queue, and thus a worker will prematurely
-        // exit. At the worst case, there would be one file worker left, which
-        // is not optimal, but OK.
-
         if GLOBAL_FILEOPEN_TAIL.load(std::sync::atomic::Ordering::SeqCst) ==
            GLOBAL_FILEOPEN_CLEANUP.load(std::sync::atomic::Ordering::SeqCst) {
-          debug!("iterate_file_worker: break because tail==head");
-          break;
+
+          if exit_ready == false {
+            let mask = GLOBAL_FILEOPEN_MASK.fetch_or(1 << id, std::sync::atomic::Ordering::SeqCst);
+            debug!("iterate_file_worker: Worker {} ready to exit {:#X} {:#X}", id, mask, (1<< GLOBAL_FILEOPEN_COUNT) - 1);
+            exit_ready = true;
+          }
+
+          let mask = GLOBAL_FILEOPEN_MASK.load(std::sync::atomic::Ordering::SeqCst);
+          if mask ==  ((1 << GLOBAL_FILEOPEN_COUNT)  - 1) {
+            debug!("iterate_file_worker: All workers finished, exiting");
+            break;
+          }
+
         }
         continue;
       }
       Err(_) => { debug!("iterate_file_worker: !files_out, worker end."); return; }
+    }
+
+    if exit_ready == true {
+      _ = GLOBAL_FILEOPEN_MASK.fetch_and(!(1 << id), std::sync::atomic::Ordering::SeqCst);
+      debug!("iterate_file_worker: Worker {} is unready", id);
     }
 
     c_str = CString::new(filename).unwrap();
@@ -732,7 +754,6 @@ fn iterate_files ( flags: &EScp_Args,
       let mi = msg_in.clone();
       thread::Builder::new().name(nam).spawn(move ||
         iterate_file_worker(fo, di, mi, a)).unwrap();
-        // iterate_file_worker(fo, di, mi, a, fc_hash, files_ok)).unwrap();
     }
 
     for j in 0..GLOBAL_DIROPEN_COUNT{

@@ -63,13 +63,6 @@ const msg_session_terminate:u16 =  9;
 
 const config_items: &[&str]= &[ "cpumask", "nodemask" ];
 
-static GLOBAL_FILEOPEN_CLEANUP: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-static GLOBAL_FILEOPEN_TAIL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-
-static GLOBAL_FILEOPEN_COUNT: usize = 4;
-static GLOBAL_DIROPEN_COUNT: usize = 2;
-static GLOBAL_FINO: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-
 
 fn _print_type_of<T>(_: &T) {
     println!("{}", std::any::type_name::<T>())
