@@ -412,8 +412,6 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
       if (mi->hdr == 0xB43) {
         DBG("[%2d] BYE received.", knob->id);
         bytes_read |= 0xB43UL << 32UL;
-        metahead_incr = head + 1;
-        goto network_recv_finalize;
       }
     }
 
@@ -453,10 +451,8 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
     memcpy ( &buf[h*64], knob->buf, 16 );
 
     VRFY( read_fixed(knob->socket, &buf[(h*64)+16], sz) == sz, "FIHDR_META read fail");
-    if ( knob->do_crypto ) {
-       isal_aes_gcm_dec_128_update( &knob->gkey, &knob->gctx,
-          &buf[(h*64)+16], &buf[(h*64)+16], sz );
-    }
+    isal_aes_gcm_dec_128_update( &knob->gkey, &knob->gctx,
+      &buf[(h*64)+16], &buf[(h*64)+16], sz );
 
     metahead_incr = head + increment;
   } else if ( *subheader == FIHDR_SHORT ) {
@@ -535,10 +531,8 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
         return 0;
       }
 
-      if ( knob->do_crypto ) {
-         isal_aes_gcm_dec_128_update( &knob->gkey, &knob->gctx,
-           buffer, buffer, block_sz );
-      }
+      isal_aes_gcm_dec_128_update( &knob->gkey, &knob->gctx,
+        buffer, buffer, block_sz );
       knob->bytes_disk +=  block_sz;
     }
 
@@ -552,9 +546,6 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
           knob->id, *subheader );
   }
 
-network_recv_finalize:
-
-  // if ( knob->do_crypto ) {
   {
     uint8_t computed_hash[16];
     uint8_t actual_hash[16];
@@ -841,8 +832,6 @@ void* rx_worker( void* arg ) {
     knob->bytes_network += read_sz;
     fob = knob->fob;
     fi = (struct file_info*) knob->buf;
-
-    DBG("Got a new ... %zd %d", read_sz, fi_type);
 
     if (fi_type == FIHDR_META)
       // Nothing to do, network_recv has already copied META

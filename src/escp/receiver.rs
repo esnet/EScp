@@ -376,9 +376,10 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
               if err.kind() == std::io::ErrorKind::NotFound {
 
                 let path = std::path::Path::new(full_path.as_str());
-                let _ = fs::create_dir_all(path.parent().unwrap());
+                let dir_path = path.parent().unwrap();
+                let _ = fs::create_dir_all(dir_path);
 
-                info!("Create directory {path:?}");
+                info!("Create directory {dir_path:?}");
                 continue;
               }
               info!("Got an error opening file {:?} {:?}",
@@ -426,9 +427,8 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       break;
     }
 
-    if t == msg_session_complete {
+    if t == 0x430B {
       info!("Got session complete request sz={sz}, type={t}");
-      // XXX: Deprecated?
       break;
     }
 

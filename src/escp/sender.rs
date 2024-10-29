@@ -667,8 +667,8 @@ fn iterate_file_worker(
             let _ = GLOBAL_FILEOPEN_CLEANUP.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             _ = dir_in.send((c_str.to_str().unwrap().to_string(), prefix, fd));
           } else {
-            info!("Ignoring directory {f}");
-            eprintln!("\rIgnoring directory {f}");
+            info!("Ignoring directory {f} because recursive mode not set");
+            eprintln!("\rIgnoring directory {f} because recursive mode not set");
             _ = ((*(*args.args).fob).close_fd.unwrap())( fd );
           }
           continue;
@@ -680,6 +680,7 @@ fn iterate_file_worker(
           continue;
         }
         libc::S_IFREG => { /* add */ }
+
         _             => {
           info!("Ignoring {:#X} {f}", st.st_mode & libc::S_IFMT);
           eprintln!("\rIgnoring {:#X} {f}", st.st_mode & libc::S_IFMT);
