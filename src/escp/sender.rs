@@ -338,7 +338,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       _ = fi.flush();
 
       if bytes_now >= bytes_total {
-        let s = format!("\rSent    : {tot_str}B in {files_total} files at {rate_str}{units}/s in {:0.1}s {:12}\r",
+        let s = format!("\rSent    : {tot_str}B in {files_total} files at {rate_str}{units}/s in {:0.1}s {:15}\r",
           duration.as_secs_f32(), "");
         _ = fi.write(s.as_bytes());
         _ = fi.flush();
@@ -379,7 +379,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   {
     // Let receiver know that we think the session is complete
 
-    debug!("Send msg_session_complete");
+    info!("Send msg_session_complete");
     let hdr = to_header( 0, msg_session_complete );
     unsafe {
       meta_send( std::ptr::null_mut::<i8>(), hdr.as_ptr() as *mut i8, 0_i32 );
@@ -391,7 +391,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
     file_completetransfer();
   }
 
-  debug!("Waiting for ACK");
+  info!("Waiting for ACK");
   // Wait for ACK
 
   while unsafe{ meta_recv() }.is_null() {
@@ -596,8 +596,8 @@ fn iterate_file_worker(
            GLOBAL_FILEOPEN_CLEANUP.load(std::sync::atomic::Ordering::SeqCst) {
 
           if exit_ready == false {
-            let mask = GLOBAL_FILEOPEN_MASK.fetch_or(1 << id, std::sync::atomic::Ordering::SeqCst);
-            debug!("iterate_file_worker: Worker {} ready to exit {:#X} {:#X}", id, mask, (1<< GLOBAL_FILEOPEN_COUNT) - 1);
+            _ = GLOBAL_FILEOPEN_MASK.fetch_or(1 << id, std::sync::atomic::Ordering::SeqCst);
+            debug!("iterate_file_worker: Worker {} ready to exit", id);
             exit_ready = true;
           }
 

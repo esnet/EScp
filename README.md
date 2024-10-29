@@ -502,8 +502,10 @@ Changes from 0.7.1 to 0.8.0 (TBD):
   * Change to On-Wire format; Drops un-needed crypto wrapper. Change other
     message headers.
   * Add Compression (Using zstd)
+    - use --compression flag for files
+    - automatic compress large metadata chunks (file information/verification)
   * Add Sparse File support
-  * Add receiver timeout + keepalive (Avoids Zombie Receivers)
+  * Add receiver timeout + keepalive (Minimize Zombie Receivers)
   * Session Init Changes
   * Add Preserve support
   * Only log to file/syslog if specified on command line
@@ -512,7 +514,9 @@ Changes from 0.7.1 to 0.8.0 (TBD):
     - `bytes_disk`       shows bytes written to disk
     - `bytes_compressed` total of "data" bytes sent over the wire
     - Summary written to receiver log (if logging to a file/syslog)
-  * Change how sender/receiver negotiate session end (improves reliability)
+  * Change how sender/receiver negotiate session termination
+    - Removes session close delays and better file verification
+  * Remove a possible race condition and delay on file iteration
 
 Changes from 0.7.0 to 0.7.1 (20 June 2024):
   * Checksum feature enabled

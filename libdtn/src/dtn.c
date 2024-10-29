@@ -339,7 +339,7 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
 
   int64_t bytes_read=0;
   uint64_t aad;
-  uint64_t metahead_incr;
+  uint64_t metahead_incr=0;
 
   int err;
 
@@ -403,18 +403,20 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
         knob->buf, knob->buf, 16 );
     }
 
+    uint64_t head = atomic_load ( &metahead );
+    uint64_t tail = atomic_load ( &metatail );
+    uint8_t* buf  = atomic_load ( &metabuf  );
+
     {
       struct meta_info* mi = (struct meta_info*) knob->buf;
       if (mi->hdr == 0xB43) {
         DBG("[%2d] BYE received.", knob->id);
         bytes_read |= 0xB43UL << 32UL;
+        metahead_incr = head + 1;
         goto network_recv_finalize;
       }
     }
 
-    uint64_t head = atomic_load ( &metahead );
-    uint64_t tail = atomic_load ( &metatail );
-    uint8_t* buf  = atomic_load ( &metabuf  );
 
     VRFY ( buf != NULL, "failed assertion, metabuf!=null" );
 
@@ -574,6 +576,7 @@ network_recv_finalize:
   }
 
   if ( *subheader == FIHDR_META ) {
+    DBG("[%2d] metahead: %zd to %zd", knob->id, metahead, metahead_incr);
     atomic_store( &metahead, metahead_incr );
   }
 

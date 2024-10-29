@@ -208,11 +208,11 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
     let mut v = Vec::new();
 
     if ptr.is_null() {
-      // If file completion queue has data for us; 
+      // If file completion queue has data for us;
       //   - send completion notice to sender
 
       let mut fct = 5; // Our timeout here is intentionally short as long
-                       // timeouts interfere with our ability to open files 
+                       // timeouts interfere with our ability to open files
       let loop_start = std::time::Instant::now();
       let mut did_init= false;
       let mut builder = flatbuffers::FlatBufferBuilder::with_capacity(16384);
@@ -258,6 +258,7 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
 
         if last_send.elapsed().as_secs_f32() > 2.0 {
           let hdr = to_header( 0, msg_keepalive );
+          debug!("fc: Sending heartbeat");
           unsafe {
             meta_send( std::ptr::null_mut::<i8>(), hdr.as_ptr() as *mut i8, 0 );
           }
@@ -280,15 +281,19 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
             meta_send( buf.as_ptr() as *mut i8, hdr.as_ptr() as *mut i8, buf.len() as i32 );
           }
           last_send = std::time::Instant::now();
+          did_init = false;
         }
 
         if finish_fc {
+          debug!("fc: Nothing to do, exit loop");
           break;
         }
       }
 
       continue;
     }
+
+    debug!("Handle message from sender");
 
     // Handle message from sender
 
@@ -416,13 +421,14 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
     }
 
     if t == msg_session_terminate {
-      debug!("Got terminate request sz={sz}, type={t}");
-      // XXX: Should do an immediate exit here
+      info!("Got terminate request sz={sz}, type={t}");
+      // XXX: Deprecated?
       break;
     }
 
     if t == msg_session_complete {
-      debug!("Got session complete request sz={sz}, type={t}");
+      info!("Got session complete request sz={sz}, type={t}");
+      // XXX: Deprecated?
       break;
     }
 
@@ -431,7 +437,7 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       break;
     }
 
-    debug!("Got unhandled message from sender sz={sz}, type={t}");
+    info!("Got unhandled message from sender sz={sz}, type={t}");
   }
 
   unsafe {
