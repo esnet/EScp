@@ -1,5 +1,6 @@
 use super::*;
 use std::sync::atomic::AtomicU64;
+use std::path::PathBuf;
 
 static GLOBAL_FILEOPEN_COUNT: usize = 4; // # threads to use for opening files
 static GLOBAL_DIROPEN_COUNT: usize = 2;  // # Threads to iterate directory
@@ -510,26 +511,41 @@ fn file_check(
   1
 }
 
-fn iterate_dir_worker(  dir_out:  crossbeam_channel::Receiver<(String, String, i32)>,
-                        files_in: crossbeam_channel::Sender<(String, String)>,
+fn iterate_dir_worker(  dir_out:  crossbeam_channel::Receiver<(PathBuf, PathBuf)>,
+                        files_in: crossbeam_channel::Sender<(PathBuf, PathBuf)>,
                         args:     logging::dtn_args_wrapper ) {
 
-  let (close, fdopendir, readdir);
+  let (opendir, readdir, closedir);
   unsafe {
-    close     = (*(*args.args).fob).close_fd.unwrap();
-    fdopendir = (*(*args.args).fob).fopendir.unwrap();
+    opendir = (*(*args.args).fob).opendir.unwrap();
+    closedir  = (*(*args.args).fob).closedir.unwrap();
     readdir   = (*(*args.args).fob).readdir.unwrap();
   }
 
   loop {
-    let ( filename, prefix, fd );
+    let ( filename, prefix );
     match dir_out.recv() {
-      Ok((s,p,i)) => { (filename, prefix, fd) = (s, p, i); }
+      Ok((p,f)) => { (prefix, filename) = (p, f); }
       Err(_) => { debug!("iterate_dir_worker: !dir_out, worker end."); return; }
     }
 
+    let ( fi_str, p_str ) = (filename.to_str().unwrap(), prefix.to_str().unwrap());
+
     // debug!("iterate_dir_worker: open {filename}, fd={fd}");
-    let dir = unsafe { fdopendir( fd ) };
+    let combined = prefix.join(filename.clone());
+    let combined_str = combined.to_str().unwrap();
+
+    let dir = unsafe {
+      let c_str = CString::new(combined_str).unwrap();
+      opendir( c_str.as_ptr() )
+    };
+
+    if dir.is_null() {
+      info!("iterate_dir_worker: Got an error opening '{combined_str}'");
+      continue;
+    }
+
+    info!("iterate_dir_worker: iterate {combined_str}");
 
     loop {
       let fi = unsafe { readdir( dir ) };
@@ -537,7 +553,6 @@ fn iterate_dir_worker(  dir_out:  crossbeam_channel::Receiver<(String, String, i
         break;
       }
 
-      let path;
       unsafe {
         let c_str = CStr::from_ptr((*fi).d_name.as_ptr());
         let s = c_str.to_str().unwrap().to_string();
@@ -545,26 +560,30 @@ fn iterate_dir_worker(  dir_out:  crossbeam_channel::Receiver<(String, String, i
         if (s == ".") || (s == "..") {
           continue;
         }
-        path = format!("{filename}/{s}");
+        let new_path = filename.join(s);
+        let path_name = new_path.to_str().unwrap();
+
         if ((*fi).d_type as u32 == DT_REG) || ((*fi).d_type as u32 == DT_DIR) {
-          debug!("iterate_dir_worker: added {path}");
-          _ = files_in.send((path, prefix.clone()));
-          continue;
+          debug!("iterate_dir_worker: added {p_str} {path_name}");
+          _ = files_in.send((prefix.clone(), new_path));
+        } else {
+          debug!("iterate_dir_worker: ignoring {p_str} {path_name}");
         }
       }
-
-      debug!("iterate_dir_worker: ignoring {path}");
     }
 
     let _ = GLOBAL_FILEOPEN_TAIL.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    debug!("iterate_dir_worker: Finished traversing {filename}, close fd={fd}");
-    unsafe{ close(fd) };
+    if unsafe{ closedir(dir) } != 0 {
+      info!("iterate_dir_worker: error closing directory {p_str} {fi_str}");
+    } else {
+      debug!("iterate_dir_worker: Finished traversing {p_str} {fi_str}");
+    }
   }
 }
 
 fn iterate_file_worker(
-  files_out: crossbeam_channel::Receiver<(String, String)>,
-  dir_in:    crossbeam_channel::Sender<(String, String, i32)>,
+  files_out: crossbeam_channel::Receiver<(PathBuf, PathBuf)>,
+  dir_in:    crossbeam_channel::Sender<(PathBuf, PathBuf)>,
   msg_in:    crossbeam_channel::Sender<(String, u64, stat)>,
   args:      logging::dtn_args_wrapper,
   // hm: &mut HashMap<u64, (u64, u32, u32)>,
@@ -573,14 +592,15 @@ fn iterate_file_worker(
 
   let mode:i32 = 0;
   let (mut direct_mode, mut recursive) = (true, false);
-  let open;
+  let (open, close_fd);
   let mut exit_ready = false;
   let id = GLOBAL_FILEOPEN_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
   unsafe {
     if (*args.args).nodirect  { direct_mode = false; }
     if (*args.args).recursive { recursive   = true;  }
-    open = (*(*args.args).fob).open.unwrap();
+    open     = (*(*args.args).fob).open.unwrap();
+    close_fd = (*(*args.args).fob).close_fd.unwrap();
   }
 
   let mut fd;
@@ -589,7 +609,7 @@ fn iterate_file_worker(
   loop {
 
     match files_out.recv_timeout(std::time::Duration::from_millis(4)) {
-      Ok((value, p)) => { (filename, prefix) = (value, p); }
+      Ok((p, f)) => { (prefix, filename) = (p, f); }
       Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
 
         if GLOBAL_FILEOPEN_TAIL.load(std::sync::atomic::Ordering::SeqCst) ==
@@ -618,7 +638,8 @@ fn iterate_file_worker(
       debug!("iterate_file_worker: Worker {} is unready", id);
     }
 
-    c_str = CString::new(filename).unwrap();
+    let path = prefix.join(filename.clone());
+    c_str = CString::new(path.to_str().unwrap()).unwrap();
 
     unsafe {
       let mut st: stat = std::mem::zeroed();
@@ -665,18 +686,23 @@ fn iterate_file_worker(
         libc::S_IFDIR => {
           if recursive {
             let _ = GLOBAL_FILEOPEN_CLEANUP.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            _ = dir_in.send((c_str.to_str().unwrap().to_string(), prefix, fd));
+            _ = dir_in.send((prefix, filename));
           } else {
             info!("Ignoring directory {f} because recursive mode not set");
             eprintln!("\rIgnoring directory {f} because recursive mode not set");
-            _ = ((*(*args.args).fob).close_fd.unwrap())( fd );
+          }
+          if close_fd(fd) == -1 {
+            info!("Error closing file descriptor (directory)");
           }
           continue;
         }
         libc::S_IFLNK => {
           info!("Ignoring link {f}");
           eprintln!("\rIgnoring link {f}");
-          _ = ((*(*args.args).fob).close_fd.unwrap())( fd );
+          if close_fd(fd) == -1 {
+            info!("Error closing file descriptor (symlink)");
+          }
+          _ = close_fd(fd);
           continue;
         }
         libc::S_IFREG => { /* add */ }
@@ -684,34 +710,27 @@ fn iterate_file_worker(
         _             => {
           info!("Ignoring {:#X} {f}", st.st_mode & libc::S_IFMT);
           eprintln!("\rIgnoring {:#X} {f}", st.st_mode & libc::S_IFMT);
-          _ = ((*(*args.args).fob).close_fd.unwrap())( fd );
+          if close_fd(fd) == -1 {
+            info!("Error closing file descriptor (catch-all)");
+          }
           continue;
         }
 
       }
 
-
-      let res = if f == prefix.as_str() {
-        let prefix  = std::path::Path::new(prefix.as_str());
-        let f_path = std::path::Path::new(f);
-        let strip=prefix.parent().unwrap();
-        f_path.strip_prefix(strip).unwrap()
-      } else {
-        let prefix  = std::path::Path::new(prefix.as_str());
-        let f_path = std::path::Path::new(f);
-        f_path.strip_prefix(prefix).unwrap()
-      };
-
-      let fname = res.to_str().unwrap().to_string();
+      let fname = path.to_str().unwrap();
       if st.st_size > 0 {
         let fino = 1+GLOBAL_FINO.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        debug!("addfile:  {fname}:{fino} sz={:?}", st.st_size);
+        debug!("addfile:  {fname} fn={fino} sz={:?}", st.st_size);
 
-        _ = msg_in.send( (fname, fino, st) );
+        _ = msg_in.send( (fname.to_string(), fino, st) );
         file_addfile( fino, fd, st.st_size, 0, 0, 0, 0 );
       } else {
-        debug!("addfile:  {fname}:NONE sz=NIL");
-        _ = msg_in.send( (fname, 0, st) );
+        debug!("addfile:  {fname} fn=NONE sz=NIL");
+        _ = msg_in.send( (fname.to_string(), 0, st) );
+        if close_fd(fd) == -1 {
+          info!("Error closing file descriptor (empty file)");
+        }
       }
 
     }
@@ -734,13 +753,13 @@ fn iterate_files ( flags: &EScp_Args,
   // responsible for implementing there own view of the file system and we can't
   // just plug rust's canonicalize into the engine's io routines.
 
-  let dest_path = clean_path::clean(dest_path).into_os_string().into_string().unwrap();
+  // let dest_path = clean_path::clean(dest_path).into_os_string().into_string().unwrap();
   let msg_out;
 
   {
     // Spawn helper threads
     let (files_in, files_out) = crossbeam_channel::bounded(15000);
-    let (dir_in, dir_out) = crossbeam_channel::bounded(1000);
+    let (dir_in, dir_out) = crossbeam_channel::bounded(100000);
 
     let msg_in;
     (msg_in, msg_out) = crossbeam_channel::bounded(400);
@@ -769,8 +788,11 @@ fn iterate_files ( flags: &EScp_Args,
 
     for fi in &flags.source {
       if fi.is_empty() { continue; };
-      let path = clean_path::clean(fi).into_os_string().into_string().unwrap();
-      _ = files_in.send((path.clone(),path));
+      let fi_path = fs::canonicalize(&PathBuf::from(fi)).unwrap();
+      _ = files_in.send(
+            (fi_path.parent().unwrap().to_path_buf(),
+             std::path::Path::new(fi_path.file_name().unwrap().to_str().unwrap()).to_path_buf()
+            ));
     }
   }
 
@@ -834,14 +856,16 @@ fn iterate_files ( flags: &EScp_Args,
       _ = sout.flush();
     }
 
+
     loop {
+
+      let (fi, fino, st);
 
       if !did_init {
         builder = flatbuffers::FlatBufferBuilder::with_capacity(8192);
         did_init = true;
       }
 
-      let (fi, fino, st);
 
       match msg_out.recv_timeout(std::time::Duration::from_micros(20)) {
         Ok((a,b,c)) => { (fi, fino, st) = (a,b,c); }

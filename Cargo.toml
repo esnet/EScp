@@ -29,7 +29,6 @@ shadow-rs = "*"
 yaml-rust2 = "*"
 hex = "*"
 crossbeam-channel = "0.5"
-clean-path = "*"
 zstd-safe = "*"
 chrono = "*"
 

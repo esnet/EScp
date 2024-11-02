@@ -149,7 +149,8 @@ int file_dummyinit( struct file_object* fob ) {
   fob->truncate = file_dummytruncate;
 
   fob->close_fd = file_dummyclosefd;
-  fob->fopendir = fdopendir;
+  fob->opendir = opendir;
+  fob->closedir = closedir;
   fob->readdir  = readdir;
 
   fob->preserve = file_dummypreserve;

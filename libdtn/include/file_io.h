@@ -75,8 +75,10 @@ struct file_object {
 
   int   (*open)    (const char*, int, ...);
 
-  DIR*   (*fopendir) (int);
+  DIR*   (*opendir) (const char* name);
+  int    (*closedir) (DIR *dirp);
   struct dirent* (*readdir) (DIR *dirp);
+
   int   (*close_fd) (int);
 
   int   (*close)    (void*);

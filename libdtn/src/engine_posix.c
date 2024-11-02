@@ -150,34 +150,39 @@ void* file_posixsubmit( void* arg, int32_t* sz, uint64_t* offset ) {
         *sz = pwrite( op->fd, op->buf, op->sz, op->offset );
     } else {
       *sz = pread( op->fd, op->buf, fob->blk_sz, op->offset );
+      if (*sz > 0) {
 
-      if (fob->do_hash)
-        op->hash = file_hash(op->buf, *sz, *offset/fob->blk_sz);
+        if (fob->do_hash)
+          op->hash = file_hash(op->buf, *sz, *offset/fob->blk_sz);
 
-      if (fob->compression) {
+        if (fob->compression) {
 
-        if (!zctx) {
-          zctx = ZSTD_createCCtx();
-          VRFY(zctx > 0, "Couldn't allocate zctx");
+          if (!zctx) {
+            zctx = ZSTD_createCCtx();
+            VRFY(zctx > 0, "Couldn't allocate zctx");
+          }
+
+          op->compress_offset = fob->blk_sz;
+
+          csz = ZSTD_compressCCtx( zctx,
+            op->buf + fob->blk_sz, fob->blk_sz,
+            op->buf, *sz, 3 );
+
+          if ((csz > 0) && (csz < *sz)) {
+            op->compressed=csz;
+          } else {
+            op->compressed=0;
+            csz=0;
+          }
         }
-
-        op->compress_offset = fob->blk_sz;
-
-        csz = ZSTD_compressCCtx( zctx,
-          op->buf + fob->blk_sz, fob->blk_sz,
-          op->buf, *sz, 3 );
-
-        if ((csz > 0) && (csz < *sz)) {
-          op->compressed=csz;
-        } else {
-          op->compressed=0;
-          csz=0;
-        }
-
+      } else {
+        DBG("[%2d] Op failed (typ: read past EOF) %d:%s fd=%d %d/%d os=%zX",
+          fob->id, errno, strerror(errno), op->fd, *sz, fob->blk_sz,
+          op->offset );
       }
     }
 
-    DBG( "[%2d] %s op fd=%d sz=%zd, offset=%zd %ld:%ld %s=%d",
+    DBG( "[%2d] %s op fd=%d sz=%zd, offset=0x%zX %ld:%ld %s=%d",
       fob->id, fob->io_flags & O_WRONLY ? "write":"read",
       op->fd, fob->io_flags & O_WRONLY ? op->sz: fob->blk_sz,
       op->offset, fob->tail, fob->head,
@@ -278,7 +283,8 @@ int file_posixinit( struct file_object* fob ) {
   fob->close    = file_posixclose;
 
   fob->close_fd = close;
-  fob->fopendir = fdopendir;
+  fob->opendir = opendir;
+  fob->closedir = closedir;
   fob->readdir  = readdir;
 
   fob->truncate = file_posixtruncate;
