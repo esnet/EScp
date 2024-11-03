@@ -27,7 +27,7 @@
 // to something below that maximum. It must always be set below the configured
 // FD limit.
 
-#define FILE_STAT_COUNT 750
+#define FILE_STAT_COUNT 850
 #define FILE_STAT_COUNT_HSZ 2048
 #define FILE_STAT_COUNT_CC 16
 

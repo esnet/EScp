@@ -1,6 +1,7 @@
 use super::*;
 use std::sync::atomic::AtomicU64;
 use std::path::PathBuf;
+use std::sync::atomic::Ordering::SeqCst;
 
 static GLOBAL_FILEOPEN_COUNT: usize = 4; // # threads to use for opening files
 static GLOBAL_DIROPEN_COUNT: usize = 2;  // # Threads to iterate directory
@@ -545,7 +546,7 @@ fn iterate_dir_worker(  dir_out:  crossbeam_channel::Receiver<(PathBuf, PathBuf)
       continue;
     }
 
-    info!("iterate_dir_worker: iterate {combined_str}");
+    debug!("iterate_dir_worker: iterate {combined_str}");
 
     loop {
       let fi = unsafe { readdir( dir ) };
@@ -572,7 +573,7 @@ fn iterate_dir_worker(  dir_out:  crossbeam_channel::Receiver<(PathBuf, PathBuf)
       }
     }
 
-    let _ = GLOBAL_FILEOPEN_TAIL.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let _ = GLOBAL_FILEOPEN_TAIL.fetch_add(1, SeqCst);
     if unsafe{ closedir(dir) } != 0 {
       info!("iterate_dir_worker: error closing directory {p_str} {fi_str}");
     } else {
@@ -594,7 +595,7 @@ fn iterate_file_worker(
   let (mut direct_mode, mut recursive) = (true, false);
   let (open, close_fd);
   let mut exit_ready = false;
-  let id = GLOBAL_FILEOPEN_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+  let id = GLOBAL_FILEOPEN_ID.fetch_add(1, SeqCst);
 
   unsafe {
     if (*args.args).nodirect  { direct_mode = false; }
@@ -612,16 +613,16 @@ fn iterate_file_worker(
       Ok((p, f)) => { (prefix, filename) = (p, f); }
       Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
 
-        if GLOBAL_FILEOPEN_TAIL.load(std::sync::atomic::Ordering::SeqCst) ==
-           GLOBAL_FILEOPEN_CLEANUP.load(std::sync::atomic::Ordering::SeqCst) {
+        if GLOBAL_FILEOPEN_TAIL.load(SeqCst) ==
+           GLOBAL_FILEOPEN_CLEANUP.load(SeqCst) {
 
           if exit_ready == false {
-            _ = GLOBAL_FILEOPEN_MASK.fetch_or(1 << id, std::sync::atomic::Ordering::SeqCst);
+            _ = GLOBAL_FILEOPEN_MASK.fetch_or(1 << id, SeqCst);
             debug!("iterate_file_worker: Worker {} ready to exit", id);
             exit_ready = true;
           }
 
-          let mask = GLOBAL_FILEOPEN_MASK.load(std::sync::atomic::Ordering::SeqCst);
+          let mask = GLOBAL_FILEOPEN_MASK.load(SeqCst);
           if mask ==  ((1 << GLOBAL_FILEOPEN_COUNT)  - 1) {
             debug!("iterate_file_worker: All workers finished, exiting");
             break;
@@ -634,11 +635,17 @@ fn iterate_file_worker(
     }
 
     if exit_ready == true {
-      _ = GLOBAL_FILEOPEN_MASK.fetch_and(!(1 << id), std::sync::atomic::Ordering::SeqCst);
+      _ = GLOBAL_FILEOPEN_MASK.fetch_and(!(1 << id), SeqCst);
       debug!("iterate_file_worker: Worker {} is unready", id);
     }
 
-    let path = prefix.join(filename.clone());
+    let path = prefix.join(filename.clone()).canonicalize().unwrap();
+    if ! path.starts_with(prefix.clone()) {
+      info!("iterate_file_worker: Ignoring {:?}, outside of prefix {:?}",
+            path, prefix);
+      continue;
+    }
+
     c_str = CString::new(path.to_str().unwrap()).unwrap();
 
     unsafe {
@@ -646,14 +653,13 @@ fn iterate_file_worker(
 
       loop {
         if direct_mode {
-          // fd = open( c_str.as_ptr() as *const i8, (*args.args).flags | libc::O_DIRECT, mode );
-          fd = open( c_str.as_ptr(), (*args.args).flags | libc::O_DIRECT, mode );
+          fd = open(c_str.as_ptr(), (*args.args).flags | libc::O_DIRECT, mode);
           if (fd == -1) && (*libc::__errno_location() == 22) {
             direct_mode = false;
-            fd = open( c_str.as_ptr(), (*args.args).flags, mode );
+            fd = open(c_str.as_ptr(), (*args.args).flags, mode);
           }
         } else {
-          fd = open( c_str.as_ptr(), (*args.args).flags, mode );
+          fd = open(c_str.as_ptr(), (*args.args).flags, mode);
         }
 
         if fd == -1 {
@@ -685,7 +691,7 @@ fn iterate_file_worker(
 
         libc::S_IFDIR => {
           if recursive {
-            let _ = GLOBAL_FILEOPEN_CLEANUP.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let _ = GLOBAL_FILEOPEN_CLEANUP.fetch_add(1, SeqCst);
             _ = dir_in.send((prefix, filename));
           } else {
             info!("Ignoring directory {f} because recursive mode not set");
@@ -718,9 +724,9 @@ fn iterate_file_worker(
 
       }
 
-      let fname = path.to_str().unwrap();
+      let fname = filename.to_str().unwrap();
       if st.st_size > 0 {
-        let fino = 1+GLOBAL_FINO.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let fino = 1+GLOBAL_FINO.fetch_add(1, SeqCst);
         debug!("addfile:  {fname} fn={fino} sz={:?}", st.st_size);
 
         _ = msg_in.send( (fname.to_string(), fino, st) );
@@ -749,22 +755,17 @@ fn iterate_files ( flags: &EScp_Args,
                   fc_out: &crossbeam_channel::Receiver<(u64, u64, u32, u32)>
                  ) -> i64 {
 
-  // we use clean_path instead of path.canonicalize() because the engines are
-  // responsible for implementing there own view of the file system and we can't
-  // just plug rust's canonicalize into the engine's io routines.
-
-  // let dest_path = clean_path::clean(dest_path).into_os_string().into_string().unwrap();
   let msg_out;
 
   {
     // Spawn helper threads
     let (files_in, files_out) = crossbeam_channel::bounded(15000);
-    let (dir_in, dir_out) = crossbeam_channel::bounded(100000);
+    let (dir_in, dir_out) = crossbeam_channel::unbounded();
 
     let msg_in;
     (msg_in, msg_out) = crossbeam_channel::bounded(400);
 
-    _ = GLOBAL_FILEOPEN_CLEANUP.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    _ = GLOBAL_FILEOPEN_CLEANUP.fetch_add(1, SeqCst);
 
     for j in 0..GLOBAL_FILEOPEN_COUNT{
       let nam = format!("file_{}", j as i32);
@@ -811,13 +812,12 @@ fn iterate_files ( flags: &EScp_Args,
 
   let start = std::time::Instant::now();
 
-  let _ = GLOBAL_FILEOPEN_TAIL.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+  let _ = GLOBAL_FILEOPEN_TAIL.fetch_add(1, SeqCst);
 
   loop {
     if !flags.quiet {
 
       let a = unsafe { human_write( files_total, true )};
-
       let mut rate = "0";
 
       if files_total >= 1 {
@@ -835,10 +835,7 @@ fn iterate_files ( flags: &EScp_Args,
       if bytes_now > 0 {
 
         let duration = start.elapsed();
-
         let rate = bytes_now as f32/duration.as_secs_f32();
-
-
         let units = if flags.bits { "bits" } else { "B" };
 
         let tmp = unsafe { human_write(rate as u64, !flags.bits) };

@@ -383,7 +383,7 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
                 continue;
               }
               info!("Got an error opening file {:?} {:?}",
-                    filename, err);
+                    full_path, err);
               return;
             }
 
