@@ -1,4 +1,5 @@
 #![allow(non_snake_case, unused_imports, dead_code, non_camel_case_types, non_upper_case_globals)]
+
 include!("escp/bindings.rs");
 
 mod license;

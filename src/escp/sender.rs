@@ -1,4 +1,5 @@
 use super::*;
+use std::mem::MaybeUninit;
 use std::sync::atomic::AtomicU64;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering::SeqCst;
@@ -973,7 +974,9 @@ fn iterate_files ( flags: &EScp_Args,
 
       if buf.len() > 320 {
 
-        let mut dst:[u8; 49152] = [0; 49152];
+        let dst:[MaybeUninit<u8>; 49152] =  [{ std::mem::MaybeUninit::uninit() }; 49152 ];
+        let mut dst = unsafe { std::mem::transmute::<_, [u8; 49152]>(dst) };
+
         let res = zstd_safe::compress( &mut dst, buf, 3 );
 
         let compressed_sz = res.expect("Compression failed");
