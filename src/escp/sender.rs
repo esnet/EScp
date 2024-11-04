@@ -814,8 +814,11 @@ fn iterate_files ( flags: &EScp_Args,
 
   let _ = GLOBAL_FILEOPEN_TAIL.fetch_add(1, SeqCst);
 
+  let mut last_update = std::time::Instant::now();
+
   loop {
-    if !flags.quiet {
+    if !flags.quiet && (last_update.elapsed().as_secs_f32() > 0.15) {
+      last_update = std::time::Instant::now();
 
       let a = unsafe { human_write( files_total, true )};
       let mut rate = "0";
@@ -855,7 +858,6 @@ fn iterate_files ( flags: &EScp_Args,
 
 
     loop {
-
       let (fi, fino, st);
 
       if !did_init {
@@ -863,14 +865,10 @@ fn iterate_files ( flags: &EScp_Args,
         did_init = true;
       }
 
-
-      match msg_out.recv_timeout(std::time::Duration::from_micros(20)) {
+      match msg_out.recv_timeout(std::time::Duration::from_micros(97)) {
         Ok((a,b,c)) => { (fi, fino, st) = (a,b,c); }
         Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
-          if counter > 0 {
-            // Go ahead and send whatever we have now
-            break;
-          }
+
           if file_check(
             fc_hash,
             std::time::Instant::now() + std::time::Duration::from_millis(2),
@@ -881,8 +879,10 @@ fn iterate_files ( flags: &EScp_Args,
             thread::sleep(std::time::Duration::from_millis(2));
             process::exit(1);
           }
-          continue;
+
+          break;
         }
+
         Err(_) => {
           debug!("iterate_files: Got an abnormal from msg_out.recv, assume EOQ");
           do_break = true;
@@ -890,12 +890,12 @@ fn iterate_files ( flags: &EScp_Args,
         }
       }
 
-      files_total += 1;
-      bytes_total += st.st_size;
-
       vec.push_back( (fino, fi, st) );
 
+      files_total += 1;
+      bytes_total += st.st_size;
       counter += 1;
+
       if counter > counter_max {
         counter_max = 300;
         break;
@@ -919,7 +919,6 @@ fn iterate_files ( flags: &EScp_Args,
         if *a>0 {
           files_sent+=1;
         }
-
 
         let name = Some(builder.create_string((*b).as_str()));
         if flags.preserve {
@@ -974,27 +973,23 @@ fn iterate_files ( flags: &EScp_Args,
 
       if buf.len() > 320 {
 
-        let mut dst:[u8; 16384] = [0; 16384];
+        let mut dst:[u8; 49152] = [0; 49152];
         let res = zstd_safe::compress( &mut dst, buf, 3 );
 
         let compressed_sz = res.expect("Compression failed");
         let hdr = to_header( compressed_sz as u32, msg_file_spec | msg_compressed );
-        debug!("iterate_files: Sending compressed meta for {}/{}, size {}/{}", counter, files_total, buf.len(), compressed_sz);
-        unsafe {
-          meta_send( dst.as_ptr() as *mut i8, hdr.as_ptr() as *mut i8, compressed_sz as i32 );
-        }
-
+        info!("iterate_files: Sending compressed meta for {}/{}, size {}/{} #={}",
+               counter, files_total, buf.len(), compressed_sz, iterations);
+        unsafe{ meta_send(dst.as_ptr() as *mut i8, hdr.as_ptr() as *mut i8, compressed_sz as i32) };
       } else {
         let hdr = to_header( buf.len() as u32, msg_file_spec );
 
-        debug!("iterate_files: Sending file meta data for {}/{}, size is {}", counter, files_total, buf.len());
-        unsafe {
-          meta_send( buf.as_ptr() as *mut i8, hdr.as_ptr() as *mut i8, buf.len() as i32 );
-        }
-
+        debug!("iterate_files: Sending file meta data for {}/{}, size is {} #={}",
+               counter, files_total, buf.len(), iterations);
+        unsafe{ meta_send(buf.as_ptr() as *mut i8, hdr.as_ptr() as *mut i8, buf.len() as i32) };
       }
-      counter -= iterations;
 
+      counter -= iterations;
     }
 
     if do_break {
