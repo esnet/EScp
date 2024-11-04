@@ -974,8 +974,10 @@ fn iterate_files ( flags: &EScp_Args,
 
       if buf.len() > 320 {
 
-        let dst:[MaybeUninit<u8>; 49152] =  [{ std::mem::MaybeUninit::uninit() }; 49152 ];
+        let dst:[MaybeUninit<u8>; 49152] = [{ std::mem::MaybeUninit::uninit() }; 49152 ];
         let mut dst = unsafe { std::mem::transmute::<_, [u8; 49152]>(dst) };
+
+        // let dst = Vec::<u8>::with_capacity(49152);
 
         let res = zstd_safe::compress( &mut dst, buf, 3 );
 

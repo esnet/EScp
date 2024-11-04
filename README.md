@@ -87,7 +87,7 @@ Options:
   -i, --identity <IDENTITY>    IDENTITY pubkey for SSH auth
   -l, --limit <LIMIT>          LIMIT/thread (bytes/sec) using SO_MAX_PACING_RATE
   -p, --preserve               Preserve source attributes (TODO)
-  -C, --compression            Compression
+  -C, --compress               Enable Compression
       --sparse                 Sparse file support, use with compression
   -r, --recursive              Copy recursively
   -o <SSH_OPTION>              SSH_OPTION to SSH
@@ -186,10 +186,7 @@ KNOWNBUGS
       - /tmp/escp.log.receiver
   * Dummy engine can only be used with a few files
   * You can't disable encryption
-  * CLI parsing sometimes requires a file/host argument even when it shouldn't
   * Check https://github.com/ESnet/EScp/issues
-  * Compression is not enabled in this release
-
 
 TUNING
 ======
@@ -363,36 +360,37 @@ socket over TCP using socat:
 ```
 
 Things to watch out for with debug logs:
-  1) It will slow down EScp, in some cases noticably as all RUST based
-     events are written out sequentially.
+  1) It will slow down EScp, in some cases noticably. This is espcially
+     apparent with RUST based events which block until written.
   2) libDTN events are logged to a circular buffer. This buffer can overflow
-     and if an overflow occurs the oldest log entries will be deleted.
+     and if an overflow occurs the oldest log entries will be overwritten.
   3) libDTN logs are not timestamped, although they are sequential. The
      timestamp comes from the RUST backend when the message is pulled off
-     the queue.
+     the queue. This means that a libDTN message can show up before 
+     an EScp message when in reality the EScp message occured before.
 
 
 SECURITY
 ========
 
 EScp works by establishing an SSH session to a remote host (using system SSH
-binary) and then starting EScp on the receiver. After exchanging session
-information through the SSH channel, the sender connects the DATA channel
-using the port specified by receiver. All data (outside of SSH) is encrypted
-with AES128-GCM.
+binary) and then starting EScp on the receiver. After exchanging keys through
+the SSH channel, the sender connects the DATA channel using the port specified
+by receiver. All data (outside of SSH) is encrypted with AES128-GCM.
 
-The on-the-wire format consists of a series of tags with 16 bytes identifying
-what the data is, followed by a payload, followed by a 16 byte HMAC, as shown
-below:
+The on-the-wire format is shown below:
 
 ```
-  /*  ---------+--------+----+----+--------------+----------\
-   *  hdr_type | magic  | sz | IV | Payload      | HMAC     |
-   *    2      |   2    | 4  |  8 | sz - 32      |  16      |
-   *          AAD                 | Encrypted    | Auth tag |
-   *  ---------+------------------+--------------+----------/
+  /*  ---+--------------+----------\
+   *  IV | Payload      | HMAC     |
+   *   8 | <variable>   |  16      |
+   * AAD | Encrypted    | Auth tag |
+   *  ---+--------------+----------/
    */
 ```
+
+There are two data types, metadata and file, which is inferred from the IV.
+Each datatype specifies the length of the payload.
 
 Internally EScp uses AES-GCM using the `ISA-L_crypto` library. The
 implementation follows NIST 800-38D guidelines and has not been peer
@@ -502,12 +500,12 @@ Changes from 0.7.1 to 0.8.0 (TBD):
   * Change to On-Wire format; Drops un-needed crypto wrapper. Change other
     message headers.
   * Add Compression (Using zstd)
-    - use --compression flag for files
+    - use --compress flag or -C
     - automatic compress large metadata chunks (file information/verification)
-  * Add Sparse File support
+  * Add Sparse File support (--sparse)
   * Add receiver timeout + keepalive (Minimize Zombie Receivers)
   * Session Init Changes
-  * Add Preserve support
+  * Add Preserve support (just for files)
   * Only log to file/syslog if specified on command line
   * Improve counters on receivers:
     - `bytes_network`    shows bytes transmitted over the wire
@@ -516,7 +514,10 @@ Changes from 0.7.1 to 0.8.0 (TBD):
     - Summary written to receiver log (if logging to a file/syslog)
   * Change how sender/receiver negotiate session termination
     - Removes session close delays and better file verification
-  * Remove a possible race condition and delay on file iteration
+  * Fix race condition and/or delay on file iteration
+  * Fix directory traversal and close zero bytes file descriptors
+  * Check that files don't leave prefix
+  * Update how progress bar is displayed
 
 Changes from 0.7.0 to 0.7.1 (20 June 2024):
   * Checksum feature enabled

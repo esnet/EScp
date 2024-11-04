@@ -415,7 +415,6 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
       }
     }
 
-
     VRFY ( buf != NULL, "failed assertion, metabuf!=null" );
 
     int h = head % (METABUF_SZ/64);

@@ -216,7 +216,7 @@ struct EScp_Args {
    preserve: bool,
 
    /// Compression
-   #[arg(short='C', long)]
+   #[arg(short='C', long="compress")]
    compression: bool,
 
    /// Sparse file support, use with compression.
