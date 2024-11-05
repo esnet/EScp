@@ -400,16 +400,30 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
               debug!("Preserve: fn={} mode={} uid={} gid={} atim_s={} atim_ns={}",
                 entry.fino(), entry.mode(), entry.uid(), entry.gid(),
                 entry.atim_sec(), entry.atim_nano() );
-              if res != std::ptr::null_mut() {
-                info!("Preserve encountered an error");
+              if !res.is_null() {
+                let err = CStr::from_ptr(
+                  libc::strerror( *libc::__errno_location())).to_str().unwrap()
+                  ;
+                info!("Preserve error on {full_path}; {err} {:?}", res);
               }
             }
 
             debug!("Add file {full_path}:{fino} with {:#X} sz={sz} fd={fd}",
                    (*args).flags, fino=entry.fino(), sz=entry.sz() );
 
-            file_addfile( entry.fino(), fd, entry.sz(),
-              atim_sec, atim_nano, mtim_sec, mtim_nano );
+            loop {
+              let res = file_addfile( entry.fino(), fd, entry.sz(),
+                          atim_sec, atim_nano, mtim_sec, mtim_nano );
+              if res.is_null() {
+                let tf = get_threads_finished();
+                if tf > 0 {
+                  info!("Transfer Aborted? Exiting because receivers exited");
+                  return;
+                }
+              } else {
+                break;
+              }
+            }
             filecount += 1;
 
             break;

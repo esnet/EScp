@@ -1395,6 +1395,10 @@ int64_t get_files_total( struct dtn_args* dtn ) {
   return atomic_load( &dtn->files_closed );
 }
 
+uint64_t get_threads_finished() {
+  return atomic_load( &threads_finished );
+}
+
 void tx_init( struct dtn_args* args ) {
   dtn_init();
 

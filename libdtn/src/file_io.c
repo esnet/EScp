@@ -103,6 +103,7 @@ static inline uint64_t xorshift64s(uint64_t* x) {
 }
 
 void file_completetransfer() {
+    NFO("file_completetransfer() is called");
     atomic_fetch_add( &transfer_complete, 1 );
 }
 
@@ -145,6 +146,7 @@ struct file_stat_type* file_addfile( uint64_t fileno, int fd, int64_t file_sz,
   struct file_stat_type fs = {0};
   int i;
   uint64_t zero = 0;
+  int count=0;
 
   uint64_t slot = fileno;
   slot = xorshift64s(&slot);
@@ -161,6 +163,9 @@ struct file_stat_type* file_addfile( uint64_t fileno, int fd, int64_t file_sz,
 
     if ( (fileno - ft) < (FILE_STAT_COUNT+50) )
       break;
+
+    if (count++ > 100)
+      return NULL;
 
     ESCP_DELAY(10);
   }

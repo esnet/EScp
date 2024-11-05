@@ -1945,6 +1945,9 @@ extern "C" {
 extern "C" {
     pub fn human_write(number: u64, is_bytes: bool) -> *mut ::core::ffi::c_char;
 }
+extern "C" {
+    pub fn get_threads_finished() -> u64;
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct fc_info_struct {

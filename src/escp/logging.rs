@@ -35,7 +35,8 @@ impl log::Log for MyLogger {
     // use chrono::prelude::*;
     let now = chrono::Local::now();
     unsafe {
-      let m = format!("{} [{}] {}\n", now.format("%y%m%d.%H%M%S.%6f").to_string(), record.level(), record.args());
+      let m = format!("{} [{}] {}\n", now.format("%y%m%d.%H%M%S.%6f"),
+                      record.level(), record.args());
       let msg = CString::new( m.as_str() ).unwrap();
       let res = libc::write( logger_fd, msg.as_ptr() as *const libc::c_void, m.len() );
       if res < 1 {

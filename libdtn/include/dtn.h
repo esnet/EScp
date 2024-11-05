@@ -188,6 +188,7 @@ int64_t get_bytes_io( struct dtn_args* dtn );
 int64_t tx_getclosed();
 
 char* human_write(uint64_t number, bool is_bytes);
+uint64_t get_threads_finished();
 
 struct fc_info_struct {
   uint64_t state;

@@ -185,8 +185,9 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
         _ = serr.read_to_end( &mut b );
         let s = String::from_utf8_lossy(&b);
         error!("SSH to remote returned an error: {}", s.trim() );
-        eprint!("Remote server returned an error '{}'\n{}\n", s.trim(),
-          "Is 𝘌𝘚𝘤𝘱 installed on remote host?");
+        eprint!("Remote server returned an error '{}'\n\
+                 Is 𝘌𝘚𝘤𝘱 installed on remote host?\n", s.trim()
+               );
         return
       }
     }
@@ -264,13 +265,12 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       fc_worker(fc_in)).unwrap();
   }
 
-  let mut files_total = 0;
-  let bytes_total = iterate_files( flags, safe_args, dest.to_string(),
-                                   &fi,
-                                   &mut files_total,
-                                   &mut fc_hash,
-                                   &mut files_ok,
-                                   &fc_out );
+  let (bytes_total, files_total) = iterate_files( 
+    flags, safe_args, dest.to_string(),
+    &fi,
+    &mut fc_hash,
+    &mut files_ok,
+    &fc_out );
   debug!("Finished iterating files, total bytes={bytes_total}");
 
   if bytes_total <= 0 {
@@ -617,7 +617,7 @@ fn iterate_file_worker(
         if GLOBAL_FILEOPEN_TAIL.load(SeqCst) ==
            GLOBAL_FILEOPEN_CLEANUP.load(SeqCst) {
 
-          if exit_ready == false {
+          if !exit_ready {
             _ = GLOBAL_FILEOPEN_MASK.fetch_or(1 << id, SeqCst);
             debug!("iterate_file_worker: Worker {} ready to exit", id);
             exit_ready = true;
@@ -635,7 +635,7 @@ fn iterate_file_worker(
       Err(_) => { debug!("iterate_file_worker: !files_out, worker end."); return; }
     }
 
-    if exit_ready == true {
+    if exit_ready {
       _ = GLOBAL_FILEOPEN_MASK.fetch_and(!(1 << id), SeqCst);
       debug!("iterate_file_worker: Worker {} is unready", id);
     }
@@ -731,7 +731,12 @@ fn iterate_file_worker(
         debug!("addfile:  {fname} fn={fino} sz={:?}", st.st_size);
 
         _ = msg_in.send( (fname.to_string(), fino, st) );
-        file_addfile( fino, fd, st.st_size, 0, 0, 0, 0 );
+        loop {
+          let res = file_addfile( fino, fd, st.st_size, 0, 0, 0, 0 );
+          if !res.is_null() {
+            break;
+          }
+        }
       } else {
         debug!("addfile:  {fname} fn=NONE sz=NIL");
         _ = msg_in.send( (fname.to_string(), 0, st) );
@@ -750,11 +755,10 @@ fn iterate_files ( flags: &EScp_Args,
                     args: logging::dtn_args_wrapper,
                dest_path: String,
                 mut sout: &std::fs::File,
-                      ft: &mut u64,
                  fc_hash: &mut HashMap<u64, (u64, u32, u32)>,
                 files_ok: &mut u64,
                   fc_out: &crossbeam_channel::Receiver<(u64, u64, u32, u32)>
-                 ) -> i64 {
+                 ) -> (i64,u64) {
 
   let msg_out;
 
@@ -904,7 +908,7 @@ fn iterate_files ( flags: &EScp_Args,
     }
 
     if counter > 0 {
-      vec.make_contiguous().sort_by_key(|k| (*k).0);
+      vec.make_contiguous().sort_by_key(|k| k.0);
 
       let mut v = Vec::new();
       let mut iterations = 0;
@@ -983,7 +987,7 @@ fn iterate_files ( flags: &EScp_Args,
 
         let compressed_sz = res.expect("Compression failed");
         let hdr = to_header( compressed_sz as u32, msg_file_spec | msg_compressed );
-        info!("iterate_files: Sending compressed meta for {}/{}, size {}/{} #={}",
+        debug!("iterate_files: Sending compressed meta {}/{}, size {}/{} #{}",
                counter, files_total, buf.len(), compressed_sz, iterations);
         unsafe{ meta_send(dst.as_ptr() as *mut i8, hdr.as_ptr() as *mut i8, compressed_sz as i32) };
       } else {
@@ -1003,10 +1007,8 @@ fn iterate_files ( flags: &EScp_Args,
     }
   }
 
-  *ft = files_total;
-
   debug!("iterate_files: is finished");
-  bytes_total
+  (bytes_total, files_total)
 }
 
 
