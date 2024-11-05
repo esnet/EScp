@@ -1,9 +1,7 @@
 Reporting Vulnerabilities
 =========================
 
-```
-F U CN READ THS, U ARE A 1337 HAXOR. YAH! 
-```
+`F U CN READ THS, U ARE A 1337 HAXOR. YAH!`
 
 *But you don't **need** to be a leet haxor to report bugs*
 
