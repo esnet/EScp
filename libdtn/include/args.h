@@ -51,15 +51,14 @@ extern uint64_t verbose_logging;
 #define VRFY(x, a, ...) if (!(x))  {                       \
   char b[1024];                                            \
   if (errno) {                                             \
-    snprintf(b, 1000, "[ERR] " a " [%s:%d]: %s\n",       \
+    snprintf(b, 1000, "[ERR] " a " [%s:%d]: %s\n",         \
       ##__VA_ARGS__, __FILE__, __LINE__, strerror(errno)); \
   } else {                                                 \
-    snprintf(b, 1000, "[ERR] " a " [%s:%d]\n",            \
+    snprintf(b, 1000, "[ERR] " a " [%s:%d]\n",             \
       ##__VA_ARGS__, __FILE__, __LINE__);                  \
   }                                                        \
   dtn_error(b);                                            \
-  usleep(1500000);                                          \
-  abort();            \
+  usleep(1500000);                                         \
   if (verbose_logging) abort();                            \
   exit(-1);                                                \
 }
