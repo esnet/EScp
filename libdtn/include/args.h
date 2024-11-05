@@ -15,10 +15,10 @@
 #include <syslog.h>
 
 // Delay for x time in milli-seconds.
-#define ESCP_DELAY(x) {                                     \
-  struct timespec g = {0};                                  \
-  g.tv_nsec = x*1000*1000;                                  \
-  clock_nanosleep(CLOCK_MONOTONIC_COARSE, 0, &g, NULL);     \
+#define ESCP_DELAY(x) {               \
+  struct timespec g = {0};            \
+  g.tv_nsec = x*1000*1000;            \
+  nanosleep(&g, NULL);                \
 }
 
 #define THREAD_COUNT  32
