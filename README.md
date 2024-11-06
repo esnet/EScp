@@ -42,13 +42,14 @@ In any event, while EScp has successfully transferred PBs of data and hundreds
 of millions of files. It may fail for you! If you run into a case where EScp
 is failing, but SCP is not not, please create a bug report. At this point in
 the EScp software life-cycle, it should be transferring files safely and
-successfully.
+successfully, although there are still a few differences. For instance, EScp
+won't transfer symlinks and it only preserves attributes on files.
 
 If you found this software useful and/or have any questions/requests, please
-reach out. The primary author, Charles Shiflett, can be reached by email
-using the first letter of the first name followed by the full lastname at
-the ESnet domain. Bugs/Issues are also appreciated and should be easy to
-report using the Github Issues feature.
+reach out. The primary author, see AUTHOR, can be reached using the first
+letter of the first name followed by the full lastname @ ESnet domain.
+Bugs/Issues are appreciated and should be reported using the Github Issues
+feature.
 
 How EScp is different from SCP
 ==============================
@@ -498,8 +499,8 @@ Send/Receive (1.0 Feature):
 ```
 
 
-HARD LIMITS
-===========
+DESIGN LIMITS
+=============
 
  * Files are limited to 2^64 bytes
  * A max of 2^56 files can be transferred per session.
