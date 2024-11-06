@@ -1,9 +1,5 @@
-EScp 0.7
+EScp 0.8
 ========
-
-ESCP 0.7 is the second major release of EScp; EScp 0.6 was based on Python
-and C. EScp 0.7 is a re-write of the Python component in RUST, which
-improves performance, stability, and eases platform distribution.
 
 EScp is an application for high speed data transfer. This version has been
 tested across the WAN at ~200 gbit/s at SC23, disk-to-disk, limited by NIC. It
@@ -16,7 +12,7 @@ SCP. Some features include:
   * AES-GCM 128 over the wire encryption, optimized for performance
   * Authentication to remote systems through SSH
   * Swappable I/O Engines ( Currently: DUMMY & POSIX )
-  * Block based interface to transfering data
+  * Block based interface to transfering data (API expected in 0.9)
   * Compression (using zstd)
   * Checksums, Direct I/O, API's.
 
@@ -32,33 +28,69 @@ you would like to use EScp.
 RELEASE NOTES
 =============
 
-EScp is tested on Linux and it has successfully transferred PBs of data and
-hundreds of millions of files. By default, encryption and file checksumming
-are enabled. It is thought to be a reliable transfer protocol, however, the
-fact that EScp is not listed as a 1.x release is meant to imply that danger
-could lurk below the surface.
+EScp 0.8 adds feature parity with most scp flags, improves session handling,
+and fixes a number of edge cases around things like directory handling, zero
+byte files, and so on. Overall the result should be further improvents to
+stability, performance, and ease of use.
 
-File transfers default to `O_DIRECT` and then switch to indirect mode if
-that fails on a target/source filesystem, in some cases you may want to
-specify indirect mode on the command line.
+**WARNING:** This software is in development. If you are using a *tagged*
+release, for instance, 0.8.0, it has passed a number of tests to verify that
+the application works as the developer expects. If you are using the latest
+git version expect that things will break.
 
-The stable release is the latest *tagged* release, for instance, 0.7.0. If you
-are not participating in the development of EScp, you are strongly advised to
-use a tagged release. Known issues (if any) will be tracked on GitHub at
-https://github.com/ESnet/EScp. The 0.7 branch is incompatible with prior
-releases.
-
-The tagged releases have been tested and should work under most conditions,
-however, error messages are not always handled gracefully. Check the logs
-on *both* the client and receiver. If you enabled verbose logging search for
-ERROR. If you find that EScp is still not working, please file a bug
-report.
+In any event, while EScp has successfully transferred PBs of data and hundreds
+of millions of files. It may fail for you! If you run into a case where EScp
+is failing, but SCP is not not, please create a bug report. At this point in
+the EScp software life-cycle, it should be transferring files safely and
+successfully.
 
 If you found this software useful and/or have any questions/requests, please
-reach out.
+reach out. The primary author, Charles Shiflett, can be reached by email
+using the first letter of the first name followed by the full lastname at
+the ESnet domain. Bugs/Issues are also appreciated and should be easy to
+report using the Github Issues feature.
 
-The conf file, `/etc/escp.conf`, is a YAML file. At present it has only
-been tested with the following parameters (change the values for your system):
+How EScp is different from SCP
+==============================
+
+After initiating a transfer with EScp, system SSH is invoked to connect to the
+remote host, however, unlike SCP, it just uses SSH to spawn a receiver and
+transfer session keys. Once complete, EScp connects to the EScp service on the
+remote host, typically using TCP port 1232-42 (chooses first open port).
+
+Once connected it encrypts all communications using AES-GCM-128 and the session
+keys from earlier. Because EScp implements it's own encryption protocol, it is
+able to optimize this to be fast, as well as configure the TCP ports for long
+haul data transmission. This enables EScp to be orders of magnitude faster than
+SCP.
+
+All transfers are encrypted, and this behaviour is not possible to disable.
+By default, the sender computes a checksum when reading the file. The receiver
+computes a checksum when writing the file and sends that checksum to the
+sender, which the sender then verifies. While the checksum is not cryptographic
+in nature, between network encryption and file checksumming, the protocol is
+thought to securely and reliably copy data.
+
+As EScp is a performance oriented transfer tool, all files default to
+`O_DIRECT` and then switch to indirect mode if that fails on a target/source
+filesystem. In rare cases, `O_DIRECT` can actually make performance worse
+and you may need to disable this feature.
+
+EScp uses multiple I/O threads with one TCP stream per thread. You may
+specify the number of I/O threads via the CLI. There are also threads that
+iterate directories/files, this is so that EScp can take advantage of
+parallelism available in your file system and on your CPU. This allows EScp
+to scale transfer performance with your CPU, as a single thread/core is
+limited in how much data it can process.
+
+Logging on EScp is different from SCP. Please see DEBUGGING for details on
+logging. Additionally, as this software is still in-development, not all
+error messages bubble-up correctly and you may need to enable logging to
+help to understand why something is not working.
+
+EScp does support a conf-file for some options. The conf file,
+`/etc/escp.conf`, is a YAML file. An example of some of the things you can
+set is shown below:
 
 ```
 cpumask: FFFF
@@ -330,7 +362,7 @@ Your first step is to enable verbose logs;
 ```
 
 If this does not resolve your issue, consider reaching out or attempting
-to debug using system debuggers. Typically this involves compiling code
+to debug using system debuggers. If debugging you may need to compile
 with debug symbols (the default unless --release is specified), and then
 running escp through a debugger. As an example:
 
@@ -367,7 +399,7 @@ Things to watch out for with debug logs:
      and if an overflow occurs the oldest log entries will be overwritten.
   3) libDTN logs are not timestamped, although they are sequential. The
      timestamp comes from the RUST backend when the message is pulled off
-     the queue. This means that a libDTN message can show up before 
+     the queue. This means that a libDTN message can show up before
      an EScp message when in reality the EScp message occured before.
 
 
@@ -382,11 +414,11 @@ by receiver. All data (outside of SSH) is encrypted with AES128-GCM.
 The on-the-wire format is shown below:
 
 ```
-  /*  ---+--------------+----------\
-   *  IV | Payload      | HMAC     |
-   *   8 | <variable>   |  16      |
-   * AAD | Encrypted    | Auth tag |
-   *  ---+--------------+----------/
+  /* /-----+--------------+----------\
+   * |  IV | Payload      | HMAC     |
+   * |   8 | <variable>   | 16       |
+   * | AAD | Encrypted    | Auth tag |
+   * \-----+--------------+----------/
    */
 ```
 
@@ -405,35 +437,23 @@ DEV NOTES
 ```
 Compression:
 
-  EScp supports compression, however:
-
-  We use zstd simplified API. It would be better to use the streaming API
-  (to conserve state between frames), but it requires testing that our input
-  state matches our output state. At a very basic level, we don't do
-  compression if our compressed data is larger than our un-compressed data.
-
-  If we took our existing design and switched to streaming it, we would need
-  to handle lossing state between the compressor and decompressor.
+  EScp supports compression through the zstd simplified API. It would be better
+  to use the streaming API to conserve state between frames, and thereby reduce
+  over the wire data.
 
 Checksums:
 
-  Write checksums to file? We don't right now because there is no tool to do
-  anything with those checksums, but... Maybe we should support the option?
-  The checksums are not cryptographic in nature.
+  It would be nice to have an option to write checksums for a transfer to a
+  file and/or support alternative checksums.
 
 Sparse Files:
 
-  Currently, the receiver checks to see if a block of data contains all zeroes,
-  and if it does it then skips the block (assuming engine support). In theory,
-  it would be better if the sender just didn't send the block if it contains
-  all zeroes, but you would still need some way to tell the reveiver not to
-  wait on the data. Obviously, that is possible, but not sure it is worth the
-  complexity for that particular use case.
+  Sparse files are a receiver feature, which is backwards. It makes more
+  sense to just not send the block from the get-go.  This is ameliorated
+  by compression, however, still bad. We could also plug-into OS support
+  for sparse files and avoid reading the data in the first place.
 
-  Also, while EScp allows sparse file support without compression, doing so
-  probably doesn't make much sense.
-
-Error Messages:
+Error Messages (Expected in 0.9):
 
   VRFY macro is used to terminate execution if the receiver runs into a
   condition in which it is impossible to continue. That error message should
@@ -441,20 +461,39 @@ Error Messages:
 
 NUMA Pinning:
 
-  It would be nice to do NUMA pinning automatically. The library I foound to
-  probe our hardware resources had too many dependencies, but, if a light
-  weight method to do that existed, that would be interesting.
+  It would be nice to do NUMA pinning automatically. I attempted this in
+  an earlier revision, but the library I was using was too heavy-weight and
+  it seemed not worth the benefit. It would be nice to revisit this.
 
-SHM Engine:
+SHM Engine/Block Based API (Expected in 0.9):
 
   Earlier versions of EScp contained a SHM engine to allow applications to
   write directly to an EScp transfer stream. This engine was overly
   complicated because of the Python Layer, but, it should now be possible to
   do in a relatively light weight fashion.
 
-Test Harness:
+Test Harness (Expected in 0.9):
 
-  Testing right now is against a series of data sets and manual.
+  Testing right now is against a series of data sets and is manual. I created
+  a stub test-harness, and this needs to be expanded.
+
+Very Small Files in control stream (Expected in 0.9)
+
+"-3" Mode (Try for 0.9, otherwise 1.0)
+
+Profiler/Tracer (Expected in 0.9):
+
+  Optional functionality that can be used to debug performance issues
+  (both internal to the software and external, like disk/network).
+
+Local Copy (1.0 Feature):
+
+  Support High Performance local copy
+
+Send/Receive (1.0 Feature):
+
+  Currently EScp only supports transfers from client to server, should
+  support both directions.
 
 ```
 
@@ -496,7 +535,7 @@ SHA256                                                            NAME
 c91d47a3b0c6578e7a727af26700dabd79e0acbf0db7eeffbf3151b48980b8a6  EScp-0.7.0.zip
 ```
 
-Changes from 0.7.1 to 0.8.0 (TBD):
+Changes from 0.7.1 to 0.8.0 (07 Nov 2024):
   * Breaks compatability with previous versions
   * Change to On-Wire format; Drops un-needed crypto wrapper. Change other
     message headers.
@@ -519,6 +558,8 @@ Changes from 0.7.1 to 0.8.0 (TBD):
   * Fix directory traversal and close zero bytes file descriptors
   * Check that files don't leave prefix
   * Update how progress bar is displayed
+  * Fix how empty files are handled
+  * Long delays unschedule thread
 
 Changes from 0.7.0 to 0.7.1 (20 June 2024):
   * Checksum feature enabled

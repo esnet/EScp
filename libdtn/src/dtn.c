@@ -602,8 +602,8 @@ int64_t network_send (
       VRFY ( !(knob->iv_incr & (1UL<<61)), "IV exceeded" );
 
       /*  /-----+--------------+----------\
-       *  | IV  | Payload      | HMAC     |
-       *  | 8   | sz - 32      | 16       |
+       *  |  IV | Payload      | HMAC     |
+       *  |   8 | < VARIABLE > | 16       |
        *  | AAD | Encrypted    | Auth tag |
        *  \-----+--------------+----------/
        */
