@@ -1,4 +1,5 @@
 use super::*;
+use std::mem::MaybeUninit;
 
 fn start_receiver( args: logging::dtn_args_wrapper ) {
   debug!("start_receiver started");
@@ -275,10 +276,19 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
             });
           builder.finish( bu, None );
           let buf = builder.finished_data();
-          let hdr = to_header( buf.len() as u32, msg_file_stat );
-          debug!("fc: Sending fc_state data for {} files, size is {}", v.len(), buf.len());
+
+          let dst:[MaybeUninit<u8>; 49152] = [{ std::mem::MaybeUninit::uninit() }; 49152];
+          let mut dst = unsafe { std::mem::transmute::<_, [u8; 49152]>(dst) };
+
+          let res = zstd_safe::compress( &mut dst, buf, 3 );
+          let compressed_sz = res.expect("Compression failed");
+
+          let hdr = to_header( compressed_sz as u32, msg_file_stat );
+
+          debug!("fc: Sending fc_state data for {} files, size is {}/{compressed_sz}",
+                 v.len(), buf.len());
           unsafe {
-            meta_send( buf.as_ptr() as *mut i8, hdr.as_ptr() as *mut i8, buf.len() as i32 );
+            meta_send( dst.as_ptr() as *mut i8, hdr.as_ptr() as *mut i8, compressed_sz as i32 );
           }
           last_send = std::time::Instant::now();
           did_init = false;
@@ -302,7 +312,9 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
     let mut c = unsafe { slice::from_raw_parts(ptr.add(16), sz as usize).to_vec() };
 
     if (t & msg_compressed) == msg_compressed {
-      let mut dst:[u8; 131072] = [0; 131072];
+      let dst:[MaybeUninit<u8>; 131072] = [{ std::mem::MaybeUninit::uninit() }; 131072];
+      let mut dst = unsafe { std::mem::transmute::<_, [u8; 131072]>(dst) };
+
       let res = zstd_safe::decompress(dst.as_mut_slice(), c.as_mut_slice());
       let decompressed_sz = res.expect("decompress failed");
       c = Vec::from(dst);

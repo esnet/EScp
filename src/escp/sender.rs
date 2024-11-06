@@ -265,7 +265,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       fc_worker(fc_in)).unwrap();
   }
 
-  let (bytes_total, files_total) = iterate_files( 
+  let (bytes_total, files_total) = iterate_files(
     flags, safe_args, dest.to_string(),
     &fi,
     &mut fc_hash,
@@ -273,7 +273,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
     &fc_out );
   debug!("Finished iterating files, total bytes={bytes_total}");
 
-  if bytes_total <= 0 {
+  if (bytes_total <= 0) && (files_total <= 0) {
     eprintln!("Nothing to transfer, exiting.");
     process::exit(1);
   }
@@ -296,7 +296,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
         thread::sleep(std::time::Duration::from_millis(2));
         process::exit(1);
       }
-   }
+    }
 
     let bytes_now = unsafe { get_bytes_io( args ) };
     if (last_update.elapsed().as_secs_f32() > 0.2) || (bytes_now>=bytes_total) {
@@ -435,8 +435,15 @@ fn file_check(
       break;
     }
 
-    let c = unsafe { slice::from_raw_parts(ptr.add(16), sz as usize).to_vec() };
-    let fs = flatbuffers::root::<file_spec::ESCP_file_list>(c.as_slice()).unwrap();
+    let dst:[MaybeUninit<u8>; 131072] = [{ std::mem::MaybeUninit::uninit() }; 131072];
+    let mut dst = unsafe { std::mem::transmute::<_, [u8; 131072]>(dst) };
+
+    let res = zstd_safe::decompress(dst.as_mut_slice(),
+      unsafe{slice::from_raw_parts(ptr.add(16), sz as usize)} );
+
+    _ = res.expect("decompress failed");
+
+    let fs = flatbuffers::root::<file_spec::ESCP_file_list>(&dst).unwrap();
 
     for e in fs.files().unwrap() {
 
