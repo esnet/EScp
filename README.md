@@ -327,6 +327,7 @@ Your first step is to enable verbose logs;
 
 ```
   escp -v --logfile /path/to/logs
+```
 
 If this does not resolve your issue, consider reaching out or attempting
 to debug using system debuggers. Typically this involves compiling code
