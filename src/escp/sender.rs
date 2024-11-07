@@ -299,17 +299,16 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
     }
 
     let bytes_now = unsafe { get_bytes_io( args ) };
-    if (last_update.elapsed().as_secs_f32() > 0.2) || (bytes_now>=bytes_total) {
-
-      if bytes_now == 0 {
-        continue;
-      }
+    if (last_update.elapsed().as_secs_f32() > 0.2) ||
+       (bytes_now>=bytes_total) ||
+       (files_ok >= files_total) {
 
       let duration = start.elapsed();
 
       let width= ((bytes_now as f32 / bytes_total as f32) * 40.0) as usize ;
       let progress = format!("{1:=>0$}", width, ">");
-      let rate = bytes_now as f32/duration.as_secs_f32();
+      let rate = if bytes_now>0 {
+        bytes_now as f32/duration.as_secs_f32() } else {0.0 };
 
       let eta= ((bytes_total - bytes_now) as f32 / rate) as i64;
 
@@ -329,8 +328,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
         let tmp = human_write( bytes_now as u64, true );
         tot_str= CStr::from_ptr(tmp).to_str().unwrap();
 
-        let files_now = tx_getclosed();
-        debug!("transfer progress: {}/{} {}/{}", bytes_now, bytes_total, files_now, files_ok);
+        debug!("transfer progress: {}/{} {}/{}", bytes_now, bytes_total, files_ok, files_total);
       }
 
       let units = if flags.bits { "bits" } else { "B" };
@@ -340,8 +338,8 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       _ = fi.write(bar.as_bytes());
       _ = fi.flush();
 
-      if bytes_now >= bytes_total {
-        let s = format!("\rSent    : {tot_str}B in {files_total} files at {rate_str}{units}/s in {:0.1}s {:15}\r",
+      if (bytes_now >= bytes_total) || (files_ok >= files_total) {
+        let s = format!("\rSent    : {tot_str}B in {files_total} files at {rate_str}{units}/s in {:0.1}s {:18}\r",
           duration.as_secs_f32(), "");
         _ = fi.write(s.as_bytes());
         _ = fi.flush();
@@ -351,15 +349,15 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
 
       last_update = std::time::Instant::now();
     }
+
   }
 
   unsafe { fc_push( 0, 0, 0 ); }
 
   loop {
-    let files_now = unsafe { tx_getclosed() };
 
-    if files_ok as i64 >= files_now {
-      debug!("Exiting because {files_ok} >= {files_now}");
+    if files_ok as i64 >= (files_total as i64) {
+      debug!("Exiting because {files_ok} >= {files_total}");
       break;
     }
 
@@ -375,7 +373,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       break;
     }
 
-    debug!("Loopping {files_ok} / {files_now}");
+    debug!("Loopping {files_ok} / {files_total}");
   }
 
   // Finished sending data
@@ -449,6 +447,12 @@ fn file_check(
 
       let (rx_fino, rx_sz, rx_crc, rx_complete) = (e.fino(), e.sz(), e.crc(), e.complete());
       debug!("file_check on {} {} {:#X} {}", rx_fino, rx_sz, rx_crc, rx_complete);
+
+      if (rx_fino == 0) && (rx_sz == 0) && (rx_complete == 4) {
+        debug!("Receiver confirmed an empty file");
+        *files_ok += 1;
+        continue;
+      }
 
       if !(*hm).contains_key(&rx_fino) {
         loop {
@@ -801,7 +805,18 @@ fn iterate_files ( flags: &EScp_Args,
 
     for fi in &flags.source {
       if fi.is_empty() { continue; };
-      let fi_path = fs::canonicalize(&PathBuf::from(fi)).unwrap();
+
+      let fi_path;
+      match fs::canonicalize(&PathBuf::from(fi)) {
+        Ok(a) => { fi_path = a; }
+        Err(_) => {
+          let errmsg = format!("\rCouldn't find/access/open file='{}'", fi);
+          eprintln!("{errmsg}");
+          info!("{errmsg}");
+          process::exit(2);
+        }
+      }
+
       _ = files_in.send(
             (fi_path.parent().unwrap().to_path_buf(),
              std::path::Path::new(fi_path.file_name().unwrap().to_str().unwrap()).to_path_buf()

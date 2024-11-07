@@ -63,7 +63,7 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   debug!("Got header of type {}", t);
 
   let mut port_start = 1232;
-  let mut port_end = 65536; // XXX: port_end not implemented
+  let mut port_end = 1242; // XXX: port_end not implemented
   let bind_interface;
 
 
@@ -232,6 +232,7 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
           }
           Err(_) => { error!("receive_main: error receiving file completion notifications"); return; }
         }
+
         fct = 1;
 
         if !did_init && !finish_fc {
@@ -281,14 +282,15 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
           let mut dst = unsafe { std::mem::transmute::<_, [u8; 49152]>(dst) };
 
           let res = zstd_safe::compress( &mut dst, buf, 3 );
-          let compressed_sz = res.expect("Compression failed");
+          let csz = res.expect("Compression failed");
 
-          let hdr = to_header( compressed_sz as u32, msg_file_stat );
+          let hdr = to_header( csz as u32, msg_file_stat );
 
-          debug!("fc: Sending fc_state data for {} files, size is {}/{compressed_sz}",
+          debug!("fc: Sending fc_state data for {} files, size is {}/{csz}",
                  v.len(), buf.len());
           unsafe {
-            meta_send( dst.as_ptr() as *mut i8, hdr.as_ptr() as *mut i8, compressed_sz as i32 );
+            meta_send( dst.as_ptr() as *mut i8, hdr.as_ptr() as *mut i8,
+                       csz as i32 );
           }
           last_send = std::time::Instant::now();
           did_init = false;
@@ -375,14 +377,6 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
               fd = open( fp.as_ptr(), (*args).flags, 0o644 );
             }
 
-
-            if entry.sz() < 1 {
-              debug!("Empty file created (&closed) for {fino} because sz<=0",
-                      fino=entry.fino());
-              close(fd);
-              break;
-            }
-
             if fd < 1 {
               let err = io::Error::last_os_error();
               if err.kind() == std::io::ErrorKind::NotFound {
@@ -420,6 +414,13 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
               }
             }
 
+            if entry.sz() < 1 {
+              _ = fc_in.send( (0,0,0,4) );
+              debug!("Empty file created (&closed) for {fino} because sz<=0",
+                      fino=entry.fino());
+              close(fd);
+              break;
+            }
             debug!("Add file {full_path}:{fino} with {:#X} sz={sz} fd={fd}",
                    (*args).flags, fino=entry.fino(), sz=entry.sz() );
 

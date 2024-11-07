@@ -378,7 +378,8 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
 
   }
 
-  if ( !knob->fob && (*subheader ==  FIHDR_SHORT) ) {
+  if ( !knob->fob && knob->dtn ) {
+  // if ( !knob->fob && (*subheader ==  FIHDR_SHORT) ) {
     knob->block = knob->dtn->block;
 
     knob->fob = file_memoryinit( knob->dtn, knob->id );
