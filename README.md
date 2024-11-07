@@ -12,7 +12,7 @@ SCP. Some features include:
   * AES-GCM 128 over the wire encryption, optimized for performance
   * Authentication to remote systems through SSH
   * Swappable I/O Engines ( Currently: DUMMY & POSIX )
-  * Block based interface to transfering data (API expected in 0.9)
+  * Block based interface to transferring data (API expected in 0.9)
   * Compression (using zstd)
   * Checksums, Direct I/O, API's.
 
@@ -20,7 +20,7 @@ In general, the approach taken by EScp is to have algorithms optimized to give
 good performance across all metrics (i.e. billions of small files, single large
 file), that scale linearly with core count.
 
-EScp isn't intended to replace scp; Instead it is meant to fill a void in
+EScp isn't intended to replace SCP; Instead it is meant to fill a void in
 efficiently transferring science data. That means supporting different use
 cases, such as block based data transfer instead of file based data, supporting
 the types of files used in science, such as sparse files, and, importantly,
@@ -38,7 +38,7 @@ issue. We also accept Pull requests if you happen to have a patch for us.
 RELEASE NOTES
 =============
 
-EScp 0.8 adds feature parity with most scp flags, improves session handling,
+EScp 0.8 adds feature parity with most SCP flags, improves session handling,
 and fixes a number of edge cases around things like directory handling, zero
 byte files, and so on. Overall the result should be further improvements to
 stability, performance, and ease of use.
@@ -50,7 +50,7 @@ git version expect that things will break.
 
 In any event, while EScp has successfully transferred PBs of data and hundreds
 of millions of files. It may fail for you! If you run into a case where EScp
-is failing, but SCP is not not, please create a bug report. At this point in
+is failing, but SCP is not, please create a bug report. At this point in
 the EScp software life-cycle, it should be transferring files safely and
 successfully, although there are still a few differences. For instance, EScp
 won't transfer symlinks and it only preserves attributes on files.
@@ -70,16 +70,16 @@ transfer session keys. Once complete, EScp connects to the EScp service on the
 remote host, typically using TCP port 1232-42 (choosing the first open port).
 
 Once connected it encrypts all communications using AES-GCM-128 and the session
-keys from earlier. Because EScp implements it's own encryption protocol, it is
+keys from earlier. Because EScp implements its own encryption protocol, it is
 able to optimize this to be fast, as well as configure the TCP ports for long
 haul data transmission. This enables EScp to be orders of magnitude faster than
 SCP.
 
-All transfers are encrypted, and this behaviour is not possible to disable.
+All transfers are encrypted, and this behavior is not possible to disable.
 By default, the sender computes a checksum when reading the file. The receiver
 computes a checksum when writing the file and sends that checksum to the
 sender, which the sender then verifies. While the checksum is not cryptographic
-in nature, between network encryption and file checksumming, the protocol is
+in nature, between network encryption and file check summing, the protocol is
 thought to securely and reliably copy data.
 
 As EScp is a performance oriented transfer tool, all files default to
@@ -312,7 +312,7 @@ In the example above, our block size is > 2MB but <= 4MB, so we use:
   $ escp -b 4M <files> [host]:[path] # Aligned to 2^n
 ```
 
-If our storage optimizations are either un-needed or insufficient, lets move on
+If our storage optimizations are either unneeded or insufficient, lets move on
 to network or CPU.
 
 In general, for network we just increase threads until we are happy with our
@@ -351,10 +351,10 @@ with your hex numbers (FF != FF00).
 nodemask and cpumask are passed to `set_mempolicy` and `sched_setaffinity`.
 cpumask is HEX, nodemask INT, both are YAML Strings. You may want to enable
 verbose logging to verify that the mask was applied and/or check `htop` when
-transfering your files.
+transferring your files.
 
 If you did all of these things and feel that the network and block storage
-are still not the bottle neck, you can reduce CPU usage doing things like:
+are still not the bottleneck, you can reduce CPU usage doing things like:
 
 ```
 escp --nochecksum
@@ -437,8 +437,7 @@ There are two data types, metadata and file, which is inferred from the IV.
 Each datatype specifies the length of the payload.
 
 Internally EScp uses AES-GCM using the `ISA-L_crypto` library. The
-implementation follows NIST 800-38D guidelines and has not been peer
-reviewed. If you want more information, check `network_recv` or
+implementation follows NIST 800-38D guidelines and has not been peer-reviewed. If you want more information, check `network_recv` or
 `network_initrx` in `libdtn/src/dtn.c`.
 
 
@@ -548,7 +547,7 @@ c91d47a3b0c6578e7a727af26700dabd79e0acbf0db7eeffbf3151b48980b8a6  EScp-0.7.0.zip
 
 Changes from 0.7.1 to 0.8.0 (07 Nov 2024):
   * Breaks compatability with previous versions
-  * Change to On-Wire format; Drops un-needed crypto wrapper. Change other
+  * Change to On-Wire format; Drops unneeded crypto wrapper. Change other
     message headers.
   * Add Compression (Using zstd)
     - use --compress flag or -C
@@ -570,7 +569,9 @@ Changes from 0.7.1 to 0.8.0 (07 Nov 2024):
   * Check that files don't leave prefix
   * Update how progress bar is displayed
   * Fix how empty files are handled
-  * Long delays unschedule thread
+  * Long delays unschedule thread (as opposed to busy waiting)
+  * Many fixes, much polishing, and more cleaning
+  * Happy Birthday!
 
 Changes from 0.7.0 to 0.7.1 (20 June 2024):
   * Checksum feature enabled

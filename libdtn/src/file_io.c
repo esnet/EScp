@@ -29,7 +29,7 @@
 
 #define FILE_STAT_COUNT 850
 #define FILE_STAT_COUNT_HSZ 2048
-#define FILE_STAT_COUNT_CC 18
+#define FILE_STAT_COUNT_CC 24
 
 #define FS_INIT        0xBAEBEEUL
 #define FS_IO          (1UL << 31) // NOTE: These values set a limit to the
