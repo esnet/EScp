@@ -20,17 +20,27 @@ In general, the approach taken by EScp is to have algorithms optimized to give
 good performance across all metrics (i.e. billions of small files, single large
 file), that scale linearly with core count.
 
-EScp is currently only available for x86 on Linux. If you want it to run on
-a specific platform that is not yet supported, please reach out to the author
-and/or create an issue on github that describes what you would like and how
-you would like to use EScp.
+EScp isn't intended to replace scp; Instead it is meant to fill a void in
+efficiently transferring science data. That means supporting different use
+cases, such as block based data transfer instead of file based data, supporting
+the types of files used in science, such as sparse files, and, importantly,
+being able to transfer at any scale, securely, efficiently, and with commodity
+hardware. EScp is also intended to fit into existing science frameworks, and
+is therefore meant to be called through an API. If these features interest
+you, please reach out.
+
+EScp is currently only available for x86 on Linux. For the most part, this
+isn't a case of it not being able to support other platforms, but more a
+reflection of the type of servers that are typically used for science. If you
+have a use case for something that isn't supported, please create a GitHub
+issue. We also accept Pull requests if you happen to have a patch for us.
 
 RELEASE NOTES
 =============
 
 EScp 0.8 adds feature parity with most scp flags, improves session handling,
 and fixes a number of edge cases around things like directory handling, zero
-byte files, and so on. Overall the result should be further improvents to
+byte files, and so on. Overall the result should be further improvements to
 stability, performance, and ease of use.
 
 **WARNING:** This software is in development. If you are using a *tagged*
@@ -55,9 +65,9 @@ How EScp is different from SCP
 ==============================
 
 After initiating a transfer with EScp, system SSH is invoked to connect to the
-remote host, however, unlike SCP, it just uses SSH to spawn a receiver and
+remote host, however, unlike SCP, it uses SSH only to spawn a receiver and
 transfer session keys. Once complete, EScp connects to the EScp service on the
-remote host, typically using TCP port 1232-42 (chooses first open port).
+remote host, typically using TCP port 1232-42 (choosing the first open port).
 
 Once connected it encrypts all communications using AES-GCM-128 and the session
 keys from earlier. Because EScp implements it's own encryption protocol, it is

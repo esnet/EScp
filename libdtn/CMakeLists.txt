@@ -56,8 +56,8 @@ include(CPack)
 #add_custom_target(nasm DEPENDS nasm_project)
 
 ExternalProject_Add(zstd_project
-  URL https://github.com/facebook/zstd/archive/refs/tags/v1.5.5.zip
-  URL_HASH SHA256=c5c8daa1d40dabc51790c62a5b86af2b36dfc4e1a738ff10dc4a46ea4e68ee51
+  URL https://github.com/facebook/zstd/archive/refs/tags/v1.5.6.zip
+  URL_HASH SHA256=3b1c3b46e416d36931efd34663122d7f51b550c87f74de2d38249516fe7d8be5
   CONFIGURE_COMMAND echo
   BUILD_COMMAND     cd lib && make ZSTD_LEGACY_SUPPORT=0 ZSTD_LIB_DEPRECATED=0  ZSTD_LIB_DICTBUILDER=0  -j 24 lib-nomt
   INSTALL_COMMAND   make -j 24 PREFIX=${CMAKE_CURRENT_BINARY_DIR}/zstd ZSTD_LEGACY_SUPPORT=0 ZSTD_LIB_DEPRECATED=0  ZSTD_LIB_DICTBUILDER=0  lib-nomt install
@@ -71,8 +71,8 @@ set_property(TARGET zstd PROPERTY IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/
 add_dependencies(zstd zstd_project)
 
 ExternalProject_Add(libnuma_project
-  URL https://github.com/numactl/numactl/archive/refs/tags/v2.0.16.zip
-  URL_HASH SHA256=49a7cb6c7e0d95754d03a0b70ef7473e8598b6d76aee81b541d9afe742fe24c6
+  URL https://github.com/numactl/numactl/archive/refs/tags/v2.0.19.zip
+  URL_HASH SHA256=c7aebfc925f2c3827e3cb607092065f3a48986a16aea1bb10ca70937edac278b
 #  GIT_REPOSITORY    https://github.com/numactl/numactl.git
   CONFIGURE_COMMAND ./autogen.sh && ./configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/libnuma
   BUILD_COMMAND     make -j 24
@@ -123,6 +123,7 @@ find_package(Threads REQUIRED)
 
 include_directories(include ${CMAKE_CURRENT_BINARY_DIR}/isal/include)
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/libnuma/include)
+include_directories(${CMAKE_CURRENT_BINARY_DIR}/zstd/include)
 #include_directories(${CMAKE_CURRENT_BINARY_DIR}/uring/include)
 set(SOURCES src/file_io.c src/args.c
             src/engine_posix.c
