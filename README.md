@@ -542,8 +542,7 @@ RELEASES
 
 ```
 SHA256                                                            NAME
-6cb3da78ece447c2ab7b9dd992bd92d30c3892075b250f2a58cba5ffed4b5974  0.8.0.tar.gz
-https://github.com/esnet/EScp/archive/refs/tags/0.8.0.tar.gz
+6cb3da78ece447c2ab7b9dd992bd92d30c3892075b250f2a58cba5ffed4b5974  [0.8.0.tar.gz](https://github.com/esnet/EScp/archive/refs/tags/0.8.0.tar.gz)
 755fd7c88a9983e45250e7d3ea2f5942295b5f3bdedb980cb06cd6deede212f2  EScp-0.7.1.tar.gz
 c91d47a3b0c6578e7a727af26700dabd79e0acbf0db7eeffbf3151b48980b8a6  EScp-0.7.0.zip
 ```
