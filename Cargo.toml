@@ -18,7 +18,7 @@ build = "src/build.rs"
 
 [build-dependencies]
 libc = "0.*"
-shadow-rs = "*"
+shadow-rs = "0.*"
 
 [dependencies]
 clap = { version = "*", features = ["derive"] }
