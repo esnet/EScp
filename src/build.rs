@@ -1,4 +1,4 @@
-// use std::process::Command;
+use std::process::Command;
 
 fn main() -> shadow_rs::SdResult<()>  {
     println!("cargo:rustc-link-arg-bins=build/libdtn.a");
