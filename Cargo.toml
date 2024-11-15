@@ -21,7 +21,7 @@ libc = "0.*"
 shadow-rs = "0.*"
 
 [dependencies]
-clap = { version = "*", features = ["derive"] }
+clap = { version = "4.*", features = ["derive"] }
 regex = "1"
 libc = "0.*"
 subprocess = "0.*"
