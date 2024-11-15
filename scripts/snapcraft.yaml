@@ -1,7 +1,7 @@
 title: EScp
 name: escp
 base: core22
-version: '0.7-preview'
+version: '0.8'
 summary: Energy Sciences Transfer Tool
 license: BSD-3-Clause-LBNL
 source-code: https://github.com/ESnet/EScp
