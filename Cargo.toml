@@ -7,6 +7,10 @@ authors = [ "Charles Shiflett" ]
 about = "Energy Sciences Network transfer tool (EScp)"
 description = "Energy Sciences Network transfer tool (EScp)"
 license = "BSD-3-Clause"
+homepage = "https://github.com/esnet/escp"
+repository = "https://github.com/esnet/escp"
+readme = "README.md"
+
 
 build = "src/build.rs"
 
