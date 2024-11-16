@@ -107,7 +107,7 @@ struct meta_info {
 struct file_info {
   uint64_t offset;
   uint64_t file_no;
-  uint32_t sz;
+  int32_t sz;
 } __attribute__ ((packed)) ;
 
 struct file_stat_type {

@@ -666,8 +666,16 @@ int64_t network_send (
 
 void dtn_waituntilready( void* arg ) {
   struct dtn_args* dtn = arg;
-  while ( atomic_fetch_add(&dtn->fob, 0) == 0 )
+  int j=0;
+  while ( atomic_fetch_add(&dtn->fob, 0) == 0 ) {
     usleep(10);
+    if (j++>16) {
+      ESCP_DELAY(5);
+    } else {
+      continue;
+    }
+    VRFY( j < 293, "Took too long to spawn EScp, exiting" );
+  }
 }
 
 // meta_ functions are SPSC;
