@@ -1,22 +1,15 @@
 title: EScp
 name: escp
-base: core22
-version: '0.7-preview'
-summary: Energy Sciences Transfer Tool
+base: core24
+version: '0.8'
+summary: High Performance File Transfer Tool with a syntax similar to SCP
 license: BSD-3-Clause-LBNL
 source-code: https://github.com/ESnet/EScp
 description: |
-  EScp is an in development transfer tool that has a similar syntax to scp, but
-  has better performance and offers additional functionality.  EScp uses SSH for
-  authentication but data transfer defaults to port 1232 using AES128-GCM. EScp
-  has been shown to transfer across the WAN at 200gbit/s, limited only by the
-  interface speed.
-
-  EScp is an acronym for "Energy Sciences Transfer Tool" and was created as a
-  side project by Charles Shiflett at ESnet. ESnet (https://es.net) is apart of
-  the US Department of Energy. More information and the source code for EScp is
-  available at https://github.com.
-
+  EScp is a high performace transfer tool that has a similar syntax to SCP.
+  Uses SSH for authentication but data transfer defaults to port 1232 using
+  AES128-GCM. EScp has been demonstrated at up to 200gbit/s in transfers
+  across the United States.
 grade: devel
 confinement: devmode
 
@@ -35,16 +28,16 @@ apps:
 #      - shared-memory
 
 parts:
-  rust-deps:
-    plugin: nil
-    build-packages:
-      - curl
-    override-pull: |
-      curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+  #rust-deps:
+  #  plugin: nil
+  #  build-packages:
+  #    - curl
+  #  override-pull: |
+  #    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
   escp:
     plugin: rust
     source: https://github.com/esnet/EScp.git
-    after: [rust-deps]
+
     build-packages:
       - cmake
       - libtool
@@ -53,5 +46,9 @@ parts:
       - autoconf
       - libnuma-dev
       - automake
+    override-build: |
+      cd $SNAPCRAFT_PART_SRC
+      ./mk.sh
+      snapcraftctl build
     # stage-packages:
     #   - libnuma1
