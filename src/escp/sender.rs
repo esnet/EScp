@@ -810,7 +810,7 @@ fn iterate_files ( flags: &EScp_Args,
       match fs::canonicalize(&PathBuf::from(fi)) {
         Ok(a) => { fi_path = a; }
         Err(_) => {
-          let errmsg = format!("\rCouldn't find/access/open file='{}'", fi);
+          let errmsg = format!("\rCould not find/access/open file='{}'", fi);
           eprintln!("{errmsg}");
           info!("{errmsg}");
           process::exit(2);

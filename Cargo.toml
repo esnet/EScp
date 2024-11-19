@@ -7,6 +7,10 @@ authors = [ "Charles Shiflett" ]
 about = "Energy Sciences Network transfer tool (EScp)"
 description = "Energy Sciences Network transfer tool (EScp)"
 license = "BSD-3-Clause"
+homepage = "https://github.com/esnet/escp"
+repository = "https://github.com/esnet/escp"
+readme = "README.md"
+
 
 build = "src/build.rs"
 
@@ -14,23 +18,23 @@ build = "src/build.rs"
 
 [build-dependencies]
 libc = "0.*"
-shadow-rs = "*"
+shadow-rs = "0.*"
 
 [dependencies]
-clap = { version = "*", features = ["derive"] }
+clap = { version = "4.*", features = ["derive"] }
 regex = "1"
 libc = "0.*"
 subprocess = "0.*"
 flatbuffers = "23.*"
-log = "*"
-syslog = "*"
-rand = "*"
-shadow-rs = "*"
-yaml-rust2 = "*"
-hex = "*"
+log = "0.*"
+syslog = "7.*"
+rand = "0.*"
+shadow-rs = "0.*"
+yaml-rust2 = "0.*"
+hex = "0.*"
 crossbeam-channel = "0.5"
-zstd-safe = "*"
-chrono = "*"
+zstd-safe = "7.*"
+chrono = "0.*"
 
 [profile.release]
 opt-level = 'z'     # Optimize for size
