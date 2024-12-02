@@ -259,11 +259,14 @@ struct EScp_Args {
    #[arg(long, help="Display speed in bits/s")]
    bits: bool,
 
-   #[arg(long, help="Don't enable direct mode")]
+   #[arg(long, help="Disable direct (O_DIRECT) mode")]
    nodirect: bool,
 
-   #[arg(long, help="Don't enable file checksum")]
+   #[arg(long, help="disable checksum")]
    nochecksum: bool,
+
+   #[arg(long, help="disable file size calculation (stat call)")]
+   nocalc: bool,
 
    /// Enable SSH Agent Forwarding
    #[arg(short='A', long="agent")]

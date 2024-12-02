@@ -84,51 +84,6 @@ void file_posixflush( void* arg ) {
   return ;
 }
 
-#ifdef __AVX__
-#include <emmintrin.h>
-#include <smmintrin.h>
-inline int memcmp_zero( void* dst, uint64_t sz ) {
-
-  // __m128i zero = {0};
-  __m128i a,b,c,d;
-
-  uint64_t offset;
-
-  for ( offset = 0; offset < sz; offset += 64 ) {
-    uint64_t* src = (uint64_t*)(((uint64_t) dst) + offset);
-
-    a = _mm_load_si128 ( (void*) src );
-    b = _mm_load_si128 ( (void*) (((uint64_t) src) +  16) );
-    c = _mm_load_si128 ( (void*) (((uint64_t) src) +  32) );
-    d = _mm_load_si128 ( (void*) (((uint64_t) src) +  48) );
-
-    // on paper: test_all_ones has better throughput than test all zeroes
-
-    int res = _mm_test_all_ones(~a);
-    res &=  _mm_test_all_ones(~b);
-    res &=  _mm_test_all_ones(~c);
-    res &=  _mm_test_all_ones(~d);
-
-    if (!res)
-      return 1;
-  }
-
-  return 0; // If all ZERO
-
-}
-
-#else
-#warning Compiling with slow memcmp_zero. Sparse detection will be *slow*.
-inline int memcmp_zero( void* dst, uint64_t sz ) {
-  // Note: This algorithm is stupidly slow.
-  for (i=0;i < op->sz; i++) {
-    if ( ((uint8_t*)op->buf)[i] != 0 )
-      return 1;
-  }
-  return 0;
-}
-#endif
-
 void* file_posixsubmit( void* arg, int32_t* sz, uint64_t* offset ) {
   struct file_object* fob = arg;
   struct posix_op* op = (struct posix_op*) fob->pvdr;
@@ -260,11 +215,14 @@ int file_posixinit( struct file_object* fob ) {
 
   uint64_t alloc_sz = fob->blk_sz;
 
-  if (fob->compression)
-    // We could do alloc_sz + FIO_COMPRESS_MARGIN if receiver. *=2 is OK
-    // because fob->blk_sz always ?= 256K
+  if (fob->compression) {
+    /* We could do alloc_sz + FIO_COMPRESS_MARGIN if receiver. *=2 is OK
+     * because fob->blk_sz always >= 256K. On sender, we do *= 2 because
+     * we compress to second half of allocation. If the operation failed
+     * (because compressed data is larger than orig), we go back to orig
+     */
     alloc_sz *= 2;
-
+  }
 
   op->buf = mmap( NULL, alloc_sz, PROT_READ|PROT_WRITE, flags, -1, 0 );
   VRFY( op->buf != (void*) -1, "mmap (block_sz=%d)", fob->blk_sz );

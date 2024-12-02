@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.5)
 include(ExternalProject)
 project(dtn)
 
@@ -20,7 +20,7 @@ execute_process(
 #set(CMAKE_C_FLAGS_DEBUG "-g -march=sandybridge -O3 -pthread")
 
 set(CMAKE_C_FLAGS_RELEASE "-g -march=sandybridge -pthread -O -fPIC")
-set(CMAKE_C_FLAGS_DEBUG "-g -march=sandybridge -pthread -O -fPIC")
+set(CMAKE_C_FLAGS_DEBUG "-g -march=native -pthread -O -fPIC")
 
 add_definitions("-Wall -Wno-unused-result -Wno-stringop-truncation")
 
@@ -126,10 +126,11 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR}/libnuma/include)
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/zstd/include)
 #include_directories(${CMAKE_CURRENT_BINARY_DIR}/uring/include)
 set(SOURCES src/file_io.c src/args.c
+            src/engine_shmem.c
             src/engine_posix.c
             src/engine_dummy.c)
 add_library(dtn STATIC ${SOURCES} src/dtn.c)
 add_dependencies(dtn isa-l_crypto_project libnuma_project zstd_project)
 
-target_compile_definitions(dtn PUBLIC __ENGINE_POSIX__ __ENGINE_DUMMY__ )
+target_compile_definitions(dtn PUBLIC __ENGINE_POSIX__ __ENGINE_DUMMY__ __ENGINE_SHMEM__)
 #target_link_libraries(dtn zstd libnuma liburing isal Threads::Threads "rt")

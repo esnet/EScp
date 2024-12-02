@@ -37,19 +37,14 @@
                                    //       should be 1UL<<62 & 1UL<<63
 #define FS_MASK(A)     (A & (FILE_STAT_COUNT_HSZ-1))
 
-
-/*
-
-// The AVX routines are preferred, but need a way of automatically picking the
-// correct routine. Since we don't do that, we just default to SSE  given that
-// many x86 architectures still don't support AVX/AVX512
+#ifdef __AVX512BW__
+#warning AVX512 is Experimental; standard is -march=sandy
+#include <immintrin.h>
 
 void memcpy_avx( void* dst, void* src ) {
           __m512i a;
 
-          // b = _mm512_load_epi64 ( (void*) (((uint64_t) src) +  64) );
           a = _mm512_load_epi64 ( src );
-          // _mm512_store_epi64( (void*) (((uint64_t) src) +  64), b );
           _mm512_store_epi64( dst, a );
 
 }
@@ -58,7 +53,64 @@ void memset_avx( void* dst ) {
           __m512i a = {0};
           _mm512_store_epi64( dst, a );
 }
-*/
+
+int memcmp_zero( void* dst, uint64_t sz ) {
+  __m256i a,b;
+  __m256i zero = {0};
+
+  _mm256_testz_si256
+  uint64_t offset;
+
+  for ( offset = 0; offset < sz; offset += 64 ) {
+    uint64_t* src = (uint64_t*)(((uint64_t) dst) + offset);
+
+    a = _mm_load_si256 ( (void*) src );
+    b = _mm_load_si256 ( (void*) (((uint64_t) src) +  32) );
+
+    res  = _mm256_testz_si256 (a, 0);
+    res |= _mm256_testz_si256 (b, 0);
+
+    if (res)
+      return 0;
+  }
+
+  return 1;
+
+}
+
+
+
+#elif __AVX__
+#include <emmintrin.h>
+#include <smmintrin.h>
+int memcmp_zero( void* dst, uint64_t sz ) {
+
+  __m128i a,b,c,d;
+
+  uint64_t offset;
+
+  for ( offset = 0; offset < sz; offset += 64 ) {
+    uint64_t* src = (uint64_t*)(((uint64_t) dst) + offset);
+
+    a = _mm_load_si128 ( (void*) src );
+    b = _mm_load_si128 ( (void*) (((uint64_t) src) +  16) );
+    c = _mm_load_si128 ( (void*) (((uint64_t) src) +  32) );
+    d = _mm_load_si128 ( (void*) (((uint64_t) src) +  48) );
+
+    // on paper: test_all_ones has better throughput than test all zeroes
+
+    int res = _mm_test_all_ones(~a);
+    res &=  _mm_test_all_ones(~b);
+    res &=  _mm_test_all_ones(~c);
+    res &=  _mm_test_all_ones(~d);
+
+    if (!res)
+      return 1;
+  }
+
+  return 0; // If all ZERO
+
+}
 
 void memcpy_avx( void* dst, void* src ) {
           __m128i a,b,c,d;
@@ -81,6 +133,25 @@ void memset_avx( void* dst ) {
           _mm_store_si128( (void*) (((uint64_t) dst) +  16), a );
           _mm_store_si128( dst, a );
 }
+
+
+#else
+#warning Compiling with slow memcmp_zero. Sparse detection will be *slow*.
+inline int memcmp_zero( void* dst, uint64_t sz ) {
+  // Note: This algorithm is stupidly slow.
+  for (i=0;i < op->sz; i++) {
+    if ( ((uint8_t*)op->buf)[i] != 0 )
+      return 1;
+  }
+  return 0;
+}
+
+// XXX: Add other functions here
+
+#endif
+
+
+
 
 // Soft limit on file descriptors, must at least 50 less than FD limit, and
 // much less than HSZ (which must be ^2 aligned).
@@ -428,11 +499,11 @@ struct file_object* file_memoryinit( void* arg, int id ) {
       file_dummyinit( &f );
       break;
 #endif
-/*
+#ifdef __ENGINE_SHMEM__
     case FIIO_SHMEM:
-      shmem_init( &f );
+      file_shmeminit( &f );
       break;
-*/
+#endif
     default:
       VRFY( 0, "No matching engine for '%x'",
                fob->io_type );
@@ -442,27 +513,6 @@ struct file_object* file_memoryinit( void* arg, int id ) {
 
   return fob;
 
-}
-
-void file_prng( void* buf, int sz ) {
-  int i=0, offset=0;
-  uint64_t* b = buf;
-  static __thread uint64_t s=0;
-
-  if ( s == 0 )
-    file_randrd( &s, 8 );
-
-  while ( sz > 1023 ) {
-    // Compiler optimization hint
-    for (i=0; i<128; i++)
-      b[offset+i] = xorshift64s(&s);
-    offset += 128;
-    sz -= 1024;
-  }
-
-  for ( i=0; i < ((sz+7)/8); i++ ) {
-      b[offset+i] = xorshift64s(&s);
-  }
 }
 
 void file_randrd( void* buf, int count ) {

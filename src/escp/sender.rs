@@ -235,16 +235,6 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   // transfer. At this point we have not read any data from disk but have
   // configured the transfer endpoints.
 
-  /*
-  let mut counter=0;
-  loop {
-    let hdr = to_header( 0, 399 );
-    debug!("meta_send {counter}");
-    counter+=1;
-    unsafe { meta_send( 0 as *mut i8, hdr.as_ptr() as *mut i8, 0 as i32 ); }
-  }
-  */
-
   let start    = std::time::Instant::now();
   let mut fi;
 
@@ -273,7 +263,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
     &fc_out );
   debug!("Finished iterating files, total bytes={bytes_total}");
 
-  if (bytes_total <= 0) && (files_total <= 0) {
+  if (bytes_total <= 0) && (files_total <= 0) && (flags.io_engine != "shmem")  {
     eprintln!("Nothing to transfer, exiting.");
     process::exit(1);
   }
@@ -651,7 +641,11 @@ fn iterate_file_worker(
       debug!("iterate_file_worker: Worker {} is unready", id);
     }
 
-    let path = prefix.join(filename.clone()).canonicalize().unwrap();
+    let path = prefix.join(filename.clone()).canonicalize().unwrap_or("".into());
+    if path.to_str().unwrap() == "" {
+      info!("iterate_file_worker: Ignoring {:?}, not on disk", prefix);
+      continue;
+    }
     if ! path.starts_with(prefix.clone()) {
       info!("iterate_file_worker: Ignoring {:?}, outside of prefix {:?}",
             path, prefix);
@@ -809,11 +803,11 @@ fn iterate_files ( flags: &EScp_Args,
       let fi_path;
       match fs::canonicalize(&PathBuf::from(fi)) {
         Ok(a) => { fi_path = a; }
-        Err(_) => {
-          let errmsg = format!("\rCould not find/access/open file='{}'", fi);
-          eprintln!("{errmsg}");
+        Err(e) => {
+          let errmsg = format!("\rCould not open file='{}': {}", fi, e);
           info!("{errmsg}");
-          process::exit(2);
+          eprintln!("\n{errmsg}");
+          fi_path = fi.into();
         }
       }
 

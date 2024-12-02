@@ -119,13 +119,13 @@ struct file_stat_type {
   uint64_t bytes;        // File sz from file meta data
 
   uint64_t block_offset; // 32
+  uint64_t block_total;
   uint64_t bytes_total;  // Incremented after successful I/O
 
   int32_t  fd;
   uint32_t position;     // Self referential
   uint32_t poison;
   uint32_t crc;
-  uint64_t pad; // 64
 
   int64_t atim_sec;
   int64_t atim_nano;
@@ -139,13 +139,10 @@ struct file_stat_type {
 
   uint64_t pad3[2]; // 128
 
-
-
 } __attribute__ ((packed)) ;
 
 
 void file_randrd( void* buf, int count );
-void file_prng( void* buf, int sz );
 
 struct file_object* file_memoryinit( void*, int );
 
@@ -158,10 +155,16 @@ void file_posixflush( void* arg );
 
 int file_uringinit( struct file_object* fob );
 int file_dummyinit( struct file_object* fob );
-// int shmem_init( struct file_object* fob );
+int file_shmeminit( struct file_object* fob );
+
+void* file_dummypreserve( int32_t fd, uint32_t mode, uint32_t uid,
+  uint32_t gid, int64_t atim_sec, int64_t atim_nano, int64_t mtim_sec,
+  int64_t mtim_nano );
+int file_dummytruncate( void* ptr, int64_t size );
+void* file_dummycomplete( void* arg, void* arg2 );
+
 
 int32_t file_hash( void* block, int sz, int seed );
-
 
 struct file_stat_type* file_addfile(uint64_t fileno, int fd,
   int64_t sz, int64_t as, int64_t an, int64_t ms, int64_t mn);
@@ -176,6 +179,7 @@ void memcpy_avx( void* dst, void* src );
 void memset_avx( void* dst );
 void file_incrementtail();
 
+int memcmp_zero( void* dst, uint64_t sz );
 
 
 #endif

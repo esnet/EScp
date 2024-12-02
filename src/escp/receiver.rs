@@ -459,8 +459,8 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       break;
     }
 
-    if t == 0 {
-      debug!("Got t=0 sz={sz}, type={t}");
+    if (t == 1) && (sz == 0) {
+      debug!("Got t=1 sz={sz}");
       break;
     }
 
