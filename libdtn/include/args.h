@@ -69,7 +69,8 @@ struct fc_info_struct {
   uint64_t bytes;
   uint32_t crc;
   uint32_t completion;
-  uint64_t pad2[4];
+  uint64_t blocks;
+  uint64_t pad2[3];
 };
 
 struct dtn_args {

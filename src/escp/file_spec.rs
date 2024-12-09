@@ -179,12 +179,13 @@ impl<'a> File<'a> {
   pub const VT_UID: flatbuffers::VOffsetT = 10;
   pub const VT_GID: flatbuffers::VOffsetT = 12;
   pub const VT_SZ: flatbuffers::VOffsetT = 14;
-  pub const VT_ATIM_SEC: flatbuffers::VOffsetT = 16;
-  pub const VT_ATIM_NANO: flatbuffers::VOffsetT = 18;
-  pub const VT_MTIM_SEC: flatbuffers::VOffsetT = 20;
-  pub const VT_MTIM_NANO: flatbuffers::VOffsetT = 22;
-  pub const VT_CRC: flatbuffers::VOffsetT = 24;
-  pub const VT_COMPLETE: flatbuffers::VOffsetT = 26;
+  pub const VT_BLOCKS: flatbuffers::VOffsetT = 16;
+  pub const VT_ATIM_SEC: flatbuffers::VOffsetT = 18;
+  pub const VT_ATIM_NANO: flatbuffers::VOffsetT = 20;
+  pub const VT_MTIM_SEC: flatbuffers::VOffsetT = 22;
+  pub const VT_MTIM_NANO: flatbuffers::VOffsetT = 24;
+  pub const VT_CRC: flatbuffers::VOffsetT = 26;
+  pub const VT_COMPLETE: flatbuffers::VOffsetT = 28;
 
   #[inline]
   pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
@@ -200,6 +201,7 @@ impl<'a> File<'a> {
     builder.add_mtim_sec(args.mtim_sec);
     builder.add_atim_nano(args.atim_nano);
     builder.add_atim_sec(args.atim_sec);
+    builder.add_blocks(args.blocks);
     builder.add_sz(args.sz);
     builder.add_fino(args.fino);
     builder.add_complete(args.complete);
@@ -253,6 +255,13 @@ impl<'a> File<'a> {
     // Created from valid Table for this object
     // which contains a valid value in this slot
     unsafe { self._tab.get::<i64>(File::VT_SZ, Some(0)).unwrap()}
+  }
+  #[inline]
+  pub fn blocks(&self) -> i64 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<i64>(File::VT_BLOCKS, Some(0)).unwrap()}
   }
   #[inline]
   pub fn atim_sec(&self) -> i64 {
@@ -311,6 +320,7 @@ impl flatbuffers::Verifiable for File<'_> {
      .visit_field::<u32>("uid", Self::VT_UID, false)?
      .visit_field::<u32>("gid", Self::VT_GID, false)?
      .visit_field::<i64>("sz", Self::VT_SZ, false)?
+     .visit_field::<i64>("blocks", Self::VT_BLOCKS, false)?
      .visit_field::<i64>("atim_sec", Self::VT_ATIM_SEC, false)?
      .visit_field::<i64>("atim_nano", Self::VT_ATIM_NANO, false)?
      .visit_field::<i64>("mtim_sec", Self::VT_MTIM_SEC, false)?
@@ -328,6 +338,7 @@ pub struct FileArgs<'a> {
     pub uid: u32,
     pub gid: u32,
     pub sz: i64,
+    pub blocks: i64,
     pub atim_sec: i64,
     pub atim_nano: i64,
     pub mtim_sec: i64,
@@ -345,6 +356,7 @@ impl<'a> Default for FileArgs<'a> {
       uid: 0,
       gid: 0,
       sz: 0,
+      blocks: 0,
       atim_sec: 0,
       atim_nano: 0,
       mtim_sec: 0,
@@ -383,6 +395,10 @@ impl<'a: 'b, 'b> FileBuilder<'a, 'b> {
   #[inline]
   pub fn add_sz(&mut self, sz: i64) {
     self.fbb_.push_slot::<i64>(File::VT_SZ, sz, 0);
+  }
+  #[inline]
+  pub fn add_blocks(&mut self, blocks: i64) {
+    self.fbb_.push_slot::<i64>(File::VT_BLOCKS, blocks, 0);
   }
   #[inline]
   pub fn add_atim_sec(&mut self, atim_sec: i64) {
@@ -432,6 +448,7 @@ impl core::fmt::Debug for File<'_> {
       ds.field("uid", &self.uid());
       ds.field("gid", &self.gid());
       ds.field("sz", &self.sz());
+      ds.field("blocks", &self.blocks());
       ds.field("atim_sec", &self.atim_sec());
       ds.field("atim_nano", &self.atim_nano());
       ds.field("mtim_sec", &self.mtim_sec());

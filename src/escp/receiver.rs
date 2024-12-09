@@ -279,7 +279,8 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
           let buf = builder.finished_data();
 
           let dst:[MaybeUninit<u8>; 49152] = [{ std::mem::MaybeUninit::uninit() }; 49152];
-          let mut dst = unsafe { std::mem::transmute::<_, [u8; 49152]>(dst) };
+          let mut dst = unsafe { std::mem::transmute::<
+            [std::mem::MaybeUninit<u8>; 49152], [u8; 49152]>(dst) };
 
           let res = zstd_safe::compress( &mut dst, buf, 3 );
           let csz = res.expect("Compression failed");
@@ -315,7 +316,8 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
 
     if (t & msg_compressed) == msg_compressed {
       let dst:[MaybeUninit<u8>; 131072] = [{ std::mem::MaybeUninit::uninit() }; 131072];
-      let mut dst = unsafe { std::mem::transmute::<_, [u8; 131072]>(dst) };
+      let mut dst = unsafe { std::mem::transmute::
+        <[std::mem::MaybeUninit<u8>; 131072], [u8; 131072]>(dst) };
 
       let res = zstd_safe::decompress(dst.as_mut_slice(), c.as_mut_slice());
       let decompressed_sz = res.expect("decompress failed");

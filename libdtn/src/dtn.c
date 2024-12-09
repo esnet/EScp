@@ -74,7 +74,7 @@ uint32_t fc_info_cnt = 16384;
 uint64_t fc_info_head  __attribute__ ((aligned(64))) = 0;
 uint64_t fc_info_tail  __attribute__ ((aligned(64))) = 0;
 
-void fc_push( uint64_t file_no, uint64_t bytes, uint32_t crc ) {
+void fc_push( uint64_t file_no, uint64_t bytes, uint64_t blocks, uint32_t crc ) {
   uint64_t head = atomic_fetch_add( &fc_info_head, 1 );
   uint64_t tail = atomic_load( &fc_info_tail );
   uint64_t h = head % fc_info_cnt;
@@ -96,6 +96,7 @@ void fc_push( uint64_t file_no, uint64_t bytes, uint32_t crc ) {
   fc.state= 1;
   fc.file_no = file_no;
   fc.bytes = bytes;
+  fc.blocks = blocks;
   fc.crc = crc;
   fc.completion = 4;
 
@@ -899,12 +900,14 @@ void* rx_worker( void* arg ) {
         DBG("[%2d] FIHDR_SHORT written=%08ld/%08ld fn=%ld os=%zX sz=%d",
             id, written, fs.bytes, file_no, offset, sz );
 
+        // XXX: add block_total
         if ( fs.bytes && fs.bytes <= written  ) {
 
+          /* add blocks */
           if (dtn->do_hash)
-            fc_push( file_no, fs.bytes, atomic_load(&fs_ptr->crc) );
+            fc_push( file_no, fs.bytes, fs.block_total, atomic_load(&fs_ptr->crc) );
           else
-            fc_push( file_no, fs.bytes, 0 );
+            fc_push( file_no, fs.bytes, fs.block_total, 0 );
 
           // Always truncate, even though it may not be needed in some cases
           fob->truncate(fob, fs.bytes);
@@ -1070,7 +1073,7 @@ void* tx_worker( void* args ) {
           int64_t res = atomic_fetch_add( &tx_filesclosed, 1 );
           DBG("[%2d] Worker finished with fn=%ld files_closed=%ld; closing fd=%d",
               id, fs_lcl.file_no, res, fs_lcl.fd);
-          fc_push(fs_lcl.file_no, atomic_load(&fs->bytes_total), atomic_load(&fs->crc));
+          fc_push(fs_lcl.file_no, atomic_load(&fs->bytes_total), atomic_load(&fs->block_total), atomic_load(&fs->crc));
           wipe ++;
         } else {
           DBG("[%2d] Worker finished with fn=%ld", id, fs_lcl.file_no);
@@ -1122,7 +1125,8 @@ void* tx_worker( void* args ) {
       VRFY( network_send(knob, buf, bytes_sent, 20+bytes_sent, false, FIHDR_SHORT) > 0, );
 
       atomic_fetch_add( &fs->bytes_total, bytes_read );
-      atomic_fetch_add( &dtn->bytes_io,    bytes_read );
+      atomic_fetch_add( &fs->block_total, 1 );
+      atomic_fetch_add( &dtn->bytes_io,   bytes_read );
 
       fob->complete(fob, token);
 

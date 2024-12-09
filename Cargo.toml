@@ -1,7 +1,7 @@
 [package]
 name = "escp"
-version = "0.8.0"
-edition = "2018"
+version = "0.9.0"
+edition = "2021"
 author = "Charles Shiflett <cshiflett@ESnet>"
 authors = [ "Charles Shiflett" ]
 about = "Energy Sciences Network transfer tool (EScp)"

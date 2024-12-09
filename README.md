@@ -202,7 +202,6 @@ sudo dpkg -i target/debian/escp_0.7.0_amd64.deb # Debian
 # or
 dnf install target/release/rpmbuild/RPMS/x86_64/escp-0.8.0*.rpm # Redhat Family
 
-
 # For development
 cargo install bindgen-cli --version 0.68.1
 bindgen libdtn/include/dtn.h -o src/escp/bindings.rs --use-core  --generate-cstr
@@ -215,7 +214,6 @@ bindgen libdtn/include/dtn.h -o src/escp/bindings.rs --use-core  --generate-cstr
 # You can enable autocomplete by adding below to .bashrc
 complete -F _scp -o nospace escp
 _completion_loader scp
-
 
 
 ```

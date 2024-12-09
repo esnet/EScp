@@ -46,6 +46,7 @@ table File {
   uid:  uint32;
   gid:  uint32;
   sz:   int64;
+  blocks: int64;
 
   atim_sec:  int64;
   atim_nano: int64;

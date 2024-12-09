@@ -1956,7 +1956,7 @@ pub struct fc_info_struct {
     pub bytes: u64,
     pub crc: u32,
     pub completion: u32,
-    pub pad2: [u64; 4usize],
+    pub blocks: u64,
 }
 #[test]
 fn bindgen_test_layout_fc_info_struct() {
@@ -1964,7 +1964,7 @@ fn bindgen_test_layout_fc_info_struct() {
     let ptr = UNINIT.as_ptr();
     assert_eq!(
         ::core::mem::size_of::<fc_info_struct>(),
-        64usize,
+        40usize,
         concat!("Size of: ", stringify!(fc_info_struct))
     );
     assert_eq!(
@@ -2023,13 +2023,13 @@ fn bindgen_test_layout_fc_info_struct() {
         )
     );
     assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).pad2) as usize - ptr as usize },
+        unsafe { ::core::ptr::addr_of!((*ptr).blocks) as usize - ptr as usize },
         32usize,
         concat!(
             "Offset of field: ",
             stringify!(fc_info_struct),
             "::",
-            stringify!(pad2)
+            stringify!(blocks)
         )
     );
 }

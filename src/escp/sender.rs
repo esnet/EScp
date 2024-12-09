@@ -263,7 +263,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
     &fc_out );
   debug!("Finished iterating files, total bytes={bytes_total}");
 
-  if (bytes_total <= 0) && (files_total <= 0) && (flags.io_engine != "shmem")  {
+  if (bytes_total <= 0) && (files_total == 0) && (flags.io_engine != "shmem")  {
     eprintln!("Nothing to transfer, exiting.");
     process::exit(1);
   }
@@ -408,11 +408,10 @@ fn file_check(
 
   let ptr = unsafe { meta_recv() };
 
-  while !ptr.is_null() {
+  if !ptr.is_null() {
 
     let b = unsafe { slice::from_raw_parts(ptr, 6).to_vec() };
     let (sz, t) = from_header( b );
-
 
     if t != msg_file_stat {
       if t == msg_keepalive {
@@ -420,11 +419,13 @@ fn file_check(
       } else {
         info!("file_check: Got unexpected type={t}, ignoring");
       }
-      break;
+      unsafe{ meta_complete(); }
+      return 1;
     }
 
     let dst:[MaybeUninit<u8>; 131072] = [{ std::mem::MaybeUninit::uninit() }; 131072];
-    let mut dst = unsafe { std::mem::transmute::<_, [u8; 131072]>(dst) };
+    let mut dst = unsafe { std::mem::transmute::
+      <[std::mem::MaybeUninit<u8>; 131072], [u8; 131072]>(dst) };
 
     let res = zstd_safe::decompress(dst.as_mut_slice(),
       unsafe{slice::from_raw_parts(ptr.add(16), sz as usize)} );
@@ -494,8 +495,6 @@ fn file_check(
       debug!("Matched successfully {}", rx_fino);
       _ = (*hm).remove(&rx_fino);
     }
-
-    break;
 
   }
 
@@ -800,16 +799,15 @@ fn iterate_files ( flags: &EScp_Args,
     for fi in &flags.source {
       if fi.is_empty() { continue; };
 
-      let fi_path;
-      match fs::canonicalize(&PathBuf::from(fi)) {
-        Ok(a) => { fi_path = a; }
+      let fi_path = match fs::canonicalize(PathBuf::from(fi)) {
+        Ok(a) => { a }
         Err(e) => {
           let errmsg = format!("\rCould not open file='{}': {}", fi, e);
           info!("{errmsg}");
           eprintln!("\n{errmsg}");
-          fi_path = fi.into();
+          fi.into()
         }
-      }
+      };
 
       _ = files_in.send(
             (fi_path.parent().unwrap().to_path_buf(),
@@ -995,7 +993,8 @@ fn iterate_files ( flags: &EScp_Args,
       if buf.len() > 320 {
 
         let dst:[MaybeUninit<u8>; 49152] = [{ std::mem::MaybeUninit::uninit() }; 49152 ];
-        let mut dst = unsafe { std::mem::transmute::<_, [u8; 49152]>(dst) };
+        let mut dst = unsafe { std::mem::transmute::
+          <[std::mem::MaybeUninit<u8>; 49152], [u8; 49152]>(dst) };
 
         // let dst = Vec::<u8>::with_capacity(49152);
 
