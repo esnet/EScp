@@ -141,11 +141,13 @@ fn initialize_clog() {
 
     if !ret.is_null()  {
       let c_str: &CStr = unsafe { CStr::from_ptr(ret) };
-      let s = format!( "[C] {} ", c_str.to_str().unwrap_or("Error decoding message").trim() );
-      if s.contains("[DBG]") {
+      let d = c_str.to_str().unwrap_or("Error decoding message").trim();
+      let (a,b) = d.split_at(6);
+      let s = format!( "[C] {} ", b);
+      if a.contains("[DBG]") {
         debug!("{}", s)
       } else {
-        info!("{}", s)
+        info!(" {}", s)
       }
       continue;
     }

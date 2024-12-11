@@ -141,11 +141,13 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   }
 
   let (fc_in, fc_out) = crossbeam_channel::unbounded();
+  let (fc2_in, fc2_out) = crossbeam_channel::unbounded();
   {
     let i = fc_in.clone();
+    let j = fc2_in.clone();
 
     thread::Builder::new().name("fc_0".to_string()).spawn(move ||
-      fc_worker(i)).unwrap();
+      fc_worker(i, j)).unwrap();
   }
 
 
@@ -219,13 +221,13 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       let mut builder = flatbuffers::FlatBufferBuilder::with_capacity(16384);
 
       loop {
-        let (mut file_no, mut bytes,mut crc,mut completion, mut blocks) = (0,0,0,0,0);
+        let (mut file_no, mut crc) = (0,0);
         let mut finish_fc = false;
 
         match fc_out.recv_timeout(std::time::Duration::from_millis(fct)) {
-          Ok((a,b,c,d,e)) => {
-            (file_no,bytes,blocks,crc,completion) = (a,b,c,d,e);
-            debug!("fc: fc_pop returned {} {} {} {:#X}", file_no, bytes, blocks, crc);
+          Ok((a,b)) => {
+            (file_no,crc) = (a,b);
+            debug!("fc: fc_pop returned {} {:#X}", file_no, crc);
           }
           Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
             finish_fc = true;
@@ -246,9 +248,7 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
             file_spec::File::create( &mut builder,
               &file_spec::FileArgs{
                 fino:     file_no,
-                sz:       bytes as i64,
                 crc,
-                complete: completion,
                 ..Default::default()
               }));
 
@@ -417,7 +417,7 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
             }
 
             if entry.sz() < 1 {
-              _ = fc_in.send( (0,0,0,0,4) );
+              _ = fc_in.send( (0,0) );
               debug!("Empty file created (&closed) for {fino} because sz<=0",
                       fino=entry.fino());
               close(fd);
@@ -467,6 +467,7 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
     }
 
     info!("Got unhandled message from sender sz={sz}, type={t}");
+    break;
   }
 
   unsafe {

@@ -1093,7 +1093,9 @@ void* tx_worker( void* args ) {
         continue;
       }
 
-      VRFY( bytes_read >= 0, "[%2d] Read Error fd=%d fn=%ld offset=%ld %lX/%lX", id, fs_lcl.fd, fs_lcl.file_no, offset, fs_lcl.state, fs->state );
+      VRFY( bytes_read >= 0, "[%2d] Read Error fd=%d fn=%ld offset=%ld %lX/%lX",
+        id, fs_lcl.fd, fs_lcl.file_no, offset, fs_lcl.state, fs->state );
+
       return (void*) -1; // Not reached
     }
 

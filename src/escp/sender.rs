@@ -17,7 +17,7 @@ static GLOBAL_FINO: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64:
 pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   let args = safe_args.args;
   let (host,dest_tmp,dest);
-  let mut fc_hash: HashMap<u64, (u64, u32, u32)> = HashMap::new();
+  let mut fc_hash: HashMap<u64, u32> = HashMap::new();
   let mut files_ok=0;
 
   match flags.destination.rfind(':') {
@@ -37,6 +37,8 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   let (mut sin, mut sout, mut serr, file, proc, stream, fd);
 
   if !flags.mgmt.is_empty() {
+    // Connect to mgmt socket
+
     stream = UnixStream::connect(flags.mgmt.clone())
             .expect("Unable to open mgmt connection");
     fd = stream.as_raw_fd();
@@ -48,6 +50,8 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
     sout = &file;
     serr = &file;
   } else {
+    // SSH to remote host
+
     let port_str = flags.ssh_port.to_string();
     let mut ssh_args = vec![flags.ssh.as_str(), "-p", port_str.as_str()];
     let escp_cmd;
@@ -105,14 +109,13 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
     serr = proc.stderr.as_ref().unwrap();
   }
 
-  {
+  { // Send session INIT message
     let (session_id, start_port, do_verbose, crypto_key, io_engine, nodirect,
          thread_count, block_sz, do_hash, do_compression, do_sparse,
          do_preserve, log_file
         );
 
     crypto_key = vec![ 0i8; 16 ];
-
     let mut builder = flatbuffers::FlatBufferBuilder::with_capacity(128);
 
     unsafe {
@@ -163,7 +166,6 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
     let buf = builder.finished_data();
 
     debug!("Sending session_init message of len: {}", buf.len() );
-
     let hdr  = to_header( buf.len() as u32, msg_session_init );
 
     _ = sin.write( &hdr );
@@ -229,11 +231,9 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       debug!("Starting Sender");
       tx_start(args);
     }
-  }
+  } 
 
-  // For the purpose of metrics, we consider this to be the start of the
-  // transfer. At this point we have not read any data from disk but have
-  // configured the transfer endpoints.
+  // Session is established with receiver
 
   let start    = std::time::Instant::now();
   let mut fi;
@@ -247,12 +247,16 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   }
 
   let fc_out;
+  let fc2_out;
   {
     let fc_in;
     (fc_in, fc_out) = crossbeam_channel::unbounded();
+    let fc2_in;
+    (fc2_in, fc2_out) = crossbeam_channel::unbounded();
+
     let nam = "fc_0".to_string();
     thread::Builder::new().name(nam).spawn(move ||
-      fc_worker(fc_in)).unwrap();
+      fc_worker(fc_in, fc2_in)).unwrap();
   }
 
   let (bytes_total, files_total) = iterate_files(
@@ -329,7 +333,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       _ = fi.flush();
 
       if (bytes_now >= bytes_total) || (files_ok >= files_total) {
-        let s = format!("\rSent    : {tot_str}B in {files_total} files at {rate_str}{units}/s in {:0.1}s {:18}\r",
+        let s = format!("\rSent    : {tot_str}B in {files_total} files at {rate_str}{units}/s in {:0.2}s {:18}\r",
           duration.as_secs_f32(), "");
         _ = fi.write(s.as_bytes());
         _ = fi.flush();
@@ -400,10 +404,10 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
 }
 
 fn file_check(
-    hm: &mut HashMap<u64, (u64, u32, u32)>,
+    hm: &mut HashMap<u64, u32>,
     run_until: std::time::Instant,
     files_ok: &mut u64,
-    fc_out: &crossbeam_channel::Receiver<(u64, u64, u64, u32, u32)> ) -> u64
+    fc_out: &crossbeam_channel::Receiver<(u64, u32)> ) -> u64
 {
 
   let ptr = unsafe { meta_recv() };
@@ -439,7 +443,7 @@ fn file_check(
       let (rx_fino, rx_sz, rx_crc, rx_complete) = (e.fino(), e.sz(), e.crc(), e.complete());
       debug!("file_check on {} {} {:#X} {}", rx_fino, rx_sz, rx_crc, rx_complete);
 
-      if (rx_fino == 0) && (rx_sz == 0) && (rx_complete == 4) {
+      if (rx_fino == 0) && (rx_crc == 0) {
         debug!("Receiver confirmed an empty file");
         *files_ok += 1;
         continue;
@@ -448,40 +452,34 @@ fn file_check(
       if !(*hm).contains_key(&rx_fino) {
         loop {
           // loop until the hm contains key or fc_out returns error
-          let (tx_fino, sz, crc, complete, block);
+          let (tx_fino, crc);
 
           match fc_out.recv_timeout(std::time::Duration::from_millis(2)) {
-            Ok((a,b,c,d, e)) => { (tx_fino, sz, block, crc, complete) = (a, b, c, d, e); }
+            Ok((a,b)) => { (tx_fino, crc) = (a, b); }
             Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
               continue;
             }
             Err(_) => { debug!("file_check: fc_out empty; returning"); return 0; }
           }
 
-          debug!("fc_pop() returned {} {} {} {:#X} {}", tx_fino, sz, block, crc, complete);
+          debug!("fc_pop() returned {} {:#X}", tx_fino, crc );
 
-          (*hm).insert( tx_fino, (sz,crc,complete) );
+          (*hm).insert( tx_fino, crc );
           if rx_fino == tx_fino {
             break;
           }
         }
       }
 
-      let (sz,crc,complete) = (*hm).get(&rx_fino).unwrap();
-      let sz = *sz;
+      let crc = (*hm).get(&rx_fino).unwrap();
       let crc = *crc;
-      let complete = *complete;
 
-
-      if complete != 4 {
-        debug!("Skipping {} {} {:#X} {}; Not complete.", rx_fino, sz, crc, complete);
-        continue;
-      }
-
+      /*
       if sz as i64 != rx_sz {
         error!("\rsz mismatch on {} {}!={}\n", rx_fino, sz, rx_sz);
         return 0;
       }
+      */
 
       if crc != rx_crc {
         // Should always be able to test CRC because if CRC not enabled
@@ -491,7 +489,6 @@ fn file_check(
       }
 
       *files_ok += 1;
-
       debug!("Matched successfully {}", rx_fino);
       _ = (*hm).remove(&rx_fino);
     }
@@ -718,7 +715,7 @@ fn iterate_file_worker(
         }
         libc::S_IFREG => { /* add */ }
 
-        _             => {
+        _ => {
           info!("Ignoring {:#X} {f}", st.st_mode & libc::S_IFMT);
           eprintln!("\rIgnoring {:#X} {f}", st.st_mode & libc::S_IFMT);
           if close_fd(fd) == -1 {
@@ -748,7 +745,6 @@ fn iterate_file_worker(
           info!("Error closing file descriptor (empty file)");
         }
       }
-
     }
   }
 
@@ -759,9 +755,9 @@ fn iterate_files ( flags: &EScp_Args,
                     args: logging::dtn_args_wrapper,
                dest_path: String,
                 mut sout: &std::fs::File,
-                 fc_hash: &mut HashMap<u64, (u64, u32, u32)>,
+                 fc_hash: &mut HashMap<u64, u32>,
                 files_ok: &mut u64,
-                  fc_out: &crossbeam_channel::Receiver<(u64, u64, u64, u32, u32)>
+                  fc_out: &crossbeam_channel::Receiver<(u64, u32)>
                  ) -> (i64,u64) {
 
   let msg_out;
