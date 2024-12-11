@@ -73,7 +73,7 @@ void* file_dummysubmit( void* arg, int32_t* sz, uint64_t* offset ) {
 
   fob->tail++;
 
-  VRFY( fob->compression=0, "Compression not supported by Dummy Engine");
+  VRFY( fob->compression==0, "Compression not supported by Dummy Engine");
 
   if (fob->io_flags & O_WRONLY) {
 

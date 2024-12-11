@@ -403,7 +403,7 @@ fn file_check(
     hm: &mut HashMap<u64, (u64, u32, u32)>,
     run_until: std::time::Instant,
     files_ok: &mut u64,
-    fc_out: &crossbeam_channel::Receiver<(u64, u64, u32, u32)> ) -> u64
+    fc_out: &crossbeam_channel::Receiver<(u64, u64, u64, u32, u32)> ) -> u64
 {
 
   let ptr = unsafe { meta_recv() };
@@ -448,17 +448,17 @@ fn file_check(
       if !(*hm).contains_key(&rx_fino) {
         loop {
           // loop until the hm contains key or fc_out returns error
-          let (tx_fino, sz, crc, complete);
+          let (tx_fino, sz, crc, complete, block);
 
           match fc_out.recv_timeout(std::time::Duration::from_millis(2)) {
-            Ok((a,b,c,d)) => { (tx_fino, sz, crc, complete) = (a, b, c, d); }
+            Ok((a,b,c,d, e)) => { (tx_fino, sz, block, crc, complete) = (a, b, c, d, e); }
             Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
               continue;
             }
             Err(_) => { debug!("file_check: fc_out empty; returning"); return 0; }
           }
 
-          debug!("fc_pop() returned {} {} {:#X} {}", tx_fino, sz, crc, complete);
+          debug!("fc_pop() returned {} {} {} {:#X} {}", tx_fino, sz, block, crc, complete);
 
           (*hm).insert( tx_fino, (sz,crc,complete) );
           if rx_fino == tx_fino {
@@ -761,7 +761,7 @@ fn iterate_files ( flags: &EScp_Args,
                 mut sout: &std::fs::File,
                  fc_hash: &mut HashMap<u64, (u64, u32, u32)>,
                 files_ok: &mut u64,
-                  fc_out: &crossbeam_channel::Receiver<(u64, u64, u32, u32)>
+                  fc_out: &crossbeam_channel::Receiver<(u64, u64, u64, u32, u32)>
                  ) -> (i64,u64) {
 
   let msg_out;

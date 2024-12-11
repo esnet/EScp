@@ -219,13 +219,13 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       let mut builder = flatbuffers::FlatBufferBuilder::with_capacity(16384);
 
       loop {
-        let (mut file_no, mut bytes,mut crc,mut completion) = (0,0,0,0);
+        let (mut file_no, mut bytes,mut crc,mut completion, mut blocks) = (0,0,0,0,0);
         let mut finish_fc = false;
 
         match fc_out.recv_timeout(std::time::Duration::from_millis(fct)) {
-          Ok((a,b,c,d)) => {
-            (file_no,bytes,crc,completion) = (a,b,c,d);
-            debug!("fc: fc_pop returned {} {} {:#X}", file_no, bytes, crc);
+          Ok((a,b,c,d,e)) => {
+            (file_no,bytes,blocks,crc,completion) = (a,b,c,d,e);
+            debug!("fc: fc_pop returned {} {} {} {:#X}", file_no, bytes, blocks, crc);
           }
           Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
             finish_fc = true;
@@ -298,7 +298,7 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
         }
 
         if finish_fc {
-          debug!("fc: Nothing to do, exit loop");
+          debug!("fc: loop finished, exit loop");
           break;
         }
       }
@@ -417,7 +417,7 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
             }
 
             if entry.sz() < 1 {
-              _ = fc_in.send( (0,0,0,4) );
+              _ = fc_in.send( (0,0,0,0,4) );
               debug!("Empty file created (&closed) for {fino} because sz<=0",
                       fino=entry.fino());
               close(fd);
