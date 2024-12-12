@@ -18,7 +18,6 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   let args = safe_args.args;
   let (host,dest_tmp,dest);
   let mut fc_hash: HashMap<u64, u32> = HashMap::new();
-  let mut files_ok=0;
 
   match flags.destination.rfind(':') {
     Some (a) => { (host, dest_tmp) = flags.destination.split_at(a); },
@@ -259,11 +258,10 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       fc_worker(fc_in, fc2_in)).unwrap();
   }
 
-  let (bytes_total, files_total) = iterate_files(
+  let (bytes_total, files_total, mut files_ok) = iterate_files(
     flags, safe_args, dest.to_string(),
     &fi,
     &mut fc_hash,
-    &mut files_ok,
     &fc_out );
   debug!("Finished iterating files, total bytes={bytes_total}");
 
@@ -274,6 +272,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
 
   let mut last_update = std::time::Instant::now();
   loop {
+
     if flags.quiet {
       break;
     }
@@ -322,7 +321,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
         let tmp = human_write( bytes_now as u64, true );
         tot_str= CStr::from_ptr(tmp).to_str().unwrap();
 
-        debug!("transfer progress: {}/{} {}/{}", bytes_now, bytes_total, files_ok, files_total);
+        debug!("tx progress: {}/{} {}/{}", bytes_now, bytes_total, files_ok, files_total);
       }
 
       let units = if flags.bits { "bits" } else { "B" };
@@ -345,10 +344,6 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
     }
 
   }
-
-  /*
-  unsafe { fc_push( 0, 0, 0 ); }
-  */
 
   loop {
 
@@ -587,8 +582,6 @@ fn iterate_file_worker(
   dir_in:    crossbeam_channel::Sender<(PathBuf, PathBuf)>,
   msg_in:    crossbeam_channel::Sender<(String, u64, stat)>,
   args:      logging::dtn_args_wrapper,
-  // hm: &mut HashMap<u64, (u64, u32, u32)>,
-  // files_ok: &mut u64
 ) {
 
   let mode:i32 = 0;
@@ -758,11 +751,11 @@ fn iterate_files ( flags: &EScp_Args,
                dest_path: String,
                 mut sout: &std::fs::File,
                  fc_hash: &mut HashMap<u64, u32>,
-                files_ok: &mut u64,
                   fc_out: &crossbeam_channel::Receiver<(u64, u32)>
-                 ) -> (i64,u64) {
+                 ) -> (i64,u64,u64) {
 
   let msg_out;
+  let mut files_ok:u64=0;
 
   {
     // Spawn helper threads
@@ -889,7 +882,7 @@ fn iterate_files ( flags: &EScp_Args,
           if file_check(
             fc_hash,
             std::time::Instant::now() + std::time::Duration::from_millis(2),
-            files_ok,
+            &mut files_ok,
             fc_out
           ) != 1 {
             eprintln!("Exiting because of CRC mismatch");
@@ -1021,7 +1014,7 @@ fn iterate_files ( flags: &EScp_Args,
   }
 
   debug!("iterate_files: is finished");
-  (bytes_total, files_total)
+  (bytes_total, files_total, files_ok)
 }
 
 
