@@ -346,7 +346,9 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
 
   }
 
+  /*
   unsafe { fc_push( 0, 0, 0 ); }
+  */
 
   loop {
 

@@ -2037,9 +2037,6 @@ extern "C" {
     pub fn fc_pop() -> *mut fc_info_struct;
 }
 extern "C" {
-    pub fn fc_push(file_no: u64, bytes: u64, crc: u32);
-}
-extern "C" {
     pub fn meta_recv() -> *mut u8;
 }
 extern "C" {

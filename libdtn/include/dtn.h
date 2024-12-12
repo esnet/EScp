@@ -201,7 +201,7 @@ struct fc_info_struct {
 };
 
 struct fc_info_struct* fc_pop();
-void fc_push( uint64_t file_no, uint64_t bytes, uint32_t crc );
+// void fc_push( uint64_t file_no, uint64_t bytes, uint32_t crc );
 
 uint8_t* meta_recv();
 void meta_complete();
