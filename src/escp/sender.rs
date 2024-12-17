@@ -209,10 +209,10 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
     let helo = flatbuffers::root::<session_init::Session_Init>(buf.as_slice()).unwrap();
     debug!("Got response from receiver");
 
-    if (helo.version_major() == 0) && (helo.version_minor() <= 7) {
-      eprintln!("Receiver version {}.{} < required 0.8 and must be updated.",
+    if (helo.version_major() == 0) && (helo.version_minor() <= 8) {
+      eprintln!("Receiver version {}.{} < required 0.9 and must be updated.",
                 helo.version_major(), helo.version_minor());
-      error!("Receiver version {}.{} < required 0.8 and must be updated.",
+      error!("Receiver version {}.{} < required 0.9 and must be updated.",
                 helo.version_major(), helo.version_minor());
     }
 
@@ -230,7 +230,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       debug!("Starting Sender");
       tx_start(args);
     }
-  } 
+  }
 
   // Session is established with receiver
 
@@ -262,7 +262,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
     flags, safe_args, dest.to_string(),
     &fi,
     &mut fc_hash,
-    &fc_out );
+    &fc_out, &fc2_out );
   debug!("Finished iterating files, total bytes={bytes_total}");
 
   if (bytes_total <= 0) && (files_total == 0) && (flags.io_engine != "shmem")  {
@@ -283,7 +283,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
         &mut fc_hash,
         std::time::Instant::now() + std::time::Duration::from_millis(1),
         &mut files_ok,
-        &fc_out
+        &fc_out, &fc2_out
       ) != 1 {
         eprintln!("Exiting because of CRC mismatch");
         thread::sleep(std::time::Duration::from_millis(2));
@@ -356,10 +356,10 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       &mut fc_hash,
       std::time::Instant::now() + std::time::Duration::from_millis(200),
       &mut files_ok,
-      &fc_out
+      &fc_out, &fc2_out
     );
 
-    if res==0 {
+    if res<=0 {
       debug!("Exiting because file_check returned EOQ");
       break;
     }
@@ -400,107 +400,198 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   process::exit(0); // Don't wait for threads
 }
 
-fn file_check(
+fn handle_msg_from_receiver(
     hm: &mut HashMap<u64, u32>,
-    run_until: std::time::Instant,
     files_ok: &mut u64,
-    fc_out: &crossbeam_channel::Receiver<(u64, u32)> ) -> u64
+    fc_out:  &crossbeam_channel::Receiver<(u64, u32)> ) -> i64
 {
 
   let ptr = unsafe { meta_recv() };
 
-  if !ptr.is_null() {
+  if ptr.is_null() {
+    return 0i64;
+  }
 
-    let b = unsafe { slice::from_raw_parts(ptr, 6).to_vec() };
-    let (sz, t) = from_header( b );
 
-    if t != msg_file_stat {
-      if t == msg_keepalive {
-        debug!("file_check: Got keepalive, ignoring");
-      } else {
-        info!("file_check: Got unexpected type={t}, ignoring");
-      }
-      unsafe{ meta_complete(); }
-      return 1;
+  let b = unsafe { slice::from_raw_parts(ptr, 6).to_vec() };
+  let (sz, t) = from_header( b );
+
+  if t != msg_file_stat {
+    if t == msg_keepalive {
+      debug!("file_check: Got keepalive, ignoring");
+    } else {
+      info!("file_check: Got unexpected type={t}, ignoring");
+    }
+    unsafe{ meta_complete(); }
+    return 1i64;
+  }
+
+  let dst:[MaybeUninit<u8>; 131072] = [{ std::mem::MaybeUninit::uninit() }; 131072];
+  let mut dst = unsafe { std::mem::transmute::
+    <[std::mem::MaybeUninit<u8>; 131072], [u8; 131072]>(dst) };
+
+  let res = zstd_safe::decompress(dst.as_mut_slice(),
+    unsafe{slice::from_raw_parts(ptr.add(16), sz as usize)} );
+
+  _ = res.expect("decompress failed");
+
+  let fs = flatbuffers::root::<file_spec::ESCP_file_list>(&dst).unwrap();
+
+  for e in fs.files().unwrap() {
+
+    let (rx_fino, rx_sz, rx_crc, rx_complete) = (e.fino(), e.sz(), e.crc(), e.complete());
+    debug!("file_check on {} {} {:#X} {}", rx_fino, rx_sz, rx_crc, rx_complete);
+
+    if (rx_fino == 0) && (rx_crc == 0) {
+      debug!("Receiver confirmed an empty file");
+      *files_ok += 1;
+      continue;
     }
 
-    let dst:[MaybeUninit<u8>; 131072] = [{ std::mem::MaybeUninit::uninit() }; 131072];
-    let mut dst = unsafe { std::mem::transmute::
-      <[std::mem::MaybeUninit<u8>; 131072], [u8; 131072]>(dst) };
+    if !(*hm).contains_key(&rx_fino) {
+      loop {
+        // loop until the hm contains key or fc_out returns error
+        let (tx_fino, crc);
 
-    let res = zstd_safe::decompress(dst.as_mut_slice(),
-      unsafe{slice::from_raw_parts(ptr.add(16), sz as usize)} );
-
-    _ = res.expect("decompress failed");
-
-    let fs = flatbuffers::root::<file_spec::ESCP_file_list>(&dst).unwrap();
-
-    for e in fs.files().unwrap() {
-
-      let (rx_fino, rx_sz, rx_crc, rx_complete) = (e.fino(), e.sz(), e.crc(), e.complete());
-      debug!("file_check on {} {} {:#X} {}", rx_fino, rx_sz, rx_crc, rx_complete);
-
-      if (rx_fino == 0) && (rx_crc == 0) {
-        debug!("Receiver confirmed an empty file");
-        *files_ok += 1;
-        continue;
-      }
-
-      if !(*hm).contains_key(&rx_fino) {
-        loop {
-          // loop until the hm contains key or fc_out returns error
-          let (tx_fino, crc);
-
-          match fc_out.recv_timeout(std::time::Duration::from_millis(2)) {
-            Ok((a,b)) => { (tx_fino, crc) = (a, b); }
-            Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
-              continue;
-            }
-            Err(_) => { debug!("file_check: fc_out empty; returning"); return 0; }
+        match fc_out.recv_timeout(std::time::Duration::from_millis(2)) {
+          Ok((a,b)) => { (tx_fino, crc) = (a, b); }
+          Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
+            continue;
           }
+          Err(_) => { debug!("file_check: fc_out empty; returning"); return -1i64; }
+        }
 
-          debug!("fc_pop() returned {} {:#X}", tx_fino, crc );
+        debug!("fc_pop() returned {} {:#X}", tx_fino, crc );
 
-          (*hm).insert( tx_fino, crc );
-          if rx_fino == tx_fino {
-            break;
-          }
+        (*hm).insert( tx_fino, crc );
+        if rx_fino == tx_fino {
+          break;
         }
       }
-
-      let crc = (*hm).get(&rx_fino).unwrap();
-      let crc = *crc;
-
-      /*
-      if sz as i64 != rx_sz {
-        error!("\rsz mismatch on {} {}!={}\n", rx_fino, sz, rx_sz);
-        return 0;
-      }
-      */
-
-      if crc != rx_crc {
-        // Should always be able to test CRC because if CRC not enabled
-        // entry should be zero
-        error!("\rCRC mismatch on {} {:#010X}!={:#010X}\n", rx_fino, crc, rx_crc);
-        return 0;
-      }
-
-      *files_ok += 1;
-      debug!("Matched successfully {}", rx_fino);
-      _ = (*hm).remove(&rx_fino);
     }
+
+    let crc = (*hm).get(&rx_fino).unwrap();
+    let crc = *crc;
+
+    /*
+    if sz as i64 != rx_sz {
+      error!("\rsz mismatch on {} {}!={}\n", rx_fino, sz, rx_sz);
+      return 0;
+    }
+    */
+
+    if crc != rx_crc {
+      // Should always be able to test CRC because if CRC not enabled
+      // entry should be zero
+      error!("\rCRC mismatch on {} {:#010X}!={:#010X}\n", rx_fino, crc, rx_crc);
+      return -1i64;
+    }
+
+    *files_ok += 1;
+    debug!("Matched successfully {}", rx_fino);
+    _ = (*hm).remove(&rx_fino);
+  }
+
+  unsafe{ meta_complete(); }
+
+  1i64
+
+}
+
+fn send_file_complete( fc2_out: &crossbeam_channel::Receiver<(u64, u64)> ) {
+  let mut vec = VecDeque::new();
+
+  loop {
+    let (fino, blocks);
+    match fc2_out.recv_timeout(std::time::Duration::from_micros(50)) {
+      Ok((a,b)) => { (fino, blocks) = (a, b); }
+      Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
+        break;
+      }
+      Err(_) => { debug!("send_file_complete: fc_out empty; returning"); return; }
+    }
+    vec.push_back( (fino, blocks) );
+  }
+
+  vec.make_contiguous().sort_by_key(|k| k.0);
+
+  if vec.len() > 0 {
+    let mut v = Vec::new();
+    let mut builder = flatbuffers::FlatBufferBuilder::with_capacity(8192);
+
+    for (a,b) in &vec {
+      v.push(
+        file_spec::File::create( &mut builder,
+          &file_spec::FileArgs{
+                fino: *a,
+                blocks: *b as i64,
+                ..Default::default()
+      }));
+    }
+
+    let fi   = Some(builder.create_vector( &v ));
+    let bu = file_spec::ESCP_file_list::create(
+      &mut builder, &file_spec::ESCP_file_listArgs{
+        files: fi,
+        ..Default::default()
+      }
+    );
+    builder.finish( bu, None );
+    let buf = builder.finished_data();
+
+    let dst:[MaybeUninit<u8>; 49152] = [{ std::mem::MaybeUninit::uninit() }; 49152 ];
+    let mut dst = unsafe { std::mem::transmute::
+      <[std::mem::MaybeUninit<u8>; 49152], [u8; 49152]>(dst) };
+
+    // let dst = Vec::<u8>::with_capacity(49152);
+
+    let res = zstd_safe::compress( &mut dst, buf, 3 );
+
+    let compressed_sz = res.expect("Compression failed");
+    let hdr = to_header( compressed_sz as u32, msg_file_spec | msg_compressed );
+    unsafe{
+      meta_send(dst.as_ptr() as *mut i8, hdr.as_ptr() as *mut i8, compressed_sz as i32)
+    };
+
+    info!("buf: {} compressed: {} count: {}", buf.len(), compressed_sz, vec.len());
+
+
 
   }
 
-  if !ptr.is_null() {
-    unsafe{ meta_complete(); }
-  } else {
+
+
+}
+
+fn file_check(
+    hm: &mut HashMap<u64, u32>,
+    run_until: std::time::Instant,
+    files_ok: &mut u64,
+    fc_out:  &crossbeam_channel::Receiver<(u64, u32)>,
+    fc2_out: &crossbeam_channel::Receiver<(u64, u64)> ) -> u64
+{
+
+  let res = handle_msg_from_receiver( hm, files_ok, fc_out );
+
+  if res < 0 {
+    return 0;
+  }
+
+  if res == 0 {
+    let interval = run_until - std::time::Instant::now();
+    if interval.as_secs_f32() > 0.0 {
+      send_file_complete( fc2_out );
+    } else {
+      debug!("file_check: time is over (A): {}", interval.as_secs_f32());
+      return 1;
+    }
+
     let interval = run_until - std::time::Instant::now();
     if interval.as_secs_f32() > 0.0 {
       debug!("file_check: still have {}s left", interval.as_secs_f32());
       thread::sleep(interval);
     } else {
-      debug!("file_check: time is over: {}", interval.as_secs_f32());
+      debug!("file_check: time is over (B): {}", interval.as_secs_f32());
     }
   }
 
@@ -751,7 +842,8 @@ fn iterate_files ( flags: &EScp_Args,
                dest_path: String,
                 mut sout: &std::fs::File,
                  fc_hash: &mut HashMap<u64, u32>,
-                  fc_out: &crossbeam_channel::Receiver<(u64, u32)>
+                  fc_out: &crossbeam_channel::Receiver<(u64, u32)>,
+                  fc2_out: &crossbeam_channel::Receiver<(u64, u64)>
                  ) -> (i64,u64,u64) {
 
   let msg_out;
@@ -883,7 +975,7 @@ fn iterate_files ( flags: &EScp_Args,
             fc_hash,
             std::time::Instant::now() + std::time::Duration::from_millis(2),
             &mut files_ok,
-            fc_out
+            fc_out, fc2_out
           ) != 1 {
             eprintln!("Exiting because of CRC mismatch");
             thread::sleep(std::time::Duration::from_millis(2));
@@ -981,7 +1073,7 @@ fn iterate_files ( flags: &EScp_Args,
 
       let buf = builder.finished_data();
 
-      if buf.len() > 320 {
+      if buf.len() > 160 {
 
         let dst:[MaybeUninit<u8>; 49152] = [{ std::mem::MaybeUninit::uninit() }; 49152 ];
         let mut dst = unsafe { std::mem::transmute::

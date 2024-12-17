@@ -548,6 +548,9 @@ c91d47a3b0c6578e7a727af26700dabd79e0acbf0db7eeffbf3151b48980b8a6  EScp-0.7.0.zip
  * [0.8.0.tar.gz](https://github.com/esnet/EScp/archive/refs/tags/0.8.0.tar.gz)
  * [0.7.1.tar.gz](https://github.com/esnet/EScp/archive/refs/tags/0.7.1.tar.gz)
 
+Changes from 0.8.0 to 0.9.0:
+  * Change how files are marked finished; Transmit and use blocks read
+
 Changes from 0.7.1 to 0.8.0 (07 Nov 2024):
   * Breaks compatability with previous versions
   * Change to On-Wire format; Drops unneeded crypto wrapper. Change other

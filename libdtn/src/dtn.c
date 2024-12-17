@@ -759,7 +759,7 @@ void meta_send( char* buf, char* hdr, int len ) {
     memcpy( b, hdr, 6 );
 
     if (buf) {
-      VRFY( network_send(knob, b,   16,  16+len, true,  FIHDR_META) > 0, "meta_send A");
+      VRFY( network_send(knob, b,   16,  16+len, true,  FIHDR_META) > 0, "meta_send A sz=%d", len);
       VRFY( network_send(knob, temp_buf, len, 16+len, false, FIHDR_META) > 0, "meta_send B");
     } else {
       VRFY( network_send(knob, b,   16,  16, false,  FIHDR_META) > 0, "meta send C");
