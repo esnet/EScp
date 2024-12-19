@@ -212,37 +212,20 @@ void file_incrementfilecount() {
 }
 
 struct file_stat_type* file_addfile( uint64_t fileno, int fd, int64_t file_sz,
-    int64_t atim_sec, int64_t atim_nano, int64_t mtim_sec, int64_t mtim_nano )
-  {
+    int64_t atim_sec, int64_t atim_nano, int64_t mtim_sec, int64_t mtim_nano ) {
+
   struct file_stat_type fs = {0};
   int i;
-  uint64_t zero = 0;
-  int count=0;
+  uint64_t zero = 0, slot=fileno, fc, ft;
 
-  uint64_t slot = fileno;
   slot = xorshift64s(&slot);
+  fc = atomic_load( &file_claim );
+  ft = atomic_load( &file_tail );
 
-  uint64_t fc, ft;
-
-  while (1) {
-    // If Queue full, idle
-    fc = atomic_load( &file_claim );
-    ft = atomic_load( &file_tail );
-
-    if ( (fc-ft) < FILE_STAT_COUNT )
-      break;
-
-    if ( (fileno - ft) < (FILE_STAT_COUNT+50) )
-      break;
-
-    if (count++ > 100)
-      return NULL;
-
-    ESCP_DELAY(10);
-  }
+  if ( ((fc-ft) >= FILE_STAT_COUNT) || ((fileno-ft) >= (FILE_STAT_COUNT+50)) )
+    return NULL;
 
   for (i=0; i<FILE_STAT_COUNT_CC; i++) {
-    zero=0;
     if ( atomic_compare_exchange_weak( &file_stat[FS_MASK(slot)].state, &zero, 0xBedFaceUL ) ) {
       break;
     }

@@ -17,11 +17,10 @@ fn start_receiver( args: logging::dtn_args_wrapper ) {
   debug!("start_receiver complete");
 }
 
-pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
+fn initialize_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) -> bool {
+
   let args = safe_args.args;
-
   let (mut sin, mut sout, file, file2, listener, stream);
-
   let mut buf = vec![ 0u8; 6 ];
   let mut direct_mode = true;
 
@@ -52,22 +51,17 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   match result {
     Ok(_)  => { }
     Err(error) => {
-      eprintln!("Failed to read init message {:?}", error );
-      return
+      panic!("Failed to read init message {:?}", error );
     }
   }
 
   let (sz, t) = from_header( buf.to_vec() );
   let helo;
-
-  debug!("Got header of type {}", t);
-
   let mut port_start = 1232;
-  let mut port_end = 1242; // XXX: port_end not implemented
+  let mut port_end = 10;
   let bind_interface;
 
-
-
+  debug!("Got header of type {}", t);
   if t == msg_session_init {
 
     buf.resize( sz as usize, 0 );
@@ -75,8 +69,7 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
     match res {
       Ok (_) => {},
       Err (error) => {
-        info!("Bad read from SSH {:?}", error);
-        return
+        panic!("Bad read from SSH {:?}", error);
       }
     }
     helo = flatbuffers::root::<session_init::Session_Init>(buf.as_slice()).unwrap();
@@ -140,20 +133,9 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
     process::exit(-1);
   }
 
-  let (fc_in, fc_out) = crossbeam_channel::unbounded();
-  let (fc2_in, fc2_out) = crossbeam_channel::unbounded();
-  {
-    let i = fc_in.clone();
-    let j = fc2_in.clone();
-
-    thread::Builder::new().name("fc_0".to_string()).spawn(move ||
-      fc_worker(i, j)).unwrap();
-  }
-
-
   let p = CString::new( port_start.to_string() ).unwrap();
-
   let mut connection_count=0;
+
   unsafe {
     (*args).sock_store[connection_count] =  dns_lookup( bind_interface.as_ptr() as *mut i8 , p.as_ptr() as *mut i8);
     connection_count += 1;
@@ -172,8 +154,9 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
     port = file_get_activeport( args as *mut ::std::os::raw::c_void );
   }
 
-  if port > port_end {
-    error!("Couldn't assign a port between {} and {}. Got {}", port_start, port_end, port);
+  if port > (port+port_end) {
+    eprintln!("Couldn't assign a port between {} and {}. Got {}", port_start, port_start+port_end, port);
+    error!("Couldn't assign a port between {} and {}. Got {}", port_start, port_start+port_end, port);
     process::exit(-1);
   }
 
@@ -199,17 +182,137 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   }
   debug!("Finished Session Init bytes={:?}", buf.len() );
 
+  direct_mode
+
+}
+
+struct FileInformation {
+  path: String,
+  fino: u64,
+  sz: i64,
+  mode: u32,
+  uid: u32,
+  gid: u32,
+  atim_sec: i64,
+  atim_nano: i64,
+  mtim_sec: i64,
+  mtim_nano: i64
+}
+
+fn add_file( mut files_add: VecDeque<FileInformation>, do_preserve: bool,
+             safe_args: logging::dtn_args_wrapper, direct_mode: &mut bool) -> u64 {
+  let (mut filecount, mut last_filecount) = (0,0);
+  let args = safe_args.args;
+
+  loop {
+    let i = match files_add.front() {
+      Some(a) => { a },
+      None => { break filecount }
+    };
+
+    unsafe{
+
+      let open  = (*(*args).fob).open.unwrap();
+      let close = (*(*args).fob).close_fd.unwrap();
+      let mut fd;
+
+      let fp = CString::new( i.path.clone() ).unwrap();
+
+      for _ in 1..4 {
+        if *direct_mode {
+          fd = open( fp.as_ptr(), (*args).flags | libc::O_DIRECT, 0o644 );
+          if (fd == -1) && (*libc::__errno_location() == 22) {
+            info!("Couldn't open '{}' using O_DIRECT; disabling direct mode", i.path);
+            *direct_mode = false;
+            continue;
+          }
+        } else {
+          fd = open( fp.as_ptr(), (*args).flags, 0o644 );
+        }
+
+        if fd < 1 {
+          let err = io::Error::last_os_error();
+          if err.kind() == std::io::ErrorKind::NotFound {
+
+            let path = std::path::Path::new(i.path.as_str());
+            let dir_path = path.parent().unwrap();
+            let _ = fs::create_dir_all(dir_path);
+
+            info!("Create directory {dir_path:?}");
+            continue;
+          }
+          info!("Got an error opening file {:?} {:?}",
+                i.path, err);
+          return filecount;
+        }
+
+        if do_preserve {
+          let preserve = (*(*args).fob).preserve.unwrap();
+
+          let res = preserve( fd, i.mode, i.uid, i.gid,
+            i.atim_sec, i.atim_nano, i.mtim_sec, i.mtim_nano );
+          debug!("Preserve: fn={} mode={} uid={} gid={} atim_s={} atim_ns={}",
+            i.fino, i.mode, i.uid, i.gid,
+            i.atim_sec, i.atim_nano );
+          if !res.is_null() {
+            let err = CStr::from_ptr(
+              libc::strerror( *libc::__errno_location())).to_str().unwrap()
+              ;
+            info!("Preserve error on {}; {err} {:?}", i.path, res);
+          }
+        }
+
+        debug!("Add file {}:{fino} with sz={} fd={fd}",
+               i.path, i.sz, fino=i.fino );
+
+        let res = file_addfile( i.fino, fd, i.sz,
+                    i.atim_sec, i.atim_nano, i.mtim_sec, i.mtim_nano );
+
+        if res.is_null() {
+          let tf = get_threads_finished();
+          if tf > 0 {
+            info!("Transfer Aborted? Exiting because receivers exited");
+            return filecount;
+          }
+          dbg!("Couldn't add file (fd limit). Will try again.");
+          break;
+        }
+        filecount += 1;
+        _ = files_add.pop_front();
+
+        break;
+      }
+    }
+
+    if filecount != last_filecount {
+      last_filecount = filecount;
+    } else {
+      break filecount;
+    }
+  }
+}
+
+
+pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
+
+  let args = safe_args.args;
   let mut filecount=0;
   let mut last_send = std::time::Instant::now();
+
+  let mut files_add   = VecDeque::new();
+  //  let mut files_close = VecDeque::new();
+
+  let mut direct_mode = initialize_receiver( safe_args, flags );
+
 
   loop {
 
     // We loop here to handle both RX & TX of transfer meta data until
     // our transfer is marked complete.
 
-    let ptr = unsafe{ meta_recv() };
-    let mut v = Vec::new();
+    // let mut v = Vec::new();
 
+    /*
     if ptr.is_null() {
       // If file completion queue has data for us;
       //   - send completion notice to sender
@@ -305,7 +408,12 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
 
       continue;
     }
+    */
 
+    let ptr = unsafe{ meta_recv() };
+    if ptr.is_null() {
+      continue;
+    }
     debug!("Handle message from sender");
 
     // Handle message from sender
@@ -330,119 +438,42 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
     if t == msg_file_spec {
 
       let fs = flatbuffers::root::<file_spec::ESCP_file_list>(c.as_slice()).unwrap();
-      let root = fs.root().unwrap();
+      let mut is_filecompletion = false;
+
+      let root = match fs.root() {
+        Some(a) => { a },
+        None => { is_filecompletion = true; "" },
+      };
       debug!("Root set to: {}", root);
 
       for entry in fs.files().unwrap() {
-        let mut full_path;
-        let (mut atim_sec,
-             mut atim_nano,
-             mut mtim_sec,
-             mut mtim_nano) = ( 0, 0, 0, 0 );
+        if !is_filecompletion {
 
-        unsafe{
           let filename = entry.name().unwrap();
-          full_path = if root.is_empty() {
+          let full_path = if root.is_empty() {
             filename.to_string()
           } else {
             format!("{}/{}", root, filename)
           };
 
-          if fs.complete() && (filecount==0) && (fs.files().unwrap().len()==1 &&
-            !root.is_empty() ) {
+          let fi = FileInformation {
+            path: full_path,
+            sz: entry.sz(),
+            fino: entry.fino(),
+            mode: entry.mode(),
+            uid: entry.uid(),
+            gid: entry.gid(),
+            atim_sec: entry.atim_sec(),
+            atim_nano: entry.atim_nano(),
+            mtim_sec: entry.mtim_sec(),
+            mtim_nano: entry.mtim_nano()
+          };
 
-            // If src is a single file and dest is not a directory, we
-            // use dest as name for file on remote system
+          files_add.push_back(fi);
 
-            let path = std::path::Path::new(root);
-            if !path.is_dir() {
-              full_path = root.to_string();
-            }
 
-          }
-
-          let open  = (*(*args).fob).open.unwrap();
-          let close = (*(*args).fob).close_fd.unwrap();
-          let mut fd;
-
-          let fp = CString::new( full_path.clone() ).unwrap();
-
-          for _ in 1..4 {
-            if direct_mode {
-              fd = open( fp.as_ptr(), (*args).flags | libc::O_DIRECT, 0o644 );
-              if (fd == -1) && (*libc::__errno_location() == 22) {
-                info!("Couldn't open '{}' using O_DIRECT; disabling direct mode", filename);
-                direct_mode = false;
-                continue;
-              }
-            } else {
-              fd = open( fp.as_ptr(), (*args).flags, 0o644 );
-            }
-
-            if fd < 1 {
-              let err = io::Error::last_os_error();
-              if err.kind() == std::io::ErrorKind::NotFound {
-
-                let path = std::path::Path::new(full_path.as_str());
-                let dir_path = path.parent().unwrap();
-                let _ = fs::create_dir_all(dir_path);
-
-                info!("Create directory {dir_path:?}");
-                continue;
-              }
-              info!("Got an error opening file {:?} {:?}",
-                    full_path, err);
-              return;
-            }
-
-            if (*args).do_preserve {
-              let preserve = (*(*args).fob).preserve.unwrap();
-
-              atim_sec = entry.atim_sec();
-              atim_nano= entry.atim_nano();
-              mtim_sec = entry.mtim_sec();
-              mtim_nano= entry.mtim_nano();
-
-              let res = preserve( fd, entry.mode(), entry.uid(), entry.gid(),
-                atim_sec, atim_nano, mtim_sec, mtim_nano );
-              debug!("Preserve: fn={} mode={} uid={} gid={} atim_s={} atim_ns={}",
-                entry.fino(), entry.mode(), entry.uid(), entry.gid(),
-                entry.atim_sec(), entry.atim_nano() );
-              if !res.is_null() {
-                let err = CStr::from_ptr(
-                  libc::strerror( *libc::__errno_location())).to_str().unwrap()
-                  ;
-                info!("Preserve error on {full_path}; {err} {:?}", res);
-              }
-            }
-
-            if entry.sz() < 1 {
-              _ = fc_in.send( (0,0) );
-              debug!("Empty file created (&closed) for {fino} because sz<=0",
-                      fino=entry.fino());
-              close(fd);
-              break;
-            }
-            debug!("Add file {full_path}:{fino} with {:#X} sz={sz} fd={fd}",
-                   (*args).flags, fino=entry.fino(), sz=entry.sz() );
-
-            loop {
-              let res = file_addfile( entry.fino(), fd, entry.sz(),
-                          atim_sec, atim_nano, mtim_sec, mtim_nano );
-              if res.is_null() {
-                let tf = get_threads_finished();
-                if tf > 0 {
-                  info!("Transfer Aborted? Exiting because receivers exited");
-                  return;
-                }
-              } else {
-                break;
-              }
-            }
-            filecount += 1;
-
-            break;
-          }
+        } else {
+          info!("Moo Moo");
         }
       }
 

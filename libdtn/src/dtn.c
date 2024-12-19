@@ -896,14 +896,15 @@ void* rx_worker( void* arg ) {
 
         fob->complete(fob, knob->token);
         written = atomic_fetch_add(&fs_ptr->bytes_total, sz) + sz;
+        atomic_fetch_add(&fs_ptr->block_total, 1);
 
         DBG("[%2d] FIHDR_SHORT written=%08ld/%08ld fn=%ld os=%zX sz=%d",
             id, written, fs.bytes, file_no, offset, sz );
 
+        /*
         // XXX: add block_total
         if ( fs.bytes && fs.bytes <= written  ) {
 
-          /* add blocks */
           if (dtn->do_hash)
             fc_push( file_no, fs.bytes, fs.block_total, atomic_load(&fs_ptr->crc) );
           else
@@ -922,6 +923,7 @@ void* rx_worker( void* arg ) {
           memset_avx( fs_ptr );
           atomic_fetch_add( &dtn->files_closed, 1 );
         }
+        */
       }
     }
   }

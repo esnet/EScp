@@ -198,6 +198,10 @@ struct EScp_Args {
    #[arg(long="escp_port", default_value_t = 1232)]
    escp_port: u16,
 
+   /// ESCP Port range (if unset, use 1232-1242)
+   #[arg(long="escp_portrange", default_value_t = 10)]
+   escp_portrange: u16,
+
    /// Verbose/Debug output (use with logfile)
    #[arg(short, long, num_args=0)]
    verbose: bool,

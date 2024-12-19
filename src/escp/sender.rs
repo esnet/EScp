@@ -146,6 +146,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
         version_minor: env!("CARGO_PKG_VERSION_MINOR").parse::<i32>().unwrap(),
         session_id,
         port_start: start_port as i32,
+        port_end: flags.escp_portrange as i32,
         do_verbose,
         do_crypto: true,
         crypto_key: ckey,
