@@ -134,6 +134,8 @@ struct file_stat_type {
 
 } __attribute__ ((aligned(64)));
 
+void memset_avx( void* src );
+
 struct dtn_args {
   bool do_server;
   bool do_ssh;
@@ -198,7 +200,7 @@ void meta_send( char* buf, char* hdr, int len );
 void tx_start(struct dtn_args* args );
 int rx_start(struct dtn_args* args );
 void print_args ( struct dtn_args* args );
-void finish_transfer( struct dtn_args* args, uint64_t );
+void finish_transfer( struct dtn_args* args );
 void dtn_waituntilready( void* arg );
 void tx_init( struct dtn_args* args );
 

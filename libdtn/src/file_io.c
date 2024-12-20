@@ -136,17 +136,24 @@ void memset_avx( void* dst ) {
 
 
 #else
-#warning Compiling with slow memcmp_zero. Sparse detection will be *slow*.
+#warning Compiling with slower? memcmp_zero
+
 inline int memcmp_zero( void* dst, uint64_t sz ) {
-  // Note: This algorithm is stupidly slow.
-  for (i=0;i < op->sz; i++) {
-    if ( ((uint8_t*)op->buf)[i] != 0 )
-      return 1;
-  }
+  char zero[64] = {0};
+  for ( i=0; i<sz; i+=64 )
+    int res;
+    if ((res=memcmp( (void*)(*((uint64*)dst) + i), zero )))
+      return res;
   return 0;
 }
 
-// XXX: Add other functions here
+void memcpy_avx( void* dst, void* src ) {
+  memcpy( dst, src, 64 );
+}
+
+void memset_avx( void* src ) {
+  memset( src, 0, 64 );
+}
 
 #endif
 

@@ -17,12 +17,11 @@ fn start_receiver( args: logging::dtn_args_wrapper ) {
   debug!("start_receiver complete");
 }
 
-fn initialize_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) -> bool {
+fn initialize_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
 
   let args = safe_args.args;
   let (mut sin, mut sout, file, file2, listener, stream);
   let mut buf = vec![ 0u8; 6 ];
-  let mut direct_mode = true;
 
   if !flags.mgmt.is_empty() {
     _ = fs::remove_file(flags.mgmt.clone());
@@ -119,15 +118,12 @@ fn initialize_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) 
       (*args).block = helo.block_sz();
       (*args).thread_count = helo.thread_count();
       (*args).do_hash = helo.do_hash();
+      (*args).nodirect = helo.no_direct();
     }
 
-    if helo.no_direct() { direct_mode = false; }
-
     bind_interface = CString::new( helo.bind_interface().unwrap_or("") ).unwrap();
-
     logging::initialize_logging( helo.log_file().unwrap_or(""), safe_args);
-
-     debug!("Session init {:016X?} {}", helo.session_id(), helo.thread_count());
+    debug!("Session init {:016X?} {}", helo.session_id(), helo.thread_count());
   } else {
     error!("Expected session init message");
     process::exit(-1);
@@ -182,10 +178,9 @@ fn initialize_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) 
   }
   debug!("Finished Session Init bytes={:?}", buf.len() );
 
-  direct_mode
-
 }
 
+#[derive(Clone)]
 struct FileInformation {
   path: String,
   fino: u64,
@@ -201,9 +196,9 @@ struct FileInformation {
   crc: u32
 }
 
-fn add_file( files_hash: &mut HashMap<u64, FileInformation>,
-             mut files_add: VecDeque<u64>, do_preserve: bool,
-             safe_args: logging::dtn_args_wrapper, direct_mode: &mut bool) -> u64 {
+fn add_file( files_hash: &mut HashMap<u64, FileInformation>, files_add: &mut VecDeque<u64>,
+             safe_args: logging::dtn_args_wrapper) -> u64 {
+
   let (mut filecount, mut last_filecount) = (0,0);
   let args = safe_args.args;
 
@@ -223,11 +218,11 @@ fn add_file( files_hash: &mut HashMap<u64, FileInformation>,
       let fp = CString::new( i.path.clone() ).unwrap();
 
       for _ in 1..4 {
-        if *direct_mode {
+        if (*args).nodirect == false {
           fd = open( fp.as_ptr(), (*args).flags | libc::O_DIRECT, 0o644 );
           if (fd == -1) && (*libc::__errno_location() == 22) {
             info!("Couldn't open '{}' using O_DIRECT; disabling direct mode", i.path);
-            *direct_mode = false;
+            (*args).nodirect = true;
             continue;
           }
         } else {
@@ -251,8 +246,7 @@ fn add_file( files_hash: &mut HashMap<u64, FileInformation>,
         }
 
         i.fd = fd;
-
-        if do_preserve {
+        if (*args).do_preserve {
           let preserve = (*(*args).fob).preserve.unwrap();
 
           let res = preserve( fd, i.mode, i.uid, i.gid,
@@ -298,10 +292,12 @@ fn add_file( files_hash: &mut HashMap<u64, FileInformation>,
 }
 
 fn close_file( files_hash: &mut HashMap<u64, FileInformation>,
-               files_close: &mut VecDeque<(u64, i64)>, do_preserve: bool,
-               safe_args: logging::dtn_args_wrapper ) {
+               files_close: &mut VecDeque<(u64, i64)>,
+               safe_args: logging::dtn_args_wrapper
+             ) -> Vec<FileInformation> {
 
   // let (mut filecount, mut last_filecount) = (0,0);
+  let mut ret = Vec::new();
   let args = safe_args.args;
   let (close,preserve) = unsafe {
     ( (*(*args).fob).close_fd.unwrap(),
@@ -325,151 +321,127 @@ fn close_file( files_hash: &mut HashMap<u64, FileInformation>,
 
       let fi = files_hash.get_mut(fino).unwrap();
 
-      if do_preserve {
+      if (*args).do_preserve {
         _ = preserve( fi.fd, fi.mode, fi.uid, fi.gid,
               fi.atim_sec, fi.atim_nano, fi.mtim_sec, fi.mtim_nano );
       }
       _ = close( fi.fd );
 
       fi.crc = (*stats).crc;
+      ret.push((*fi).clone());
+
+      files_hash.remove(fino);
+      _ = files_close.pop_front();
+
+      memset_avx( stats as *mut ::std::os::raw::c_void );
       file_incrementtail();
     }
   }
 
+  ret
+}
+
+fn send_file_completions( files_complete: &Vec<FileInformation> ) -> bool {
+
+  if files_complete.len() < 1 {
+    return false;
+  }
+
+  debug!("send_file_completions for {} files", files_complete.len());
+  // let mut v = VecDeque::new();
+  let mut v = Vec::new();
+  let mut builder = flatbuffers::FlatBufferBuilder::with_capacity(8192);
+
+  for fi in files_complete{
+      v.push(
+        file_spec::File::create( &mut builder,
+          &file_spec::FileArgs{
+            fino: fi.fino,
+            crc:  fi.crc,
+            ..Default::default()
+          }));
+  }
 
 
+  let fi   = Some( builder.create_vector( &v ) );
+  let bu = file_spec::ESCP_file_list::create(
+    &mut builder, &file_spec::ESCP_file_listArgs{
+      files: fi,
+      fc_stat: true,
+      ..Default::default()
+    });
+  builder.finish( bu, None );
+  let buf = builder.finished_data();
+
+  let dst:[MaybeUninit<u8>; 49152] = [{ std::mem::MaybeUninit::uninit() }; 49152];
+  let mut dst = unsafe { std::mem::transmute::<
+    [std::mem::MaybeUninit<u8>; 49152], [u8; 49152]>(dst) };
+
+  let res = zstd_safe::compress( &mut dst, buf, 3 );
+  let csz = res.expect("Compression failed");
+
+  let hdr = to_header( csz as u32, msg_file_stat );
+
+  unsafe {
+    meta_send( dst.as_ptr() as *mut i8, hdr.as_ptr() as *mut i8,
+               csz as i32 );
+  }
+
+  return true;
 }
 
 
 pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
 
   let args = safe_args.args;
-  let mut filecount=0;
-  let mut last_send = std::time::Instant::now();
 
-  let mut files_add   = VecDeque::new();
+  let mut files_add   = VecDeque::<u64>::new();
   let mut files_close = VecDeque::new();
 
   let mut files_hash: HashMap<u64, FileInformation> = HashMap::new();
+  let mut files_complete = Vec::new();
 
+  let mut file_count_in=0;
+  let mut file_count_out=0;
 
-  let mut direct_mode = initialize_receiver( safe_args, flags );
+  let mut transfer_complete = false;
+  let mut timeout = 100;
 
+  initialize_receiver( safe_args, flags );
 
   loop {
+    let filecount = add_file( &mut files_hash, &mut files_add, safe_args );
+    let mut res = close_file( &mut files_hash, &mut files_close, safe_args );
+    files_complete.append(&mut res);
 
-    // Try to close files
+    file_count_in += filecount;
+    file_count_out += res.len();
 
-    // We loop here to handle both RX & TX of transfer meta data until
-    // our transfer is marked complete.
+    if transfer_complete && (file_count_in==file_count_out as u64) {
+      debug!("Transfer complete conditions met");
+      break;
+    }
 
-    // let mut v = Vec::new();
-
-    /*
-    if ptr.is_null() {
-      // If file completion queue has data for us;
-      //   - send completion notice to sender
-
-      let mut fct = 5; // Our timeout here is intentionally short as long
-                       // timeouts interfere with our ability to open files
-      let loop_start = std::time::Instant::now();
-      let mut did_init= false;
-      let mut builder = flatbuffers::FlatBufferBuilder::with_capacity(16384);
-
-      loop {
-        let (mut file_no, mut crc) = (0,0);
-        let mut finish_fc = false;
-
-        match fc_out.recv_timeout(std::time::Duration::from_millis(fct)) {
-          Ok((a,b)) => {
-            (file_no,crc) = (a,b);
-            debug!("fc: fc_pop returned {} {:#X}", file_no, crc);
-          }
-          Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
-            finish_fc = true;
-          }
-          Err(_) => { error!("receive_main: error receiving file completion notifications"); return; }
-        }
-
-        fct = 1;
-
-        if !did_init && !finish_fc {
-          debug!("fc: Setting did_init=true because data was received");
-          did_init = true;
-        }
-
-        if did_init && !finish_fc {
-          debug!("fc: pack {}", file_no);
-          v.push(
-            file_spec::File::create( &mut builder,
-              &file_spec::FileArgs{
-                fino:     file_no,
-                crc,
-                ..Default::default()
-              }));
-
-          if loop_start.elapsed().as_secs_f32() > ((fct as f32)/1001.0) {
-            debug!("fc: setting finish_fc because loop timeout is exceeded");
-            finish_fc = true;
-          }
-        }
-
-        if last_send.elapsed().as_secs_f32() > 2.0 {
-          let hdr = to_header( 0, msg_keepalive );
-          debug!("fc: Sending heartbeat");
-          unsafe {
-            meta_send( std::ptr::null_mut::<i8>(), hdr.as_ptr() as *mut i8, 0 );
-          }
-          last_send = std::time::Instant::now();
-        }
-
-        if did_init && finish_fc {
-          let fi   = Some( builder.create_vector( &v ) );
-          let bu = file_spec::ESCP_file_list::create(
-            &mut builder, &file_spec::ESCP_file_listArgs{
-              files: fi,
-              fc_stat: true,
-              ..Default::default()
-            });
-          builder.finish( bu, None );
-          let buf = builder.finished_data();
-
-          let dst:[MaybeUninit<u8>; 49152] = [{ std::mem::MaybeUninit::uninit() }; 49152];
-          let mut dst = unsafe { std::mem::transmute::<
-            [std::mem::MaybeUninit<u8>; 49152], [u8; 49152]>(dst) };
-
-          let res = zstd_safe::compress( &mut dst, buf, 3 );
-          let csz = res.expect("Compression failed");
-
-          let hdr = to_header( csz as u32, msg_file_stat );
-
-          debug!("fc: Sending fc_state data for {} files, size is {}/{csz}",
-                 v.len(), buf.len());
-          unsafe {
-            meta_send( dst.as_ptr() as *mut i8, hdr.as_ptr() as *mut i8,
-                       csz as i32 );
-          }
-          last_send = std::time::Instant::now();
-          did_init = false;
-        }
-
-        if finish_fc {
-          debug!("fc: loop finished, exit loop");
-          break;
-        }
-      }
-
+    if (filecount > 0) || (res.len() > 0) {
+      timeout = 100;
       continue;
     }
-    */
 
     let ptr = unsafe{ meta_recv() };
     if ptr.is_null() {
-      continue;
-    }
-    debug!("Handle message from sender");
+      if send_file_completions( &files_complete ) {
+        files_complete = Vec::new();
+        timeout=100;
+        continue;
+      }
 
-    // Handle message from sender
+      timeout = (timeout as f64 * 1.337) as u64;
+      // We didn't do anything so go ahead and delay a little bit
+      thread::sleep(std::time::Duration::from_micros(timeout)); // Wait: queues to clear
+    }
+
+    timeout=100;
+    debug!("Got message from sender");
 
     let b = unsafe { slice::from_raw_parts(ptr, 6).to_vec() };
     let (sz, mut t) = from_header( b );
@@ -537,26 +509,29 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
     if t == msg_session_terminate {
       info!("Got terminate request sz={sz}, type={t}");
       // XXX: Deprecated?
-      break;
+      transfer_complete=true;
+      continue;
     }
 
     if t == 0x430B {
       info!("Got session complete request sz={sz}, type={t}");
-      break;
+      transfer_complete=true;
+      continue;
     }
 
     if (t == 1) && (sz == 0) {
       debug!("Got t=1 sz={sz}");
-      break;
+      transfer_complete=true;
+      continue;
     }
 
     info!("Got unhandled message from sender sz={sz}, type={t}");
-    break;
+    continue;
   }
 
   unsafe {
     debug!("Calling finish transfer");
-    finish_transfer( args, filecount );
+    finish_transfer( args );
   }
 
   debug!("Transfer Complete. Sending Session Finished Message.");

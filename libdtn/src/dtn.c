@@ -1151,15 +1151,16 @@ void* tx_worker( void* args ) {
   return 0;
 }
 
-void finish_transfer( struct dtn_args* args, uint64_t filecount ) {
+void finish_transfer( struct dtn_args* args ) {
 
   // Typically this function is called with filecount argument, and will wait
   // until all files written, This way the receiver can verify to the sender
   // that all files were transferred successfully. Conversely it should return
   // an error on failure.
 
-  DBG("[--] finish_transfer is called fc=%ld", filecount);
+  DBG("[--] finish_transfer is called");
 
+  /*
   int j = 0;
 
   while (filecount) {
@@ -1192,6 +1193,7 @@ void finish_transfer( struct dtn_args* args, uint64_t filecount ) {
       }
     }
   }
+  */
 
   NFO("bytes_network=%zd bytes_disk=%zd bytes_compressed=%zd TC=%d",
     atomic_load(&bytes_network), atomic_load(&bytes_disk),

@@ -1516,6 +1516,9 @@ fn bindgen_test_layout_file_stat_type() {
         )
     );
 }
+extern "C" {
+    pub fn memset_avx(src: *mut ::core::ffi::c_void);
+}
 #[repr(C)]
 #[repr(align(64))]
 #[derive(Debug, Copy, Clone)]
@@ -2048,7 +2051,7 @@ extern "C" {
     pub fn print_args(args: *mut dtn_args);
 }
 extern "C" {
-    pub fn finish_transfer(args: *mut dtn_args, arg1: u64);
+    pub fn finish_transfer(args: *mut dtn_args);
 }
 extern "C" {
     pub fn dtn_waituntilready(arg: *mut ::core::ffi::c_void);
