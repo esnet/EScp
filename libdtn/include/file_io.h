@@ -113,34 +113,19 @@ struct file_info {
 struct file_stat_type {
 
   // CAS to become owner of region
-  uint64_t state        __attribute__ ((aligned(64)));
-
+  uint64_t state;
   uint64_t file_no;
   uint64_t bytes;        // File sz from file meta data
-
   uint64_t block_offset; // 32
-  uint64_t block_total;
-  uint64_t bytes_total;  // Incremented after successful I/O
 
+  uint64_t block_total;
+  uint64_t bytes_total;
   int32_t  fd;
   uint32_t position;     // Self referential
   uint32_t poison;
-  uint32_t crc;
+  uint32_t crc;          // 64
 
-  int64_t atim_sec;
-  int64_t atim_nano;
-  int64_t mtim_sec;
-  int64_t mtim_nano; // 96
-
-  uint32_t uid;
-  uint32_t gid;
-  uint32_t mode;
-  uint32_t pad2;    // 112
-
-  uint64_t pad3[2]; // 128
-
-} __attribute__ ((packed)) ;
-
+} __attribute__ ((packed, aligned(64)));
 
 void file_randrd( void* buf, int count );
 
@@ -166,13 +151,11 @@ void* file_dummycomplete( void* arg, void* arg2 );
 
 int32_t file_hash( void* block, int sz, int seed );
 
-struct file_stat_type* file_addfile(uint64_t fileno, int fd,
-  int64_t sz, int64_t as, int64_t an, int64_t ms, int64_t mn);
+struct file_stat_type* file_addfile(uint64_t fileno, int fd);
 struct file_stat_type* file_next( int id, struct file_stat_type* );
 struct file_stat_type* file_wait( uint64_t fileno, struct file_stat_type*, int id);
+uint64_t file_iow_remove( struct file_stat_type* fs, int id );
 
-int64_t file_stat_getbytes( void *file_object, int fd );
-uint64_t  file_iow_remove( struct file_stat_type* fs, int id );
 
 int file_get_activeport( void* args );
 void memcpy_avx( void* dst, void* src );

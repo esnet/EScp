@@ -29,7 +29,7 @@
 
 #define FILE_STAT_COUNT 850
 #define FILE_STAT_COUNT_HSZ 2048
-#define FILE_STAT_COUNT_CC 24
+#define FILE_STAT_COUNT_CC 12
 
 #define FS_INIT        0xBAEBEEUL
 #define FS_IO          (1UL << 31) // NOTE: These values set a limit to the
@@ -178,41 +178,7 @@ void file_completetransfer() {
     atomic_fetch_add( &transfer_complete, 1 );
 }
 
-void file_incrementfilecount() {
-  uint64_t slot, cur, orig;
-  int i;
-  cur = orig = atomic_load( &file_count );
-
-
-  while (1) {
-    slot = ++cur;
-
-    for (i=0; i<FILE_STAT_COUNT_CC; i++) {
-      slot = xorshift64s(&slot);
-      if ( atomic_load( &file_stat[FS_MASK(slot)].file_no ) == cur) {
-        break;
-      }
-    }
-
-    if (i >= FILE_STAT_COUNT_CC) {
-      break;
-    }
-
-  }
-
-  cur -= 1;
-
-  if (orig != cur) {
-    if ( atomic_compare_exchange_weak(&file_count, &orig, cur) ) {
-      DBG("Increment file_count from %ld to %ld", orig, cur);
-    } else {
-     return file_incrementfilecount();
-    }
-  }
-}
-
-struct file_stat_type* file_addfile( uint64_t fileno, int fd, int64_t file_sz,
-    int64_t atim_sec, int64_t atim_nano, int64_t mtim_sec, int64_t mtim_nano ) {
+struct file_stat_type* file_addfile( uint64_t fileno, int fd ) {
 
   struct file_stat_type fs = {0};
   int i;
@@ -237,70 +203,73 @@ struct file_stat_type* file_addfile( uint64_t fileno, int fd, int64_t file_sz,
   fs.state = FS_INIT;
   fs.fd = fd;
   fs.file_no = fileno;
-  fs.bytes = file_sz;
   fs.position = FS_MASK(slot);
   fs.poison = 0xC0DAB1E;
-  fs.atim_sec  = atim_sec;
-  fs.atim_nano = atim_nano;
-  fs.mtim_sec  = mtim_sec;
-  fs.mtim_nano = mtim_nano;
 
   memcpy_avx( &file_stat[FS_MASK(slot)], &fs );
-  memcpy_avx( (void*)(((uint64_t)(&file_stat[FS_MASK(slot)]))+64),
-              (void*)(((uint64_t)(&fs))+64) );
   atomic_fetch_add( &file_claim, 1 );
 
-  DBG("file_addfile fn=%ld, fd=%d slot=%ld cc=%d as=%zd",
-      fileno, fd, FS_MASK(slot), i, atim_sec);
+  DBG("file_addfile fn=%ld, fd=%d slot=%ld cc=%d",
+      fileno, fd, FS_MASK(slot), i );
 
-  file_incrementfilecount();
+  atomic_fetch_add( &file_count, 1 );
 
   return( &file_stat[FS_MASK(slot)] );
 }
 
+struct file_stat_type* file_getstats( uint64_t fileno ) {
+  struct file_stat_type fs;
+  uint64_t slot;
+
+  slot = fileno;
+
+  for (int i=0; i<FILE_STAT_COUNT_CC; i++) {
+    slot = xorshift64s(&slot);
+
+    memcpy_avx( &fs, &file_stat[FS_MASK(slot)] );
+    if (fs.file_no != fileno)
+      continue;
+
+    return &file_stat[FS_MASK(slot)];
+  }
+
+  return 0;
+}
+
+
 struct file_stat_type* file_wait( uint64_t fileno, struct file_stat_type* test_fs, int id ) {
 
   int i;
-  uint64_t fc, slot, fs_init;
+  uint64_t slot, fs_init;
 
   // DBG("file_wait start fn=%ld", fileno);
 
   while (1) {
-    fc = atomic_load( &file_count );
-    if (fileno <= fc) {
-      break;;
+    slot = fileno;
+
+    for (i=0; i<FILE_STAT_COUNT_CC; i++) {
+      slot = xorshift64s(&slot);
+
+      memcpy_avx( test_fs, &file_stat[FS_MASK(slot)] );
+      if (test_fs->file_no != fileno)
+        continue;
+
+      fs_init = FS_INIT;
+      if ( (test_fs->state == FS_INIT) && atomic_compare_exchange_weak(
+        &file_stat[FS_MASK(slot)].state, &fs_init, FS_COMPLETE|FS_IO) )
+      {
+        DBG("[%2d] NEW IOW on fn=%ld, slot=%ld", id, test_fs->file_no, FS_MASK(slot));
+        return &file_stat[FS_MASK(slot)]; // Fist worker on file
+      }
+
+      if (test_fs->state & FS_IO) {
+        DBG("[%2d] ADD writer to fn=%ld", id, test_fs->file_no);
+        return &file_stat[FS_MASK(slot)]; // Add worker to file
+      }
     }
-    ESCP_DELAY(10);
+
+    ESCP_DELAY(5);
   }
-
-  // DBG("file_wait ready on fn=%ld", fileno);
-
-  slot = fileno;
-
-  for (i=0; i<FILE_STAT_COUNT_CC; i++) {
-    slot = xorshift64s(&slot);
-
-    memcpy_avx( test_fs, &file_stat[FS_MASK(slot)] );
-    if (test_fs->file_no != fileno)
-      continue;
-
-    fs_init = FS_INIT;
-    if ( (test_fs->state == FS_INIT) && atomic_compare_exchange_weak(
-      &file_stat[FS_MASK(slot)].state, &fs_init, FS_COMPLETE|FS_IO) )
-    {
-      DBG("[%2d] NEW IOW on fn=%ld, slot=%ld", id, test_fs->file_no, FS_MASK(slot));
-      return &file_stat[FS_MASK(slot)]; // Fist worker on file
-    }
-
-    if (test_fs->state & FS_IO) {
-      DBG("[%2d] ADD writer to fn=%ld", id, test_fs->file_no);
-      return &file_stat[FS_MASK(slot)]; // Add worker to file
-    }
-  }
-
-  // VRFY(0, "[%2d] Couldn't convert fileno", id);
-  NFO("[%2d] Couldn't convert fileno, trying again.", id);
-  return file_wait( fileno, test_fs, id );
 }
 
 
@@ -312,7 +281,7 @@ struct file_stat_type* file_next( int id, struct file_stat_type* test_fs ) {
   DBV("[%2d] Enter file_next", id);
 
   int64_t fc,fh,slot;
-  int i,j,k=0;;
+  int i,j=0;
 
   while (1) {
     fc = atomic_load( &file_count ); // In order increment of available files
@@ -347,18 +316,12 @@ struct file_stat_type* file_next( int id, struct file_stat_type* test_fs ) {
       }
     }
 
-    if ((k++&0xffff) == 0xffff) {
-      // We use CAS weak, which can fail sometimes. If it did fail, we
-      // need to repeat our check, which we do below.
-      file_incrementfilecount();
-    }
-
-    // Got nothing, wait and try again later.
     if ( atomic_load( &transfer_complete ) ) {
       DBG("[%2d] file_next got transfer_complete flag", id );
       return 0;
     }
-    ESCP_DELAY(1);
+
+    ESCP_DELAY(1); // No work found, try again
   }
 
   // We got a file_no, now we need to translate it into a slot.

@@ -1371,21 +1371,8 @@ extern "C" {
         seed: ::core::ffi::c_int,
     ) -> i32;
 }
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct file_stat_type {
-    _unused: [u8; 0],
-}
 extern "C" {
-    pub fn file_addfile(
-        fileno: u64,
-        fd: ::core::ffi::c_int,
-        sz: i64,
-        as_: i64,
-        an: i64,
-        ms: i64,
-        mn: i64,
-    ) -> *mut file_stat_type;
+    pub fn file_addfile(fileno: u64, fd: ::core::ffi::c_int) -> *mut file_stat_type;
 }
 extern "C" {
     pub fn file_next(id: ::core::ffi::c_int) -> *mut file_stat_type;
@@ -1394,7 +1381,140 @@ extern "C" {
     pub fn file_wait(fileno: u64) -> *mut file_stat_type;
 }
 extern "C" {
+    pub fn file_getstats(fileno: u64) -> *mut file_stat_type;
+}
+extern "C" {
     pub fn file_get_activeport(args: *mut ::core::ffi::c_void) -> ::core::ffi::c_int;
+}
+#[repr(C)]
+#[repr(align(64))]
+#[derive(Debug, Copy, Clone)]
+pub struct file_stat_type {
+    pub state: u64,
+    pub file_no: u64,
+    pub bytes: u64,
+    pub block_offset: u64,
+    pub block_total: u64,
+    pub bytes_total: u64,
+    pub fd: i32,
+    pub position: u32,
+    pub poison: u32,
+    pub crc: u32,
+}
+#[test]
+fn bindgen_test_layout_file_stat_type() {
+    const UNINIT: ::core::mem::MaybeUninit<file_stat_type> = ::core::mem::MaybeUninit::uninit();
+    let ptr = UNINIT.as_ptr();
+    assert_eq!(
+        ::core::mem::size_of::<file_stat_type>(),
+        64usize,
+        concat!("Size of: ", stringify!(file_stat_type))
+    );
+    assert_eq!(
+        ::core::mem::align_of::<file_stat_type>(),
+        64usize,
+        concat!("Alignment of ", stringify!(file_stat_type))
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).state) as usize - ptr as usize },
+        0usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(file_stat_type),
+            "::",
+            stringify!(state)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).file_no) as usize - ptr as usize },
+        8usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(file_stat_type),
+            "::",
+            stringify!(file_no)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).bytes) as usize - ptr as usize },
+        16usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(file_stat_type),
+            "::",
+            stringify!(bytes)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).block_offset) as usize - ptr as usize },
+        24usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(file_stat_type),
+            "::",
+            stringify!(block_offset)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).block_total) as usize - ptr as usize },
+        32usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(file_stat_type),
+            "::",
+            stringify!(block_total)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).bytes_total) as usize - ptr as usize },
+        40usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(file_stat_type),
+            "::",
+            stringify!(bytes_total)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).fd) as usize - ptr as usize },
+        48usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(file_stat_type),
+            "::",
+            stringify!(fd)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).position) as usize - ptr as usize },
+        52usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(file_stat_type),
+            "::",
+            stringify!(position)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).poison) as usize - ptr as usize },
+        56usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(file_stat_type),
+            "::",
+            stringify!(poison)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).crc) as usize - ptr as usize },
+        60usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(file_stat_type),
+            "::",
+            stringify!(crc)
+        )
+    );
 }
 #[repr(C)]
 #[repr(align(64))]
@@ -2041,4 +2161,7 @@ extern "C" {
 }
 extern "C" {
     pub fn meta_complete();
+}
+extern "C" {
+    pub fn file_incrementtail();
 }

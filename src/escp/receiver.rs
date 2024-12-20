@@ -190,16 +190,19 @@ struct FileInformation {
   path: String,
   fino: u64,
   sz: i64,
+  fd: i32,
   mode: u32,
   uid: u32,
   gid: u32,
   atim_sec: i64,
   atim_nano: i64,
   mtim_sec: i64,
-  mtim_nano: i64
+  mtim_nano: i64,
+  crc: u32
 }
 
-fn add_file( mut files_add: VecDeque<FileInformation>, do_preserve: bool,
+fn add_file( files_hash: &mut HashMap<u64, FileInformation>,
+             mut files_add: VecDeque<u64>, do_preserve: bool,
              safe_args: logging::dtn_args_wrapper, direct_mode: &mut bool) -> u64 {
   let (mut filecount, mut last_filecount) = (0,0);
   let args = safe_args.args;
@@ -210,10 +213,11 @@ fn add_file( mut files_add: VecDeque<FileInformation>, do_preserve: bool,
       None => { break filecount }
     };
 
+    let i = &mut files_hash.get_mut(&i).unwrap();
+
     unsafe{
 
       let open  = (*(*args).fob).open.unwrap();
-      let close = (*(*args).fob).close_fd.unwrap();
       let mut fd;
 
       let fp = CString::new( i.path.clone() ).unwrap();
@@ -246,6 +250,8 @@ fn add_file( mut files_add: VecDeque<FileInformation>, do_preserve: bool,
           return filecount;
         }
 
+        i.fd = fd;
+
         if do_preserve {
           let preserve = (*(*args).fob).preserve.unwrap();
 
@@ -265,8 +271,7 @@ fn add_file( mut files_add: VecDeque<FileInformation>, do_preserve: bool,
         debug!("Add file {}:{fino} with sz={} fd={fd}",
                i.path, i.sz, fino=i.fino );
 
-        let res = file_addfile( i.fino, fd, i.sz,
-                    i.atim_sec, i.atim_nano, i.mtim_sec, i.mtim_nano );
+        let res = file_addfile( i.fino, fd );
 
         if res.is_null() {
           let tf = get_threads_finished();
@@ -292,6 +297,49 @@ fn add_file( mut files_add: VecDeque<FileInformation>, do_preserve: bool,
   }
 }
 
+fn close_file( files_hash: &mut HashMap<u64, FileInformation>,
+               files_close: &mut VecDeque<(u64, i64)>, do_preserve: bool,
+               safe_args: logging::dtn_args_wrapper ) {
+
+  // let (mut filecount, mut last_filecount) = (0,0);
+  let args = safe_args.args;
+  let (close,preserve) = unsafe {
+    ( (*(*args).fob).close_fd.unwrap(),
+      (*(*args).fob).preserve.unwrap() )
+  };
+
+  loop {
+    unsafe {
+      let (fino,blocks) = match files_close.front() {
+        Some((a,b)) => { (a,b) },
+        None => { break }
+      };
+
+      let stats = file_getstats( *fino );
+      if stats.is_null() {
+        break;
+      }
+      if (*stats).block_total < (*blocks as u64) { // File incomplete
+        break;
+      }
+
+      let fi = files_hash.get_mut(fino).unwrap();
+
+      if do_preserve {
+        _ = preserve( fi.fd, fi.mode, fi.uid, fi.gid,
+              fi.atim_sec, fi.atim_nano, fi.mtim_sec, fi.mtim_nano );
+      }
+      _ = close( fi.fd );
+
+      fi.crc = (*stats).crc;
+      file_incrementtail();
+    }
+  }
+
+
+
+}
+
 
 pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
 
@@ -300,12 +348,17 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   let mut last_send = std::time::Instant::now();
 
   let mut files_add   = VecDeque::new();
-  //  let mut files_close = VecDeque::new();
+  let mut files_close = VecDeque::new();
+
+  let mut files_hash: HashMap<u64, FileInformation> = HashMap::new();
+
 
   let mut direct_mode = initialize_receiver( safe_args, flags );
 
 
   loop {
+
+    // Try to close files
 
     // We loop here to handle both RX & TX of transfer meta data until
     // our transfer is marked complete.
@@ -448,7 +501,6 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
 
       for entry in fs.files().unwrap() {
         if !is_filecompletion {
-
           let filename = entry.name().unwrap();
           let full_path = if root.is_empty() {
             filename.to_string()
@@ -459,6 +511,7 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
           let fi = FileInformation {
             path: full_path,
             sz: entry.sz(),
+            fd: 0,
             fino: entry.fino(),
             mode: entry.mode(),
             uid: entry.uid(),
@@ -466,14 +519,14 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
             atim_sec: entry.atim_sec(),
             atim_nano: entry.atim_nano(),
             mtim_sec: entry.mtim_sec(),
-            mtim_nano: entry.mtim_nano()
+            mtim_nano: entry.mtim_nano(),
+            crc: 0
           };
 
-          files_add.push_back(fi);
-
-
+          files_hash.insert( entry.fino(), fi );
+          files_add.push_back( entry.fino() );
         } else {
-          info!("Moo Moo");
+          files_close.push_back((entry.fino(), entry.blocks()));
         }
       }
 

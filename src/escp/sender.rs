@@ -820,7 +820,7 @@ fn iterate_file_worker(
 
         _ = msg_in.send( (fname.to_string(), fino, st) );
         loop {
-          let res = file_addfile( fino, fd, st.st_size, 0, 0, 0, 0 );
+          let res = file_addfile( fino, fd );
           if !res.is_null() {
             break;
           }
