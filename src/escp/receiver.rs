@@ -20,32 +20,18 @@ fn start_receiver( args: logging::dtn_args_wrapper ) {
 fn initialize_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
 
   let args = safe_args.args;
-  let (mut sin, mut sout, file, file2, listener, stream);
+  let mut stream;
   let mut buf = vec![ 0u8; 6 ];
 
   if !flags.mgmt.is_empty() {
     _ = fs::remove_file(flags.mgmt.clone());
-    listener = UnixListener::bind(flags.mgmt.clone()).unwrap();
+    let listener = UnixListener::bind(flags.mgmt.clone()).unwrap();
     stream = listener.accept().unwrap().0 ;
-
-    let fd = stream.as_raw_fd();
-    unsafe {
-      file = std::fs::File::from_raw_fd(fd);
-      file2 = std::fs::File::from_raw_fd(fd);
-    }
-    sin = file;
-    sout = file2;
   } else {
-    unsafe {
-      file = std::fs::File::from_raw_fd(0);  // stdin
-      file2 = std::fs::File::from_raw_fd(1); // stdout
-    }
-
-    sin = file;
-    sout = file2;
+    stream = UnixStream::connect("/dev/stdin").unwrap();
   }
 
-  let result = sin.read_exact( &mut buf );
+  let result = stream.read_exact( &mut buf );
 
   match result {
     Ok(_)  => { }
@@ -64,7 +50,7 @@ fn initialize_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) 
   if t == msg_session_init {
 
     buf.resize( sz as usize, 0 );
-    let res = sin.read_exact( &mut buf);
+    let res = stream.read_exact( &mut buf );
     match res {
       Ok (_) => {},
       Err (error) => {
@@ -168,9 +154,14 @@ fn initialize_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) 
   let buf = builder.finished_data();
 
   let hdr = to_header( buf.len() as u32, msg_session_init );
-  _ = sout.write( &hdr );
-  _ = sout.write( buf );
-  _ = sout.flush();
+
+  if flags.mgmt.is_empty() {
+    stream = UnixStream::connect("/dev/stdout").unwrap();
+  }
+
+  _ = stream.write( &hdr );
+  _ = stream.write( buf );
+  _ = stream.flush();
 
 
   unsafe {
@@ -438,6 +429,7 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       timeout = (timeout as f64 * 1.337) as u64;
       // We didn't do anything so go ahead and delay a little bit
       thread::sleep(std::time::Duration::from_micros(timeout)); // Wait: queues to clear
+      continue;
     }
 
     timeout=100;
