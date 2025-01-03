@@ -59,6 +59,8 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       ssh_args.extend(["-i", flags.identity.as_str()]);
     }
 
+   ssh_args.extend(["-t"]);
+
     if !flags.ssh_option.is_empty() {
       ssh_args.extend(["-o", flags.ssh_option.as_str()]);
     }

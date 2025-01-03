@@ -17,21 +17,21 @@ fn start_receiver( args: logging::dtn_args_wrapper ) {
   debug!("start_receiver complete");
 }
 
-fn initialize_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
+fn read_stdin_or_mgmt( mgmt: String ) -> (Vec<u8>, Option<std::os::unix::net::UnixStream>) {
 
-  let args = safe_args.args;
-  let mut stream;
+  let mut ret: Option<std::os::unix::net::UnixStream> = None;
   let mut buf = vec![ 0u8; 6 ];
+  let result;
 
-  if !flags.mgmt.is_empty() {
-    _ = fs::remove_file(flags.mgmt.clone());
-    let listener = UnixListener::bind(flags.mgmt.clone()).unwrap();
-    stream = listener.accept().unwrap().0 ;
+  if !mgmt.is_empty() {
+    _ = fs::remove_file(mgmt.clone());
+    let listener = UnixListener::bind(mgmt.clone()).unwrap();
+    let mut stream = listener.accept().unwrap().0 ;
+    result = stream.read_exact( &mut buf );
+    ret = Some(stream);
   } else {
-    stream = UnixStream::connect("/dev/stdin").unwrap();
+    result = std::io::stdin().read_exact( &mut buf );
   }
-
-  let result = stream.read_exact( &mut buf );
 
   match result {
     Ok(_)  => { }
@@ -41,79 +41,94 @@ fn initialize_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) 
   }
 
   let (sz, t) = from_header( buf.to_vec() );
+  if t != msg_session_init {
+    panic!("Unexpected session init type={}", t);
+  }
+
+  buf.resize( sz as usize, 0 );
+  let res;
+
+  if !mgmt.is_empty() {
+    let mut stream = ret.unwrap();
+    res = stream.read_exact( &mut buf );
+    ret = Some(stream);
+  } else {
+    res = std::io::stdin().read_exact( &mut buf );
+  }
+
+  match res {
+    Ok (_) => {},
+    Err (error) => {
+      panic!("Bad read from SSH {:?}", error);
+    }
+  }
+
+  (buf, ret)
+}
+
+fn initialize_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
+
+  let args = safe_args.args;
+  let (buf, stream) = read_stdin_or_mgmt( flags.mgmt.clone() );
   let helo;
   let mut port_start = 1232;
   let mut port_end = 10;
   let bind_interface;
 
-  debug!("Got header of type {}", t);
-  if t == msg_session_init {
-
-    buf.resize( sz as usize, 0 );
-    let res = stream.read_exact( &mut buf );
-    match res {
-      Ok (_) => {},
-      Err (error) => {
-        panic!("Bad read from SSH {:?}", error);
-      }
+  helo = flatbuffers::root::<session_init::Session_Init>(buf.as_slice()).unwrap();
+  unsafe {
+    (*args).session_id  = helo.session_id();
+    if helo.do_verbose() {
+      verbose_logging=1;
     }
-    helo = flatbuffers::root::<session_init::Session_Init>(buf.as_slice()).unwrap();
-    unsafe {
-      (*args).session_id  = helo.session_id();
-      if helo.do_verbose() {
-        verbose_logging=1;
-      }
-    }
-    if helo.port_start() > 0 {
-      port_start = helo.port_start();
-    }
-    if helo.port_end() > 0 {
-      port_end   = helo.port_end();
-    }
-
-    if helo.do_compression() {
-        unsafe { (*args).compression= 1 };
-    }
-
-    if helo.do_sparse() {
-        unsafe { (*args).sparse = 1 };
-    }
-
-    if helo.do_preserve() {
-        unsafe { (*args).do_preserve= true };
-    }
-
-    if helo.do_crypto() {
-      unsafe {
-        let ptr: Vec<i8> = helo.crypto_key().unwrap().iter().collect() ;
-
-        std::intrinsics::copy_nonoverlapping( ptr.as_ptr(), (*args).crypto_key.as_ptr() as *mut i8, 16 );
-        (*args).do_crypto = true;
-      }
-    }
-
-    if helo.io_engine() > 0 {
-      unsafe {
-        (*args).io_engine = helo.io_engine();
-        (*args).io_engine_name = "RCVER".as_ptr() as *mut i8; // five letter
-                                                              // engine name
-      }
-    }
-
-    unsafe {
-      (*args).block = helo.block_sz();
-      (*args).thread_count = helo.thread_count();
-      (*args).do_hash = helo.do_hash();
-      (*args).nodirect = helo.no_direct();
-    }
-
-    bind_interface = CString::new( helo.bind_interface().unwrap_or("") ).unwrap();
-    logging::initialize_logging( helo.log_file().unwrap_or(""), safe_args);
-    debug!("Session init {:016X?} {}", helo.session_id(), helo.thread_count());
-  } else {
-    error!("Expected session init message");
-    process::exit(-1);
   }
+
+  if helo.port_start() > 0 {
+    port_start = helo.port_start();
+  }
+
+  if helo.port_end() > 0 {
+    port_end   = helo.port_end();
+  }
+
+  if helo.do_compression() {
+      unsafe { (*args).compression= 1 };
+  }
+
+  if helo.do_sparse() {
+      unsafe { (*args).sparse = 1 };
+  }
+
+  unsafe { (*args).do_preserve= helo.do_preserve() };
+
+  if helo.do_crypto() {
+    unsafe {
+      let ptr: Vec<i8> = helo.crypto_key().unwrap().iter().collect() ;
+
+      std::intrinsics::copy_nonoverlapping( ptr.as_ptr(),
+        (*args).crypto_key.as_ptr() as *mut i8, 16 );
+      (*args).do_crypto = true;
+    }
+  }
+
+  if helo.io_engine() > 0 {
+    unsafe {
+      (*args).io_engine = helo.io_engine();
+      (*args).io_engine_name = "RCVER".as_ptr() as *mut i8; // five letter
+                                                            // engine name
+    }
+  }
+
+  unsafe {
+    (*args).block = helo.block_sz();
+    (*args).thread_count = helo.thread_count();
+    (*args).do_hash = helo.do_hash();
+    (*args).nodirect = helo.no_direct();
+  }
+
+  bind_interface = CString::new( helo.bind_interface().unwrap_or("") ).unwrap();
+  logging::initialize_logging( helo.log_file().unwrap_or(""), safe_args);
+  debug!("Session init {:016X?} {}", helo.session_id(), helo.thread_count());
 
   let p = CString::new( port_start.to_string() ).unwrap();
   let mut connection_count=0;
@@ -155,14 +170,18 @@ fn initialize_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) 
 
   let hdr = to_header( buf.len() as u32, msg_session_init );
 
-  if flags.mgmt.is_empty() {
-    stream = UnixStream::connect("/dev/stdout").unwrap();
-  }
-
-  _ = stream.write( &hdr );
-  _ = stream.write( buf );
-  _ = stream.flush();
-
+  _ = match stream {
+    Some(mut a) => {
+      let _ = a.write( &hdr );
+      let _ = a.write( buf );
+      let _ = a.flush();
+    },
+    None => {
+      let _ = std::io::stdout().write( &hdr );
+      let _ = std::io::stdout().write( buf );
+      let _ = std::io::stdout().flush();
+    }
+  };
 
   unsafe {
     dtn_waituntilready(  args as *mut ::std::os::raw::c_void );
@@ -287,13 +306,16 @@ fn close_file( files_hash: &mut HashMap<u64, FileInformation>,
                safe_args: logging::dtn_args_wrapper
              ) -> Vec<FileInformation> {
 
-  // let (mut filecount, mut last_filecount) = (0,0);
   let mut ret = Vec::new();
   let args = safe_args.args;
   let (close,preserve) = unsafe {
     ( (*(*args).fob).close_fd.unwrap(),
       (*(*args).fob).preserve.unwrap() )
   };
+
+  if files_close.len() > 0 {
+    println!("Checking list: {:?}", files_close);
+  }
 
   loop {
     unsafe {
@@ -353,7 +375,6 @@ fn send_file_completions( files_complete: &Vec<FileInformation> ) -> bool {
           }));
   }
 
-
   let fi   = Some( builder.create_vector( &v ) );
   let bu = file_spec::ESCP_file_list::create(
     &mut builder, &file_spec::ESCP_file_listArgs{
@@ -403,10 +424,20 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   loop {
     let filecount = add_file( &mut files_hash, &mut files_add, safe_args );
     let mut res = close_file( &mut files_hash, &mut files_close, safe_args );
+
+    file_count_out += res.len();
+    if res.len() > 0 {
+      debug!("Incr file_count_out by {} to {file_count_out}", res.len() );
+    }
+
     files_complete.append(&mut res);
 
     file_count_in += filecount;
-    file_count_out += res.len();
+
+    if filecount > 0 {
+      debug!("Incr file_count_in by {filecount} to {file_count_in}");
+    }
+
 
     if transfer_complete && (file_count_in==file_count_out as u64) {
       debug!("Transfer complete conditions met");
@@ -461,7 +492,12 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
         Some(a) => { a },
         None => { is_filecompletion = true; "" },
       };
-      debug!("Root set to: {}", root);
+
+      if !is_filecompletion {
+        debug!("Root set to: {}", root);
+      } else {
+        debug!("Got file completions");
+      }
 
       for entry in fs.files().unwrap() {
         if !is_filecompletion {
@@ -498,22 +534,27 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       continue;
     }
 
+    /*
     if t == msg_session_terminate {
       info!("Got terminate request sz={sz}, type={t}");
       // XXX: Deprecated?
       transfer_complete=true;
       continue;
     }
+    */
 
     if t == 0x430B {
-      info!("Got session complete request sz={sz}, type={t}");
+      let t = t.swap_bytes();
+      info!("Got session complete (BYE) request sz={sz}, type={t:03X}");
       transfer_complete=true;
+      unsafe{ meta_complete() };
       continue;
     }
 
     if (t == 1) && (sz == 0) {
       debug!("Got t=1 sz={sz}");
       transfer_complete=true;
+      unsafe{ meta_complete() };
       continue;
     }
 
