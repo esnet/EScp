@@ -1075,7 +1075,9 @@ void* tx_worker( void* args ) {
           int64_t res = atomic_fetch_add( &tx_filesclosed, 1 );
           DBG("[%2d] Worker finished with fn=%ld files_closed=%ld; closing fd=%d",
               id, fs_lcl.file_no, res, fs_lcl.fd);
-          fc_push(fs_lcl.file_no, atomic_load(&fs->bytes_total), atomic_load(&fs->block_total), atomic_load(&fs->crc));
+
+          memcpy_avx( &fs_lcl, fs );
+          fc_push(fs_lcl.file_no, fs_lcl.bytes_total, fs_lcl.block_total, fs_lcl.crc);
           wipe ++;
         } else {
           DBG("[%2d] Worker finished with fn=%ld", id, fs_lcl.file_no);
@@ -1087,7 +1089,7 @@ void* tx_worker( void* args ) {
         };
 
         if (wipe) {
-          DBV("[%2d] Wiping fn=%ld", id, fs_lcl.file_no);
+          DBG("[%2d] Wiping fn=%ld slot=%d %08X", id, fs_lcl.file_no, fs_lcl.position, fs_lcl.poison );
           memset_avx((void*) fs);
         }
 

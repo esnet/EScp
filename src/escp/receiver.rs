@@ -457,6 +457,13 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
         continue;
       }
 
+      unsafe {
+        if get_threads_finished() >= (*args).thread_count.try_into().unwrap() {
+          info!("Exiting because all workers exited.");
+          process::exit(-1);
+        }
+      }
+
       timeout = (timeout as f64 * 1.337) as u64;
       // We didn't do anything so go ahead and delay a little bit
       thread::sleep(std::time::Duration::from_micros(timeout)); // Wait: queues to clear

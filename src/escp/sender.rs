@@ -816,17 +816,22 @@ fn iterate_file_worker(
       }
 
       let fname = filename.to_str().unwrap();
-      if st.st_size > 0 {
-        let fino = 1+GLOBAL_FINO.fetch_add(1, SeqCst);
-        debug!("addfile:  {fname} fn={fino} sz={:?}", st.st_size);
+      // if st.st_size > 0 {
 
-        _ = msg_in.send( (fname.to_string(), fino, st) );
-        loop {
-          let res = file_addfile( fino, fd );
-          if !res.is_null() {
-            break;
-          }
+      let fino = 1+GLOBAL_FINO.fetch_add(1, SeqCst);
+
+      let mut res;
+      loop {
+        res = file_addfile( fino, fd );
+        if !res.is_null() {
+          break;
         }
+      }
+
+      _ = msg_in.send( (fname.to_string(), fino, st) );
+      debug!("addfile: {fname} fn={fino} sz={:?} slot={}",
+        st.st_size, (*res).position);
+      /*
       } else {
         debug!("addfile:  {fname} fn=NONE sz=NIL");
         _ = msg_in.send( (fname.to_string(), 0, st) );
@@ -834,6 +839,7 @@ fn iterate_file_worker(
           info!("Error closing file descriptor (empty file)");
         }
       }
+      */
     }
   }
 

@@ -35,7 +35,7 @@
 #define FS_IO          (1UL << 31) // NOTE: These values set a limit to the
 #define FS_COMPLETE    (1UL << 30) //       number of threads. It really
                                    //       should be 1UL<<62 & 1UL<<63
-#define FS_MASK(A)     (A & (FILE_STAT_COUNT_HSZ-1))
+#define FS_MASK(A)     (((uint64_t)A) % FILE_STAT_COUNT_HSZ)
 
 #ifdef __AVX512BW__
 #warning AVX512 is Experimental; standard is -march=sandy
@@ -113,25 +113,24 @@ int memcmp_zero( void* dst, uint64_t sz ) {
 }
 
 void memcpy_avx( void* dst, void* src ) {
-          __m128i a,b,c,d;
+  __m128i a,b,c,d;
 
-          a = _mm_load_si128 ( src );
-          b = _mm_load_si128 ( (void*) (((uint64_t) src) +  16) );
-          c = _mm_load_si128 ( (void*) (((uint64_t) src) +  32) );
-          d = _mm_load_si128 ( (void*) (((uint64_t) src) +  48) );
-          _mm_store_si128( (void*) (((uint64_t) dst) +  48), d );
-          _mm_store_si128( (void*) (((uint64_t) dst) +  32), c );
-          _mm_store_si128( (void*) (((uint64_t) dst) +  16), b );
-          _mm_store_si128( dst, a );
-
+  a = _mm_load_si128 ( src );
+  b = _mm_load_si128 ( (void*) (((uint64_t) src) +  16) );
+  c = _mm_load_si128 ( (void*) (((uint64_t) src) +  32) );
+  d = _mm_load_si128 ( (void*) (((uint64_t) src) +  48) );
+  _mm_store_si128( (void*) (((uint64_t) dst) +  48), d );
+  _mm_store_si128( (void*) (((uint64_t) dst) +  32), c );
+  _mm_store_si128( (void*) (((uint64_t) dst) +  16), b );
+  _mm_store_si128( dst, a );
 }
 
 void memset_avx( void* dst ) {
-          __m128i a = {0};
-          _mm_store_si128( (void*) (((uint64_t) dst) +  48), a );
-          _mm_store_si128( (void*) (((uint64_t) dst) +  32), a );
-          _mm_store_si128( (void*) (((uint64_t) dst) +  16), a );
-          _mm_store_si128( dst, a );
+  __m128i a = {0};
+  _mm_store_si128( (void*) (((uint64_t) dst) +  48), a );
+  _mm_store_si128( (void*) (((uint64_t) dst) +  32), a );
+  _mm_store_si128( (void*) (((uint64_t) dst) +  16), a );
+  _mm_store_si128( dst, a );
 }
 
 
@@ -187,7 +186,7 @@ void file_completetransfer() {
 
 struct file_stat_type* file_addfile( uint64_t fileno, int fd ) {
 
-  struct file_stat_type fs = {0};
+  struct file_stat_type fs __attribute__ ((aligned(64))) = {0};
   int i;
   uint64_t zero = 0, slot=fileno, fc, ft;
 
@@ -199,29 +198,32 @@ struct file_stat_type* file_addfile( uint64_t fileno, int fd ) {
     return NULL;
 
   for (i=0; i<FILE_STAT_COUNT_CC; i++) {
-    if ( atomic_compare_exchange_weak( &file_stat[FS_MASK(slot)].state, &zero, 0xBedFaceUL ) ) {
+    if ( atomic_compare_exchange_strong( &file_stat[FS_MASK(slot)].state, &zero, 0xBedFaceUL ) ) {
       break;
     }
     slot = xorshift64s(&slot);
   }
+  slot = FS_MASK(slot);
 
-  VRFY( i<FILE_STAT_COUNT_CC, "Hash table collision count exceeded. Please report this error.");
-
+  VRFY(i<FILE_STAT_COUNT_CC, "Hash table collision count exceeded. Bug Report Pls!.");
   fs.state = FS_INIT;
   fs.fd = fd;
   fs.file_no = fileno;
-  fs.position = FS_MASK(slot);
+  fs.position = slot;
   fs.poison = 0xC0DAB1E;
 
-  memcpy_avx( &file_stat[FS_MASK(slot)], &fs );
+  memcpy_avx( &file_stat[slot], &fs );
   atomic_fetch_add( &file_claim, 1 );
 
-  DBG("file_addfile fn=%ld, fd=%d slot=%ld cc=%d",
-      fileno, fd, FS_MASK(slot), i );
+  VRFY( atomic_load( & file_stat[slot].state ) == FS_INIT, "FS_INIT?" );
+  VRFY( sizeof( file_stat[0] ) == 64, "Bleh!" );
+
+  DBG("file_addfile fn=%ld, fd=%d slot=%d cc=%d",
+      fs.file_no, fs.fd, fs.position, i );
 
   atomic_fetch_add( &file_count, 1 );
 
-  return( &file_stat[FS_MASK(slot)] );
+  return( &file_stat[slot] );
 }
 
 struct file_stat_type* file_getstats( uint64_t fileno ) {
@@ -334,7 +336,7 @@ struct file_stat_type* file_next( int id, struct file_stat_type* test_fs ) {
   // We got a file_no, now we need to translate it into a slot.
 
   slot = ++fh;
-  DBG("[%2d] Trying to claim slot %zd, %zd, %zd", id, slot, fc, fh-1);
+  DBG("[%2d] Trying to claim slot fn=%zd, %zd", id, slot, fc);
 
   while (1) {
 
