@@ -1375,12 +1375,6 @@ extern "C" {
     pub fn file_addfile(fileno: u64, fd: ::core::ffi::c_int) -> *mut file_stat_type;
 }
 extern "C" {
-    pub fn file_next(id: ::core::ffi::c_int) -> *mut file_stat_type;
-}
-extern "C" {
-    pub fn file_wait(fileno: u64) -> *mut file_stat_type;
-}
-extern "C" {
     pub fn file_getstats(fileno: u64) -> *mut file_stat_type;
 }
 extern "C" {

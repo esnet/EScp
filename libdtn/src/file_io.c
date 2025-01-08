@@ -188,9 +188,9 @@ struct file_stat_type* file_addfile( uint64_t fileno, int fd ) {
 
   struct file_stat_type fs __attribute__ ((aligned(64))) = {0};
   int i;
-  uint64_t zero = 0, slot=fileno, fc, ft;
+  uint64_t zero=0, slot, fc, ft, hash=fileno;
 
-  slot = xorshift64s(&slot);
+  hash = xorshift64s(&hash);
   fc = atomic_load( &file_claim );
   ft = atomic_load( &file_tail );
 
@@ -198,14 +198,16 @@ struct file_stat_type* file_addfile( uint64_t fileno, int fd ) {
     return NULL;
 
   for (i=0; i<FILE_STAT_COUNT_CC; i++) {
-    if ( atomic_compare_exchange_strong( &file_stat[FS_MASK(slot)].state, &zero, 0xBedFaceUL ) ) {
+    slot = FS_MASK(hash);
+    zero=0;
+    if ( atomic_compare_exchange_strong( &file_stat[slot].state, &zero, 0xBedFaceUL ) ) {
       break;
     }
-    slot = xorshift64s(&slot);
+    hash = xorshift64s(&hash);
   }
-  slot = FS_MASK(slot);
 
   VRFY(i<FILE_STAT_COUNT_CC, "Hash table collision count exceeded. Bug Report Pls!.");
+
   fs.state = FS_INIT;
   fs.fd = fd;
   fs.file_no = fileno;
@@ -227,16 +229,12 @@ struct file_stat_type* file_addfile( uint64_t fileno, int fd ) {
 }
 
 struct file_stat_type* file_getstats( uint64_t fileno ) {
-  struct file_stat_type fs;
-  uint64_t slot;
-
-  slot = fileno;
+  uint64_t slot=fileno;
 
   for (int i=0; i<FILE_STAT_COUNT_CC; i++) {
     slot = xorshift64s(&slot);
 
-    memcpy_avx( &fs, &file_stat[FS_MASK(slot)] );
-    if (fs.file_no != fileno)
+    if ( fileno != atomic_load(&file_stat[FS_MASK(slot)].file_no) )
       continue;
 
     return &file_stat[FS_MASK(slot)];
@@ -250,6 +248,8 @@ struct file_stat_type* file_wait( uint64_t fileno, struct file_stat_type* test_f
 
   int i;
   uint64_t slot, fs_init;
+
+  float delay = 3;
 
   // DBG("file_wait start fn=%ld", fileno);
 
@@ -277,20 +277,20 @@ struct file_stat_type* file_wait( uint64_t fileno, struct file_stat_type* test_f
       }
     }
 
-    ESCP_DELAY(5);
+    ESCP_DELAY((int)delay);
+    delay *= 1.121743;
   }
 }
 
 
 struct file_stat_type* file_next( int id, struct file_stat_type* test_fs ) {
 
-  // Generic function to fetch the next file, may return FD to multiple
-  // threads depending on work load / incomming file stream.
-  //
+  // Used by sender to fetch next availble file and/or attach to existing file
   DBV("[%2d] Enter file_next", id);
 
   int64_t fc,fh,slot;
   int i,j=0;
+  float delay = 1;
 
   while (1) {
     fc = atomic_load( &file_count ); // In order increment of available files
@@ -330,7 +330,8 @@ struct file_stat_type* file_next( int id, struct file_stat_type* test_fs ) {
       return 0;
     }
 
-    ESCP_DELAY(1); // No work found, try again
+    ESCP_DELAY( (int)delay ); // No work found, try again
+    delay *= 1.057329;
   }
 
   // We got a file_no, now we need to translate it into a slot.
@@ -339,6 +340,8 @@ struct file_stat_type* file_next( int id, struct file_stat_type* test_fs ) {
   DBG("[%2d] Trying to claim slot fn=%zd, %zd", id, slot, fc);
 
   while (1) {
+    // While unlikely, it is possible that our file_claim slot did not have
+    // *this* file assigned to it yet, so we loop until it exists.
 
     slot = fh;
     for (i=0; i<FILE_STAT_COUNT_CC; i++) {
@@ -361,7 +364,9 @@ struct file_stat_type* file_next( int id, struct file_stat_type* test_fs ) {
         NFO("[%2d] Failed to convert fn=%ld, slot=%ld", id, test_fs->file_no, FS_MASK(slot));
       }
     }
-    ESCP_DELAY(1);
+
+    ESCP_DELAY( (int) delay ); // No work found, try again
+    delay *= 1.057329;
   }
 
   VRFY( 0, "[%2d] Error claiming file fn=%ld", id, fh );
@@ -541,6 +546,3 @@ char* dtn_err_getnext() {
   cursor++;
   return msg;
 }
-
-
-

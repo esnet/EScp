@@ -136,6 +136,8 @@ fn initialize_clog() {
   let mut ret;
   debug!("Start C logging thread");
 
+  let mut delay = 10.0;
+
   loop {
     ret = unsafe { dtn_log_getnext() };
 
@@ -149,6 +151,7 @@ fn initialize_clog() {
       } else {
         info!(" {}", s)
       }
+      delay=10.0;
       continue;
     }
 
@@ -159,10 +162,12 @@ fn initialize_clog() {
       let msg = c_str.to_str().unwrap().trim() ;
       error!("[C] {} ", msg );
       eprintln!("ERROR: {}", msg );
+      delay = 10.0;
       continue;
     }
 
-    thread::sleep(std::time::Duration::from_micros(10));
+    delay *= 1.293;
+    thread::sleep(std::time::Duration::from_micros(delay as u64));
   }
 
 }
