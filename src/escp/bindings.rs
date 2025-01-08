@@ -896,7 +896,10 @@ extern "C" {
 #[derive(Debug, Copy, Clone)]
 pub struct file_object {
     pub QD: i32,
-    pub pad12: i32,
+    pub hugepages: u8,
+    pub compression: u8,
+    pub is_compressed: u8,
+    pub do_hash: u8,
     pub blk_sz: u32,
     pub id: u16,
     pub io_type: u16,
@@ -1004,13 +1007,43 @@ fn bindgen_test_layout_file_object() {
         )
     );
     assert_eq!(
-        unsafe { ::core::ptr::addr_of!((*ptr).pad12) as usize - ptr as usize },
+        unsafe { ::core::ptr::addr_of!((*ptr).hugepages) as usize - ptr as usize },
         4usize,
         concat!(
             "Offset of field: ",
             stringify!(file_object),
             "::",
-            stringify!(pad12)
+            stringify!(hugepages)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).compression) as usize - ptr as usize },
+        5usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(file_object),
+            "::",
+            stringify!(compression)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).is_compressed) as usize - ptr as usize },
+        6usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(file_object),
+            "::",
+            stringify!(is_compressed)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).do_hash) as usize - ptr as usize },
+        7usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(file_object),
+            "::",
+            stringify!(do_hash)
         )
     );
     assert_eq!(
@@ -1363,13 +1396,6 @@ extern "C" {
 }
 extern "C" {
     pub fn file_dummyinit(fob: *mut file_object) -> ::core::ffi::c_int;
-}
-extern "C" {
-    pub fn file_hash(
-        block: *mut ::core::ffi::c_void,
-        sz: ::core::ffi::c_int,
-        seed: ::core::ffi::c_int,
-    ) -> i32;
 }
 extern "C" {
     pub fn file_addfile(fileno: u64, fd: ::core::ffi::c_int) -> *mut file_stat_type;
@@ -2042,9 +2068,6 @@ extern "C" {
     pub fn rx_start(args: *mut dtn_args) -> ::core::ffi::c_int;
 }
 extern "C" {
-    pub fn print_args(args: *mut dtn_args);
-}
-extern "C" {
     pub fn finish_transfer(args: *mut dtn_args);
 }
 extern "C" {
@@ -2055,9 +2078,6 @@ extern "C" {
 }
 extern "C" {
     pub fn get_bytes_io(dtn: *mut dtn_args) -> i64;
-}
-extern "C" {
-    pub fn tx_getclosed() -> i64;
 }
 extern "C" {
     pub fn human_write(number: u64, is_bytes: bool) -> *mut ::core::ffi::c_char;
@@ -2074,6 +2094,7 @@ pub struct fc_info_struct {
     pub crc: u32,
     pub completion: u32,
     pub blocks: u64,
+    pub pad2: [u64; 3usize],
 }
 #[test]
 fn bindgen_test_layout_fc_info_struct() {
@@ -2081,7 +2102,7 @@ fn bindgen_test_layout_fc_info_struct() {
     let ptr = UNINIT.as_ptr();
     assert_eq!(
         ::core::mem::size_of::<fc_info_struct>(),
-        40usize,
+        64usize,
         concat!("Size of: ", stringify!(fc_info_struct))
     );
     assert_eq!(
@@ -2147,6 +2168,16 @@ fn bindgen_test_layout_fc_info_struct() {
             stringify!(fc_info_struct),
             "::",
             stringify!(blocks)
+        )
+    );
+    assert_eq!(
+        unsafe { ::core::ptr::addr_of!((*ptr).pad2) as usize - ptr as usize },
+        40usize,
+        concat!(
+            "Offset of field: ",
+            stringify!(fc_info_struct),
+            "::",
+            stringify!(pad2)
         )
     );
 }
