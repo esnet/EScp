@@ -187,8 +187,8 @@ void file_completetransfer() {
 struct file_stat_type* file_addfile( uint64_t fileno, int fd ) {
 
   struct file_stat_type fs __attribute__ ((aligned(64))) = {0};
-  int i;
   uint64_t zero=0, slot, fc, ft, hash=fileno;
+  int i;
 
   hash = xorshift64s(&hash);
   fc = atomic_load( &file_claim );
@@ -199,7 +199,7 @@ struct file_stat_type* file_addfile( uint64_t fileno, int fd ) {
 
   for (i=0; i<FILE_STAT_COUNT_CC; i++) {
     slot = FS_MASK(hash);
-    zero=0;
+    VRFY( zero == 0, "Zero != 0!");
     if ( atomic_compare_exchange_strong( &file_stat[slot].state, &zero, 0xBedFaceUL ) ) {
       break;
     }

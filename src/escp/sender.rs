@@ -362,7 +362,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       &fc_out, &fc2_out
     );
 
-    if res<=0 {
+    if res == 0 {
       debug!("Exiting because file_check returned EOQ");
       break;
     }
@@ -518,7 +518,7 @@ fn send_file_complete( fc2_out: &crossbeam_channel::Receiver<(u64, u64)> ) {
 
   vec.make_contiguous().sort_by_key(|k| k.0);
 
-  if vec.len() > 0 {
+  if !vec.is_empty() {
     let mut v = Vec::new();
     let mut builder = flatbuffers::FlatBufferBuilder::with_capacity(8192);
 

@@ -70,12 +70,10 @@ fn initialize_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) 
 
   let args = safe_args.args;
   let (buf, stream) = read_stdin_or_mgmt( flags.mgmt.clone() );
-  let helo;
   let mut port_start = 1232;
   let mut port_end = 10;
-  let bind_interface;
 
-  helo = flatbuffers::root::<session_init::Session_Init>(buf.as_slice()).unwrap();
+  let helo = flatbuffers::root::<session_init::Session_Init>(buf.as_slice()).unwrap();
   unsafe {
     (*args).session_id  = helo.session_id();
     if helo.do_verbose() {
@@ -126,7 +124,7 @@ fn initialize_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) 
     (*args).nodirect = helo.no_direct();
   }
 
-  bind_interface = CString::new( helo.bind_interface().unwrap_or("") ).unwrap();
+  let bind_interface = CString::new( helo.bind_interface().unwrap_or("") ).unwrap();
   logging::initialize_logging( helo.log_file().unwrap_or(""), safe_args);
   debug!("Session init {:016X?} {}", helo.session_id(), helo.thread_count());
 
@@ -146,12 +144,9 @@ fn initialize_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) 
   _ = thread::Builder::new().name("rcvr".to_string()).spawn(
         move || start_receiver( safe_args ));
 
-  let port;
-  unsafe {
-    port = file_get_activeport( args as *mut ::std::os::raw::c_void );
-  }
+  let port = unsafe { file_get_activeport( args as *mut ::std::os::raw::c_void ) } as i64;
 
-  if port > (port+port_end) {
+  if port > (port+port_end as i64) {
     eprintln!("Couldn't assign a port between {} and {}. Got {}", port_start, port_start+port_end, port);
     error!("Couldn't assign a port between {} and {}. Got {}", port_start, port_start+port_end, port);
     process::exit(-1);
@@ -162,7 +157,7 @@ fn initialize_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) 
   let builder = sess_init!( {
         version_major: env!("CARGO_PKG_VERSION_MAJOR").parse::<i32>().unwrap(),
         version_minor: env!("CARGO_PKG_VERSION_MINOR").parse::<i32>().unwrap(),
-        port_start: port,
+        port_start: port as i32,
         ..Default::default()
     }
   );
@@ -172,14 +167,16 @@ fn initialize_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) 
 
   _ = match stream {
     Some(mut a) => {
-      let _ = a.write( &hdr );
-      let _ = a.write( buf );
-      let _ = a.flush();
+      _ = a.write( &hdr );
+      _ = a.write( buf );
+      _ = a.flush();
+      Some(1)
     },
     None => {
-      let _ = std::io::stdout().write( &hdr );
-      let _ = std::io::stdout().write( buf );
-      let _ = std::io::stdout().flush();
+      _ = std::io::stdout().write( &hdr );
+      _ = std::io::stdout().write( buf );
+      _ = std::io::stdout().flush();
+      None
     }
   };
 
@@ -218,7 +215,7 @@ fn add_file( files_hash: &mut HashMap<u64, FileInformation>, files_add: &mut Vec
       None => { break filecount }
     };
 
-    let i = &mut files_hash.get_mut(&i).unwrap();
+    let i = &mut files_hash.get_mut(i).unwrap();
 
     unsafe{
 
@@ -228,7 +225,7 @@ fn add_file( files_hash: &mut HashMap<u64, FileInformation>, files_add: &mut Vec
       let fp = CString::new( i.path.clone() ).unwrap();
 
       for _ in 1..4 {
-        if (*args).nodirect == false {
+        if !(*args).nodirect {
           fd = open( fp.as_ptr(), (*args).flags | libc::O_DIRECT, 0o644 );
           if (fd == -1) && (*libc::__errno_location() == 22) {
             info!("Couldn't open '{}' using O_DIRECT; disabling direct mode", i.path);
@@ -313,7 +310,7 @@ fn close_file( files_hash: &mut HashMap<u64, FileInformation>,
       (*(*args).fob).preserve.unwrap() )
   };
 
-  if files_close.len() > 0 {
+  if !files_close.is_empty() {
     println!("Checking list: {:?}", files_close);
   }
 
@@ -356,7 +353,7 @@ fn close_file( files_hash: &mut HashMap<u64, FileInformation>,
 
 fn send_file_completions( files_complete: &Vec<FileInformation> ) -> bool {
 
-  if files_complete.len() < 1 {
+  if files_complete.is_empty() {
     return false;
   }
 
@@ -399,7 +396,7 @@ fn send_file_completions( files_complete: &Vec<FileInformation> ) -> bool {
                csz as i32 );
   }
 
-  return true;
+  true
 }
 
 
@@ -426,7 +423,7 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
     let mut res = close_file( &mut files_hash, &mut files_close, safe_args );
 
     file_count_out += res.len();
-    if res.len() > 0 {
+    if !res.is_empty() {
       debug!("Incr file_count_out by {} to {file_count_out}", res.len() );
     }
 
@@ -444,7 +441,7 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       break;
     }
 
-    if (filecount > 0) || (res.len() > 0) {
+    if (filecount > 0) || !res.is_empty() {
       timeout = 100;
       continue;
     }
