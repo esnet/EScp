@@ -426,7 +426,7 @@ int32_t file_hash( void* block, int sz, int seed ) {
 
 struct file_object* file_memoryinit( void* arg, int id ) {
   struct dtn_args* dtn = arg;
-  struct file_object* fob = aligned_alloc( 64, sizeof(struct file_object) );
+  struct file_object* fob = aligned_alloc( 64, (sizeof(struct file_object) + 0x3f) & 0xffff40 );
   struct file_object f = {0};
 
   memset( fob, 0, sizeof(struct file_object) );

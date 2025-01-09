@@ -6,7 +6,6 @@ mod license;
 
 extern crate clap;
 extern crate flatbuffers;
-extern crate rand;
 pub use zstd_safe;
 
 // use hwloc::Topology;

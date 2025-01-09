@@ -1,12 +1,5 @@
 use super::*;
 
-/*
-use log::LevelFilter;
-use log4rs::append::file::FileAppender;
-use log4rs::encode::pattern::PatternEncoder;
-use log4rs::config::{Appender, Config, Root};
-*/
-
 extern crate log;
 extern crate chrono;
 
@@ -169,5 +162,4 @@ fn initialize_clog() {
     delay *= 1.293;
     thread::sleep(std::time::Duration::from_micros(delay as u64));
   }
-
 }

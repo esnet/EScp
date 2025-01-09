@@ -9,4 +9,9 @@ mod tests {
       assert_eq!( escp::int_from_human ( "1k".to_string() ), 1024 );
     }
 
+    #[test]
+    fn test_file_operations() {
+      assert_eq!( escp::tst::create_files("/tmp/test".to_string(), 4, 4, 0, 1024) , true );
+    }
+
 }

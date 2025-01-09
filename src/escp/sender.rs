@@ -122,7 +122,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
     unsafe {
       (*args).do_crypto = true;
       tx_init(args);
-      (*args).session_id = rand::random::<u64>();
+      file_randrd( &mut (*args).session_id as *mut ::std::os::raw::c_ulong as *mut ::std::os::raw::c_void , 8 );
       session_id = (*args).session_id;
       start_port = (*args).active_port;
       io_engine  = (*args).io_engine;
