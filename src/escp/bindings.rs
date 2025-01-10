@@ -1040,6 +1040,9 @@ const _: () = {
         [::core::mem::offset_of!(fc_info_struct, pad2) - 40usize];
 };
 extern "C" {
+    pub fn xorshift64r(x: u64) -> u64;
+}
+extern "C" {
     pub fn fc_pop() -> *mut fc_info_struct;
 }
 extern "C" {

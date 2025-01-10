@@ -179,6 +179,13 @@ static inline uint64_t xorshift64s(uint64_t* x) {
   return *x * 0x2545F4914F6CDD1DUL;
 }
 
+uint64_t xorshift64r(uint64_t x) {
+  x ^= x >> 12; // a
+  x ^= x << 25; // b
+  x ^= x >> 27; // c
+  return x * 0x2545F4914F6CDD1DUL;
+}
+
 void file_completetransfer() {
     NFO("file_completetransfer() is called");
     atomic_fetch_add( &transfer_complete, 1 );

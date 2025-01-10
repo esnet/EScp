@@ -601,7 +601,7 @@ fn file_check(
   1
 }
 
-fn iterate_dir_worker(  dir_out:  crossbeam_channel::Receiver<(PathBuf, PathBuf)>,
+pub fn iterate_dir_worker(  dir_out:  crossbeam_channel::Receiver<(PathBuf, PathBuf)>,
                         files_in: crossbeam_channel::Sender<(PathBuf, PathBuf)>,
                         args:     logging::dtn_args_wrapper ) {
 
@@ -671,7 +671,7 @@ fn iterate_dir_worker(  dir_out:  crossbeam_channel::Receiver<(PathBuf, PathBuf)
   }
 }
 
-fn iterate_file_worker(
+pub fn iterate_file_worker(
   files_out: crossbeam_channel::Receiver<(PathBuf, PathBuf)>,
   dir_in:    crossbeam_channel::Sender<(PathBuf, PathBuf)>,
   msg_in:    crossbeam_channel::Sender<(String, u64, stat)>,

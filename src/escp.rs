@@ -8,25 +8,15 @@ extern crate clap;
 extern crate flatbuffers;
 pub use zstd_safe;
 
-// use hwloc::Topology;
 use clap::Parser;
 use std::{env, process, thread, collections::HashMap};
 use std::ffi::{CString, CStr};
 use regex::Regex;
 use subprocess::{Popen, PopenConfig, Redirection};
-use std::io;
-use std::io::Read;
-use std::io::Write;
+use std::{io, io::Read, io::Write, fs, slice, collections::VecDeque};
 use std::os::unix::net::{UnixStream,UnixListener};
-use std::os::fd::AsRawFd;
-use std::os::fd::FromRawFd;
-use std::fs;
-use std::collections::VecDeque;
-use std::slice;
-
+use std::os::fd::{AsRawFd, FromRawFd};
 use log::{{debug, info, error}};
-
-
 
 #[allow(dead_code, unused_imports, clippy::all)]
 mod file_spec;
@@ -49,9 +39,9 @@ macro_rules! sess_init {
   }
 }
 
-mod logging;
-mod receiver;
-mod sender;
+pub mod logging;
+pub mod receiver;
+pub mod sender;
 
 const msg_session_init:u16      =  8;
 const msg_file_spec:u16         = 16;
@@ -180,7 +170,7 @@ fn fc_worker(fc_in: crossbeam_channel::Sender<(u64, u32)>,
 
 #[derive(Parser, Debug)]
 #[command(  author, long_version=logging::build::CLAP_LONG_VERSION, about, long_about = None )]
-struct EScp_Args {
+pub struct EScp_Args {
    /// [ Destination ]
    #[arg()]
    source: Vec<String>,

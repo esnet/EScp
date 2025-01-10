@@ -11,7 +11,8 @@ mod tests {
 
     #[test]
     fn test_file_operations() {
-      assert_eq!( escp::tst::create_files("/tmp/test".to_string(), 4, 4, 0, 1024) , true );
+      assert_eq!( escp::tst::create_files ("/tmp/test".to_string(), 16, 4096, 16, 16384) , true );
+      assert_eq!( escp::tst::iterate_dir("/tmp/test".to_string());
     }
 
 }

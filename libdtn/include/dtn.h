@@ -217,8 +217,8 @@ struct fc_info_struct {
   uint64_t pad2[3];
 };
 
-struct fc_info_struct* fc_pop();
-// void fc_push( uint64_t file_no, uint64_t bytes, uint32_t crc );
+uint64_t xorshift64r(uint64_t x);
+struct fc_info_struct* fc_pop(); // void fc_push( uint64_t file_no, uint64_t bytes, uint32_t crc );
 
 uint8_t* meta_recv();
 void meta_complete();
