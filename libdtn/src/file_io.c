@@ -206,7 +206,7 @@ struct file_stat_type* file_addfile( uint64_t fileno, int fd ) {
 
   for (i=0; i<FILE_STAT_COUNT_CC; i++) {
     slot = FS_MASK(hash);
-    VRFY( zero == 0, "Zero != 0!");
+    VRFY( zero == 0, "Zero != 0!, %ld", fileno);
     if ( atomic_compare_exchange_strong( &file_stat[slot].state, &zero, 0xBedFaceUL ) ) {
       break;
     }

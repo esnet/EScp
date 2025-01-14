@@ -42,7 +42,6 @@
 
 static int      thread_id      __attribute__ ((aligned(64))) = 0;
 static int      meminit        __attribute__ ((aligned(64))) = 0;
-static uint64_t tx_filesclosed __attribute__ ((aligned(64))) = 0;
 
 static uint64_t bytes_network    __attribute__ ((aligned(64))) = 0;
 static uint64_t bytes_disk       __attribute__ ((aligned(64))) = 0;
@@ -70,7 +69,7 @@ const uint64_t IS_FIHDR_SHORT = (1UL << 62);
  */
 
 struct fc_info_struct* fc_info;
-uint32_t fc_info_cnt = 16384;
+uint32_t fc_info_cnt = 16384; // Must be multiple of 64
 uint64_t fc_info_head  __attribute__ ((aligned(64))) = 0;
 uint64_t fc_info_tail  __attribute__ ((aligned(64))) = 0;
 
@@ -133,12 +132,13 @@ void dtn_init() {
   atomic_store( &fc_info, (struct fc_info_struct*) (((uint64_t)a)+4096L) );
 
   VRFY( mprotect( a, 4096, PROT_NONE ) == 0, "mprotect");
-  VRFY( mprotect( (void*) (((uint64_t)a)+4096L+(fc_info_cnt*64)), 4096, PROT_NONE ) == 0, "mprotect");
+  VRFY( mprotect( (void*) (((uint64_t)a)+4096L+(fc_info_cnt*64)),
+        4096, PROT_NONE ) == 0, "mprotect" );
 
   memset( fc_info, 0, fc_info_cnt*64 );
 
-  // VRFY( sizeof(struct file_stat_type) == 64, "ASSERT struct file_stat_type" );
-  // VRFY( sizeof(struct fc_info_struct) == 64, "ASSERT struct fc_info_struct" );
+  VRFY( sizeof(struct file_stat_type) == 64, "ASSERT struct file_stat_type" );
+  VRFY( sizeof(struct fc_info_struct) == 64, "ASSERT struct fc_info_struct" );
 }
 
 pthread_t DTN_THREAD[THREAD_COUNT];
@@ -1072,9 +1072,8 @@ void* tx_worker( void* args ) {
 
         if (file_iow_remove( fs, id ) == (1UL << 30)) {
           fob->close( fob );
-          int64_t res = atomic_fetch_add( &tx_filesclosed, 1 );
-          DBG("[%2d] Worker finished with fn=%ld files_closed=%ld; closing fd=%d",
-              id, fs_lcl.file_no, res, fs_lcl.fd);
+          DBG("[%2d] Worker finished with fn=%ld closing fd=%d",
+              id, fs_lcl.file_no, fs_lcl.fd);
 
           memcpy_avx( &fs_lcl, fs );
           fc_push(fs_lcl.file_no, fs_lcl.bytes_total, fs_lcl.block_total, fs_lcl.crc);
@@ -1247,10 +1246,6 @@ void tx_start(struct dtn_args* args ) {
   return;
 }
 
-uint64_t tx_getclosed() {
-  return atomic_load( &tx_filesclosed );
-}
-
 int rx_start( void* fn_arg ) {
   int i=0,j=0, sock;
   struct dtn_args* args = fn_arg;
@@ -1265,7 +1260,6 @@ int rx_start( void* fn_arg ) {
   //      interfaces was never added back.
 
   DBG("Start: rx_start");
-
   dtn_init();
 
   port = ntohs(saddr->sin_port);
@@ -1428,6 +1422,8 @@ void tx_init( struct dtn_args* args ) {
     // XXX: We should handle the case of getting less than
     //      16 bytes of data.
     VRFY( res == 16, "Error initializing random key");
+  } else {
+    ERR("Crypto not enabled. Things will probably fail");
   }
 }
 

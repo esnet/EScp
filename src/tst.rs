@@ -22,7 +22,7 @@ pub fn create_files( dir_root: String, dir_count: u32, file_count: u32, file_sz_
   }
 
   println!("Got a value of: {}", hash);
-  
+
   let mut v = vec![ 0u8; file_sz_max as usize ];
 
 
@@ -54,17 +54,27 @@ pub fn create_files( dir_root: String, dir_count: u32, file_count: u32, file_sz_
   true
 }
 
-pub fn iterate_dir( dir_root: String ) {
+pub fn iterate_dir( dir_root: String ) -> bool {
 
   let args = unsafe { args_new() };
   let safe_args = escp::logging::dtn_args_wrapper{ args };
 
 
-  // Spawn helper threads
+  unsafe {
+    (*args).recursive = true;
+    (*args).io_engine_name = "posix".as_ptr() as *mut i8;
+    (*args).io_engine = 1;
+    (*args).QD = 1;
+    (*args).thread_count = 1;
+    (*args).block = 1024*1024;
+    (*args).fob = file_memoryinit( args as *mut ::std::os::raw::c_void, 0 );
+    (*args).flags = libc::O_RDONLY;
+  }
+
   let (files_in, files_out) = crossbeam_channel::bounded(15000);
   let (dir_in, dir_out) = crossbeam_channel::unbounded();
   let (msg_in, msg_out) = crossbeam_channel::bounded(400);
-
+  let close_fd = unsafe { (*(*args).fob).close_fd.unwrap() };
 
   for j in 0..4 {
     let nam = format!("file_{}", j as i32);
@@ -85,6 +95,38 @@ pub fn iterate_dir( dir_root: String ) {
     thread::Builder::new().name(nam).spawn(move ||
       escp::sender::iterate_dir_worker(dir_o, fi, a)).unwrap();
   }
-  
+
+  let path = std::path::Path::new( &dir_root );
+  _ = files_in.send( (path.parent().unwrap().to_path_buf(), path.file_name().unwrap().into() ) );
+
+  println!("Starting tests!");
+
+  loop{
+
+    let (_fi, fino, _st);
+    match msg_out.recv() {
+        Ok((a,b,c)) => { (_fi, fino, _st) = (a,b,c); }
+        Err(_) => {
+          println!("iterate_files: Got an abnormal from msg_out.recv, assume EOQ");
+          break;
+        }
+    }
+
+    unsafe {
+      let fs = file_getstats( fino );
+      (*fs).state = 1u64 << 30;
+      let res = file_iow_remove(fs, 0);
+      if res == 0 {
+        println!("Bad return value");
+      }
+      close_fd( (*fs).fd );
+      memset_avx( fs as *mut ::std::os::raw::c_void );
+    }
+
+    // println!("{fi}, {fino}, {st:#?}");
+
+  }
+
+  true
 }
 
