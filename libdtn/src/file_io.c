@@ -29,7 +29,7 @@
 
 #define FILE_STAT_COUNT 850
 #define FILE_STAT_COUNT_HSZ 2048
-#define FILE_STAT_COUNT_CC 12
+#define FILE_STAT_COUNT_CC 18
 
 #define FS_INIT        0xBAEBEEUL
 #define FS_IO          (1UL << 31) // NOTE: These values set a limit to the
@@ -194,8 +194,9 @@ void file_completetransfer() {
 struct file_stat_type* file_addfile( uint64_t fileno, int fd ) {
 
   struct file_stat_type fs __attribute__ ((aligned(64))) = {0};
-  uint64_t zero=0, slot, fc, ft, hash=fileno;
+  uint64_t zero, slot, fc, ft, hash=fileno;
   int i;
+
 
   hash = xorshift64s(&hash);
   fc = atomic_load( &file_claim );
@@ -204,9 +205,10 @@ struct file_stat_type* file_addfile( uint64_t fileno, int fd ) {
   if ( ((fc-ft) >= FILE_STAT_COUNT) || ((fileno-ft) >= (FILE_STAT_COUNT+50)) )
     return NULL;
 
+
   for (i=0; i<FILE_STAT_COUNT_CC; i++) {
     slot = FS_MASK(hash);
-    VRFY( zero == 0, "Zero != 0!, %ld", fileno);
+    zero=0;
     if ( atomic_compare_exchange_strong( &file_stat[slot].state, &zero, 0xBedFaceUL ) ) {
       break;
     }
@@ -312,7 +314,8 @@ struct file_stat_type* file_next( int id, struct file_stat_type* test_fs ) {
 
     if ( (fc-fh) > 0 ) {
       // Between 1 and THREAD_COUNT, grab next available file
-      if ( atomic_compare_exchange_weak( &file_head, &fh, fh+1) )
+      int64_t expected=fh;
+      if ( atomic_compare_exchange_weak( &file_head, &expected, fh+1) )
         break;
       continue;
     }

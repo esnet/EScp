@@ -280,7 +280,7 @@ fn add_file( files_hash: &mut HashMap<u64, FileInformation>, files_add: &mut Vec
             info!("Transfer Aborted? Exiting because receivers exited");
             return filecount;
           }
-          dbg!("Couldn't add file (fd limit). Will try again.");
+          debug!("Couldn't add file (fd limit). Will try again.");
           break;
         }
         filecount += 1;
@@ -310,9 +310,11 @@ fn close_file( files_hash: &mut HashMap<u64, FileInformation>,
       (*(*args).fob).preserve.unwrap() )
   };
 
+  /*
   if !files_close.is_empty() {
     println!("Checking list: {:?}", files_close);
   }
+  */
 
   loop {
     unsafe {
@@ -351,18 +353,20 @@ fn close_file( files_hash: &mut HashMap<u64, FileInformation>,
   ret
 }
 
-fn send_file_completions( files_complete: &Vec<FileInformation> ) -> bool {
+fn send_file_completions( files_complete: &mut Vec<FileInformation> ) -> bool {
 
   if files_complete.is_empty() {
     return false;
   }
 
-  debug!("send_file_completions for {} files", files_complete.len());
+  let mut k=0;
+
+  debug!("send_file_completions: {} files in queue", files_complete.len());
   // let mut v = VecDeque::new();
   let mut v = Vec::new();
   let mut builder = flatbuffers::FlatBufferBuilder::with_capacity(8192);
 
-  for fi in files_complete{
+  while let Some(fi) = files_complete.pop() {
       v.push(
         file_spec::File::create( &mut builder,
           &file_spec::FileArgs{
@@ -370,6 +374,11 @@ fn send_file_completions( files_complete: &Vec<FileInformation> ) -> bool {
             crc:  fi.crc,
             ..Default::default()
           }));
+
+      k+=1;
+      if k >= 4096 {
+        break;
+      }
   }
 
   let fi   = Some( builder.create_vector( &v ) );
@@ -382,14 +391,16 @@ fn send_file_completions( files_complete: &Vec<FileInformation> ) -> bool {
   builder.finish( bu, None );
   let buf = builder.finished_data();
 
-  let dst:[MaybeUninit<u8>; 49152] = [{ std::mem::MaybeUninit::uninit() }; 49152];
+  let dst:[MaybeUninit<u8>; 100000] = [{ std::mem::MaybeUninit::uninit() }; 100000];
   let mut dst = unsafe { std::mem::transmute::<
-    [std::mem::MaybeUninit<u8>; 49152], [u8; 49152]>(dst) };
+    [std::mem::MaybeUninit<u8>; 100000], [u8; 100000]>(dst) };
 
   let res = zstd_safe::compress( &mut dst, buf, 3 );
   let csz = res.expect("Compression failed");
 
   let hdr = to_header( csz as u32, msg_file_stat );
+
+  debug!("send_file_completions: files={} compressed={} uncompressed={}", k, csz, buf.len());
 
   unsafe {
     meta_send( dst.as_ptr() as *mut i8, hdr.as_ptr() as *mut i8,
@@ -448,14 +459,13 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
 
     let ptr = unsafe{ meta_recv() };
     if ptr.is_null() {
-      if send_file_completions( &files_complete ) {
-        files_complete = Vec::new();
+      if send_file_completions( &mut files_complete ) {
         timeout=100;
         continue;
       }
 
       unsafe {
-        if get_threads_finished() >= (*args).thread_count.try_into().unwrap() {
+        if get_threads_finished() >= (*args).thread_count as u64 {
           info!("Exiting because all workers exited.");
           process::exit(-1);
         }
@@ -563,6 +573,7 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
     }
 
     info!("Got unhandled message from sender sz={sz}, type={t}");
+    unsafe{ meta_complete() };
     continue;
   }
 

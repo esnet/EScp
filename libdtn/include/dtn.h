@@ -223,3 +223,4 @@ struct fc_info_struct* fc_pop(); // void fc_push( uint64_t file_no, uint64_t byt
 uint8_t* meta_recv();
 void meta_complete();
 void file_incrementtail();
+uint64_t  file_iow_remove( struct file_stat_type* fs, int id );

@@ -32,7 +32,7 @@ pub fn create_files( dir_root: String, dir_count: u32, file_count: u32, file_sz_
     fs::create_dir( np ).unwrap();
     for file in 0..file_count {
       hash = unsafe { xorshift64r( hash ) };
-      let sz:i64 = ((hash % (file_sz_max-file_sz_min) as u64) + file_sz_min as u64).try_into().unwrap();
+      let sz:i64 = ((hash % (file_sz_max-file_sz_min) as u64) + file_sz_min as u64) as i64;
       for i in 0..(sz/8) {
         hash = unsafe { xorshift64r( hash ) };
         v[(i*8) as usize] = (hash & 0xff) as u8;
@@ -104,8 +104,11 @@ pub fn iterate_dir( dir_root: String ) -> bool {
   loop{
 
     let (_fi, fino, _st);
-    match msg_out.recv() {
+    match msg_out.recv_timeout( std::time::Duration::from_millis(80) ) {
         Ok((a,b,c)) => { (_fi, fino, _st) = (a,b,c); }
+        Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
+          return true;
+        }
         Err(_) => {
           println!("iterate_files: Got an abnormal from msg_out.recv, assume EOQ");
           break;

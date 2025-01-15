@@ -1054,3 +1054,6 @@ extern "C" {
 extern "C" {
     pub fn file_incrementtail();
 }
+extern "C" {
+    pub fn file_iow_remove(fs: *mut file_stat_type, id: ::core::ffi::c_int) -> u64;
+}
