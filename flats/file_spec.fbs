@@ -55,6 +55,9 @@ table File {
 
   crc:       uint32;
   complete:  uint32;
+  errmsg: string;
+  errno: int32;
+
 }
 
 root_type ESCP_file_list;

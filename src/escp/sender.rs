@@ -442,8 +442,22 @@ fn handle_msg_from_receiver(
 
   for e in fs.files().unwrap() {
 
-    let (rx_fino, rx_sz, rx_crc, rx_complete) = (e.fino(), e.sz(), e.crc(), e.complete());
-    debug!("file_check on {} {} {:#X} {}", rx_fino, rx_sz, rx_crc, rx_complete);
+    let (rx_fino, rx_sz, rx_crc, rx_complete, errno) =
+        (e.fino(), e.sz(), e.crc(), e.complete(), e.errno());
+    debug!("file_check on {} {} {:#X} {} {}", rx_fino, rx_sz, rx_crc, rx_complete, errno);
+
+    if errno > 0 {
+      if e.errmsg().unwrap().is_empty() {
+        let error = io::Error::from_raw_os_error(errno);
+
+        eprintln!("\nSender error writing '{}': {}",
+          e.name().unwrap(), error);
+      } else {
+        eprintln!("\nSender err writing '{}': {}:{}",
+          e.name().unwrap(), e.errmsg().unwrap(), errno);
+      }
+      process::exit(1);
+    }
 
     if (rx_fino == 0) && (rx_crc == 0) {
       debug!("Receiver confirmed an empty file");
@@ -556,10 +570,8 @@ fn send_file_complete( fc2_out: &crossbeam_channel::Receiver<(u64, u64)> ) {
       meta_send(dst.as_ptr() as *mut i8, hdr.as_ptr() as *mut i8, compressed_sz as i32)
     };
 
-    info!("buf: {} compressed: {} count: {}", buf.len(), compressed_sz, vec.len());
-
-
-
+    debug!("send_file_completions: orig: {} compressed: {} ({:0.02}) count: {}",
+      buf.len(), compressed_sz, compressed_sz as f64 / buf.len() as f64, vec.len());
   }
 
 
@@ -816,8 +828,6 @@ pub fn iterate_file_worker(
       }
 
       let fname = filename.to_str().unwrap();
-      // if st.st_size > 0 {
-
       let fino = 1+GLOBAL_FINO.fetch_add(1, SeqCst);
 
       let mut res;
@@ -831,15 +841,6 @@ pub fn iterate_file_worker(
       _ = msg_in.send( (fname.to_string(), fino, st) );
       debug!("addfile: {fname} fn={fino} sz={:?} slot={}",
         st.st_size, (*res).position);
-      /*
-      } else {
-        debug!("addfile:  {fname} fn=NONE sz=NIL");
-        _ = msg_in.send( (fname.to_string(), 0, st) );
-        if close_fd(fd) == -1 {
-          info!("Error closing file descriptor (empty file)");
-        }
-      }
-      */
     }
   }
 

@@ -260,9 +260,6 @@ pub struct EScp_Args {
    #[arg(long, help="disable checksum")]
    nochecksum: bool,
 
-   #[arg(long, help="disable file size calculation (stat call)")]
-   nocalc: bool,
-
    /// Enable SSH Agent Forwarding
    #[arg(short='A', long="agent")]
    agent: bool,

@@ -186,6 +186,8 @@ impl<'a> File<'a> {
   pub const VT_MTIM_NANO: flatbuffers::VOffsetT = 24;
   pub const VT_CRC: flatbuffers::VOffsetT = 26;
   pub const VT_COMPLETE: flatbuffers::VOffsetT = 28;
+  pub const VT_ERRMSG: flatbuffers::VOffsetT = 30;
+  pub const VT_ERRNO: flatbuffers::VOffsetT = 32;
 
   #[inline]
   pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
@@ -204,6 +206,8 @@ impl<'a> File<'a> {
     builder.add_blocks(args.blocks);
     builder.add_sz(args.sz);
     builder.add_fino(args.fino);
+    builder.add_errno(args.errno);
+    if let Some(x) = args.errmsg { builder.add_errmsg(x); }
     builder.add_complete(args.complete);
     builder.add_crc(args.crc);
     builder.add_gid(args.gid);
@@ -305,6 +309,20 @@ impl<'a> File<'a> {
     // which contains a valid value in this slot
     unsafe { self._tab.get::<u32>(File::VT_COMPLETE, Some(0)).unwrap()}
   }
+  #[inline]
+  pub fn errmsg(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<&str>>(File::VT_ERRMSG, None)}
+  }
+  #[inline]
+  pub fn errno(&self) -> i32 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<i32>(File::VT_ERRNO, Some(0)).unwrap()}
+  }
 }
 
 impl flatbuffers::Verifiable for File<'_> {
@@ -327,6 +345,8 @@ impl flatbuffers::Verifiable for File<'_> {
      .visit_field::<i64>("mtim_nano", Self::VT_MTIM_NANO, false)?
      .visit_field::<u32>("crc", Self::VT_CRC, false)?
      .visit_field::<u32>("complete", Self::VT_COMPLETE, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<&str>>("errmsg", Self::VT_ERRMSG, false)?
+     .visit_field::<i32>("errno", Self::VT_ERRNO, false)?
      .finish();
     Ok(())
   }
@@ -345,6 +365,8 @@ pub struct FileArgs<'a> {
     pub mtim_nano: i64,
     pub crc: u32,
     pub complete: u32,
+    pub errmsg: Option<flatbuffers::WIPOffset<&'a str>>,
+    pub errno: i32,
 }
 impl<'a> Default for FileArgs<'a> {
   #[inline]
@@ -363,6 +385,8 @@ impl<'a> Default for FileArgs<'a> {
       mtim_nano: 0,
       crc: 0,
       complete: 0,
+      errmsg: None,
+      errno: 0,
     }
   }
 }
@@ -425,6 +449,14 @@ impl<'a: 'b, 'b> FileBuilder<'a, 'b> {
     self.fbb_.push_slot::<u32>(File::VT_COMPLETE, complete, 0);
   }
   #[inline]
+  pub fn add_errmsg(&mut self, errmsg: flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(File::VT_ERRMSG, errmsg);
+  }
+  #[inline]
+  pub fn add_errno(&mut self, errno: i32) {
+    self.fbb_.push_slot::<i32>(File::VT_ERRNO, errno, 0);
+  }
+  #[inline]
   pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a>) -> FileBuilder<'a, 'b> {
     let start = _fbb.start_table();
     FileBuilder {
@@ -455,6 +487,8 @@ impl core::fmt::Debug for File<'_> {
       ds.field("mtim_nano", &self.mtim_nano());
       ds.field("crc", &self.crc());
       ds.field("complete", &self.complete());
+      ds.field("errmsg", &self.errmsg());
+      ds.field("errno", &self.errno());
       ds.finish()
   }
 }

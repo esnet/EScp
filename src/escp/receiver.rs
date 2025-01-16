@@ -204,7 +204,8 @@ struct FileInformation {
 }
 
 fn add_file( files_hash: &mut HashMap<u64, FileInformation>, files_add: &mut VecDeque<u64>,
-             safe_args: logging::dtn_args_wrapper) -> u64 {
+             safe_args: logging::dtn_args_wrapper) -> (u64, i64) {
+  // Returns (number_of_files added, file_error)
 
   let (mut filecount, mut last_filecount) = (0,0);
   let args = safe_args.args;
@@ -212,7 +213,7 @@ fn add_file( files_hash: &mut HashMap<u64, FileInformation>, files_add: &mut Vec
   loop {
     let i = match files_add.front() {
       Some(a) => { a },
-      None => { break filecount }
+      None => { return (filecount, 0); }
     };
 
     let i = &mut files_hash.get_mut(i).unwrap();
@@ -247,9 +248,17 @@ fn add_file( files_hash: &mut HashMap<u64, FileInformation>, files_add: &mut Vec
             info!("Create directory {dir_path:?}");
             continue;
           }
-          info!("Got an error opening file {:?} {:?}",
-                i.path, err);
-          return filecount;
+
+          if err.raw_os_error().unwrap() != 24 {
+            info!("Got an error opening file {:?} {:?}",
+                  i.path, err.raw_os_error().unwrap());
+            return (filecount, err.raw_os_error().unwrap() as i64);
+          } else {
+            debug!("Too many open files; waiting until files are closed {:?} {:?}",
+                  i.path, err);
+            return (filecount, 0);
+          }
+
         }
 
         i.fd = fd;
@@ -278,7 +287,7 @@ fn add_file( files_hash: &mut HashMap<u64, FileInformation>, files_add: &mut Vec
           let tf = get_threads_finished();
           if tf > 0 {
             info!("Transfer Aborted? Exiting because receivers exited");
-            return filecount;
+            return (filecount, 0);
           }
           debug!("Couldn't add file (fd limit). Will try again.");
           break;
@@ -293,9 +302,10 @@ fn add_file( files_hash: &mut HashMap<u64, FileInformation>, files_add: &mut Vec
     if filecount != last_filecount {
       last_filecount = filecount;
     } else {
-      break filecount;
+      return (filecount, 0);
     }
   }
+
 }
 
 fn close_file( files_hash: &mut HashMap<u64, FileInformation>,
@@ -362,23 +372,21 @@ fn send_file_completions( files_complete: &mut Vec<FileInformation> ) -> bool {
   let mut k=0;
 
   debug!("send_file_completions: {} files in queue", files_complete.len());
-  // let mut v = VecDeque::new();
   let mut v = Vec::new();
   let mut builder = flatbuffers::FlatBufferBuilder::with_capacity(8192);
 
   while let Some(fi) = files_complete.pop() {
-      v.push(
-        file_spec::File::create( &mut builder,
-          &file_spec::FileArgs{
-            fino: fi.fino,
-            crc:  fi.crc,
-            ..Default::default()
-          }));
-
-      k+=1;
-      if k >= 4096 {
-        break;
-      }
+    v.push(
+      file_spec::File::create( &mut builder,
+        &file_spec::FileArgs{
+          fino: fi.fino,
+          crc:  fi.crc,
+          ..Default::default()
+        }));
+    k+=1;
+    if k >= 4096 {
+      break;
+    }
   }
 
   let fi   = Some( builder.create_vector( &v ) );
@@ -410,6 +418,51 @@ fn send_file_completions( files_complete: &mut Vec<FileInformation> ) -> bool {
   true
 }
 
+fn send_file_error( fino: u64, name: String, errmsg: String, errno: i32 ) {
+
+  let mut v = Vec::new();
+  let mut builder = flatbuffers::FlatBufferBuilder::with_capacity(8192);
+
+  let name  = Some(builder.create_string((name).as_str()));
+  let errmsg = Some(builder.create_string((errmsg).as_str()));
+
+
+  v.push(
+     file_spec::File::create( &mut builder,
+       &file_spec::FileArgs{
+         fino, name,
+         errmsg, errno,
+         ..Default::default()
+       }));
+
+  let fi   = Some( builder.create_vector( &v ) );
+  let bu = file_spec::ESCP_file_list::create(
+    &mut builder, &file_spec::ESCP_file_listArgs{
+      files: fi,
+      fc_stat: true,
+      ..Default::default()
+    });
+
+  builder.finish( bu, None );
+  let buf = builder.finished_data();
+
+  let dst:[MaybeUninit<u8>; 1000] = [{ std::mem::MaybeUninit::uninit() }; 1000];
+  let mut dst = unsafe { std::mem::transmute::<
+    [std::mem::MaybeUninit<u8>; 1000], [u8; 1000]>(dst) };
+
+  let res = zstd_safe::compress( &mut dst, buf, 3 );
+  let csz = res.expect("Compression failed");
+
+  let hdr = to_header( csz as u32, msg_file_stat );
+
+  debug!("send_file_error: files={} compressed={} uncompressed={}", 1, csz, buf.len());
+
+  unsafe {
+    meta_send( dst.as_ptr() as *mut i8, hdr.as_ptr() as *mut i8,
+               csz as i32 );
+  }
+
+}
 
 pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
 
@@ -430,7 +483,7 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   initialize_receiver( safe_args, flags );
 
   loop {
-    let filecount = add_file( &mut files_hash, &mut files_add, safe_args );
+    let (filecount, file_error) = add_file( &mut files_hash, &mut files_add, safe_args );
     let mut res = close_file( &mut files_hash, &mut files_close, safe_args );
 
     file_count_out += res.len();
@@ -446,6 +499,14 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       debug!("Incr file_count_in by {filecount} to {file_count_in}");
     }
 
+    if file_error > 0 {
+      let fi  = files_add.pop_front().unwrap();
+      let i = &mut files_hash.get_mut(&fi).unwrap();
+      let name = i.path.clone();
+
+      send_file_error( fi, name, String::new(), file_error as i32 );
+      info!("Error with {}:{}", fi, file_error);
+    }
 
     if transfer_complete && (file_count_in==file_count_out as u64) {
       debug!("Transfer complete conditions met");
