@@ -884,7 +884,8 @@ void* rx_worker( void* arg ) {
         atomic_fetch_xor( &fs_ptr->crc, file_hash(buf, orig_sz, seed) );
       }
 
-      DBV("[%2d] Do FIHDR_SHORT crc=%08x fn=%ld offset=%zX sz=%d", id, fs_ptr->crc, file_no, offset, orig_sz);
+      DBV("[%2d] Do FIHDR_SHORT crc=%08x fn=%ld offset=%zX sz=%d",
+          id, fs_ptr->crc, file_no, offset, orig_sz);
 
       while ( (knob->token = fob->submit(fob, &sz, &res)) ) {
         // XXX: Flushes IO queue; we don't necessarily want to do that;
@@ -901,44 +902,17 @@ void* rx_worker( void* arg ) {
         DBG("[%2d] FIHDR_SHORT written=%08ld/%08ld fn=%ld os=%zX sz=%d",
             id, written, fs.bytes, file_no, offset, sz );
 
-        /*
-        // XXX: add block_total
-        if ( fs.bytes && fs.bytes <= written  ) {
-
-          if (dtn->do_hash)
-            fc_push( file_no, fs.bytes, fs.block_total, atomic_load(&fs_ptr->crc) );
-          else
-            fc_push( file_no, fs.bytes, fs.block_total, 0 );
-
-          // Always truncate, even though it may not be needed in some cases
-          fob->truncate(fob, fs.bytes);
-          if (fs_ptr->atim_sec) {
-            fob->preserve(fs.fd, ~0, ~0, ~0,
-              fs_ptr->atim_sec, fs_ptr->atim_nano, fs_ptr->mtim_sec, fs_ptr->mtim_nano);
-          }
-          DBG("[%2d] FIHDR_SHORT: close with truncate fn=%ld ", id, file_no);
-
-          file_incrementtail();
-          fob->close(fob);
-          memset_avx( fs_ptr );
-          atomic_fetch_add( &dtn->files_closed, 1 );
-        }
-        */
       }
     }
   }
-
-  /*
-  if (rx->conn > 1)
-    close( rx->conn );
-  */
 
   atomic_fetch_add(&bytes_network, knob->bytes_network);
   atomic_fetch_add(&bytes_disk, knob->bytes_disk);
   atomic_fetch_add(&bytes_compressed, knob->bytes_compressed);
 
   atomic_fetch_add(&threads_finished, 1);
-  NFO("[%2d] rx_worker: finish %zd %zd %zd", id, knob->bytes_network, knob->bytes_disk, knob->bytes_compressed);
+  NFO("[%2d] rx_worker: finish %zd %zd %zd", id, knob->bytes_network,
+      knob->bytes_disk, knob->bytes_compressed);
 
   return 0;
 }

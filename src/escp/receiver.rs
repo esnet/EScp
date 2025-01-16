@@ -315,9 +315,10 @@ fn close_file( files_hash: &mut HashMap<u64, FileInformation>,
 
   let mut ret = Vec::new();
   let args = safe_args.args;
-  let (close,preserve) = unsafe {
+  let (close,preserve,truncate) = unsafe {
     ( (*(*args).fob).close_fd.unwrap(),
-      (*(*args).fob).preserve.unwrap() )
+      (*(*args).fob).preserve.unwrap(),
+      (*(*args).fob).truncate.unwrap(), )
   };
 
   /*
@@ -342,6 +343,8 @@ fn close_file( files_hash: &mut HashMap<u64, FileInformation>,
       }
 
       let fi = files_hash.get_mut(fino).unwrap();
+
+      truncate( fi.fd, fi.sz );
 
       if (*args).do_preserve {
         _ = preserve( fi.fd, fi.mode, fi.uid, fi.gid,

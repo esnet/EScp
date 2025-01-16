@@ -157,13 +157,9 @@ void* file_posixsubmit( void* arg, int32_t* sz, uint64_t* offset ) {
   return 0;
 }
 
-int file_posixtruncate( void* arg, int64_t sz ) {
-  struct file_object* fob = arg;
-  struct posix_op* op = (struct posix_op*) fob->pvdr;
-
-  DBV( "[%2d] Truncate op fd=%d sz=%ld", fob->id, op->fd, sz );
-
-  return ftruncate( op->fd, sz );
+int file_posixtruncate( int fd, int64_t sz ) {
+  DBV( "Truncate op fd=%d sz=%ld", fd, sz );
+  return ftruncate( fd, sz );
 }
 
 int file_posixclose(void* arg) {

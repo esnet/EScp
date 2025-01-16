@@ -642,7 +642,7 @@ pub struct file_object {
         unsafe extern "C" fn(arg1: *mut ::core::ffi::c_void) -> ::core::ffi::c_int,
     >,
     pub truncate: ::core::option::Option<
-        unsafe extern "C" fn(arg1: *mut ::core::ffi::c_void, arg2: i64) -> ::core::ffi::c_int,
+        unsafe extern "C" fn(arg1: ::core::ffi::c_int, arg2: i64) -> ::core::ffi::c_int,
     >,
     pub fstat: ::core::option::Option<
         unsafe extern "C" fn(arg1: ::core::ffi::c_int, arg2: *mut stat) -> ::core::ffi::c_int,

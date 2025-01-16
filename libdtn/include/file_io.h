@@ -82,7 +82,7 @@ struct file_object {
   int   (*close_fd) (int);
 
   int   (*close)    (void*);
-  int   (*truncate) (void*, int64_t);
+  int   (*truncate) (int, int64_t);
   int   (*fstat)   (int, struct stat*);
 
   void* (*fetch)   (void*);
@@ -144,7 +144,7 @@ int file_shmeminit( struct file_object* fob );
 void* file_dummypreserve( int32_t fd, uint32_t mode, uint32_t uid,
   uint32_t gid, int64_t atim_sec, int64_t atim_nano, int64_t mtim_sec,
   int64_t mtim_nano );
-int file_dummytruncate( void* ptr, int64_t size );
+int file_dummytruncate( int fd, int64_t size );
 void* file_dummycomplete( void* arg, void* arg2 );
 
 

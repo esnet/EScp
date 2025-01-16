@@ -47,7 +47,7 @@ int file_dummystat( int fd, struct stat *sbuf ) {
   return 0;
 }
 
-int file_dummytruncate( void* ptr, int64_t size) {
+int file_dummytruncate( int fd, int64_t size) {
   return 0;
 }
 

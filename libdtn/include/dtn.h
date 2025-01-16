@@ -79,7 +79,7 @@ struct file_object {
   int   (*close_fd) (int);
 
   int   (*close)    (void*);
-  int   (*truncate) (void*, int64_t);
+  int   (*truncate) (int, int64_t);
   int   (*fstat)   (int, struct stat*);
 
   void* (*fetch)   (void*);
