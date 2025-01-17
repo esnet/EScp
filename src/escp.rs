@@ -161,8 +161,8 @@ fn fc_worker(fc_in: crossbeam_channel::Sender<(u64, u32)>,
         return;
       }
 
-      _ = fc_in.send(((*fc).file_no, (*fc).crc));
-      _ = fc2_in.send(((*fc).file_no, (*fc).blocks));
+      _ = fc_in.send((  (*fc).file_no, (*fc).crc ));
+      _ = fc2_in.send(( (*fc).file_no, (*fc).blocks) );
     }
   }
 }

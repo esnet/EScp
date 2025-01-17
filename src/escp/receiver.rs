@@ -192,6 +192,7 @@ struct FileInformation {
   path: String,
   fino: u64,
   sz: i64,
+  blocks: i64,
   fd: i32,
   mode: u32,
   uid: u32,
@@ -309,7 +310,7 @@ fn add_file( files_hash: &mut HashMap<u64, FileInformation>, files_add: &mut Vec
 }
 
 fn close_file( files_hash: &mut HashMap<u64, FileInformation>,
-               files_close: &mut VecDeque<(u64, i64)>,
+               files_close: &mut VecDeque<u64>,
                safe_args: logging::dtn_args_wrapper
              ) -> Vec<FileInformation> {
 
@@ -329,8 +330,8 @@ fn close_file( files_hash: &mut HashMap<u64, FileInformation>,
 
   loop {
     unsafe {
-      let (fino,blocks) = match files_close.front() {
-        Some((a,b)) => { (a,b) },
+      let fino = match files_close.front() {
+        Some(a) => {a},
         None => { break }
       };
 
@@ -338,14 +339,20 @@ fn close_file( files_hash: &mut HashMap<u64, FileInformation>,
       if stats.is_null() {
         break;
       }
-      if (*stats).block_total < (*blocks as u64) { // File incomplete
-        break;
-      }
 
       let fi = files_hash.get_mut(fino).unwrap();
 
-      truncate( fi.fd, fi.sz );
+      if fi.blocks < 0 {
+        break;
+      }
 
+      if ((*stats).block_total as i64) < fi.blocks {
+        // File incomplete
+        break;
+      }
+
+
+      truncate( fi.fd, fi.sz );
       if (*args).do_preserve {
         _ = preserve( fi.fd, fi.mode, fi.uid, fi.gid,
               fi.atim_sec, fi.atim_nano, fi.mtim_sec, fi.mtim_nano );
@@ -598,13 +605,24 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
             atim_nano: entry.atim_nano(),
             mtim_sec: entry.mtim_sec(),
             mtim_nano: entry.mtim_nano(),
-            crc: 0
+            crc: 0,
+            blocks: -1
           };
 
           files_hash.insert( entry.fino(), fi );
           files_add.push_back( entry.fino() );
         } else {
-          files_close.push_back((entry.fino(), entry.blocks()));
+          let fi = files_hash.get_mut( &entry.fino() ).unwrap();
+
+          fi.blocks = entry.blocks();
+          if entry.sz() > 0 {
+            fi.sz = entry.sz();
+          }
+
+          let g = fi.clone();
+          files_hash.insert( entry.fino(), g );
+
+          files_close.push_back(entry.fino());
         }
       }
 
