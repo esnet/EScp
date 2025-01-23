@@ -1,4 +1,4 @@
-#[allow(static_mut_refs)]
+#![allow(static_mut_refs)]
 use super::*;
 
 extern crate log;

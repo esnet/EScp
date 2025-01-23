@@ -14,7 +14,7 @@ pub fn create_files( dir_root: String, dir_count: u32, file_count: u32, file_sz_
     return true;
   }
 
-  _ = fs::create_dir( dir_root.clone() ).unwrap();
+  fs::create_dir( dir_root.clone() ).unwrap();
 
   let mut hash = 0u64;
   unsafe {
@@ -77,7 +77,7 @@ pub fn iterate_dir( dir_root: String ) -> bool {
   let close_fd = unsafe { (*(*args).fob).close_fd.unwrap() };
 
   for j in 0..4 {
-    let nam = format!("file_{}", j as i32);
+    let nam = format!("file_{}", j);
     let a = safe_args;
     let fo = files_out.clone();
     let di = dir_in.clone();
@@ -87,7 +87,7 @@ pub fn iterate_dir( dir_root: String ) -> bool {
   }
 
   for j in 0..2 {
-    let nam = format!("dir_{}", j as i32);
+    let nam = format!("dir_{}", j);
     let a = safe_args;
     let dir_o = dir_out.clone();
     let fi = files_in.clone();

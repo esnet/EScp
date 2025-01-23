@@ -215,6 +215,14 @@ bindgen libdtn/include/dtn.h -o src/escp/bindings.rs --use-core  --generate-cstr
 complete -F _scp -o nospace escp
 _completion_loader scp
 
+# To prepare for a release
+rustup update
+cargo update
+./mk.sh
+cargo test
+cargo audit
+cargo clippy
+
 
 ```
 
