@@ -124,11 +124,11 @@ fn from_header( i: Vec<u8> ) -> ( u32, u16 ) {
   ((i[0] as u32) << 24 | (i[1] as u32) << 16 | (i[2] as u32) << 8 | (i[3] as u32), (i[4] as u16) << 8 | (i[5] as u16) )
 }
 
+unsafe impl Send for logging::dtn_args_wrapper {}
+unsafe impl Sync for logging::dtn_args_wrapper {}
 
 fn do_escp(args: *mut dtn_args, flags: &EScp_Args) {
   let safe_args = logging::dtn_args_wrapper{ args };
-  unsafe impl Send for logging::dtn_args_wrapper {}
-  unsafe impl Sync for logging::dtn_args_wrapper {}
 
   if unsafe { (*args).do_server } {
     receiver::escp_receiver( safe_args, flags );

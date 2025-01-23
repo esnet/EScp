@@ -343,6 +343,7 @@ fn close_file( files_hash: &mut HashMap<u64, FileInformation>,
       let fi = files_hash.get_mut(fino).unwrap();
 
       if fi.blocks < 0 {
+        // File information not available
         break;
       }
 

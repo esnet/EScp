@@ -1,3 +1,4 @@
+#[allow(static_mut_refs)]
 use super::*;
 
 extern crate log;
@@ -14,8 +15,8 @@ pub struct dtn_args_wrapper {
   pub args: *mut dtn_args
 }
 
+// static mut logger_fd:i32=0;
 static mut logger_fd:i32=0;
-
 
 struct MyLogger {}
 
