@@ -226,9 +226,6 @@ struct file_stat_type* file_addfile( uint64_t fileno, int fd ) {
   memcpy_avx( &file_stat[slot], &fs );
   atomic_fetch_add( &file_claim, 1 );
 
-  VRFY( atomic_load( & file_stat[slot].state ) == FS_INIT, "FS_INIT?" );
-  VRFY( sizeof( file_stat[0] ) == 64, "Bleh!" );
-
   DBG("file_addfile fn=%ld, fd=%d slot=%d cc=%d",
       fs.file_no, fs.fd, fs.position, i );
 
@@ -450,7 +447,7 @@ struct file_object* file_memoryinit( void* arg, int id ) {
   f.id          = id;
   f.compression = dtn->compression;
   f.sparse      = dtn->sparse;
-  f.hugepages   = dtn->hugepages;
+  // f.hugepages   = dtn->hugepages;
   f.do_hash     = dtn->do_hash;
 
   switch (f.io_type) {

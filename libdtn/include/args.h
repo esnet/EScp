@@ -82,8 +82,7 @@ struct dtn_args {
   bool nodirect;
   bool recursive;
 
-  int file_count;
-  int host_count;
+  int logging_fd;
   int mtu;
   int block;
   int flags;
@@ -91,7 +90,6 @@ struct dtn_args {
 
   int compression;
   int sparse;
-  int hugepages;
 
   int64_t disable_io;
   uint64_t pacing;

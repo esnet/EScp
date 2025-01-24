@@ -111,8 +111,10 @@ int file_shmeminit( struct file_object* fob ) {
 
   int flags = MAP_SHARED|MAP_ANONYMOUS;
 
+  /*
   if (fob->hugepages)
     flags |= MAP_HUGETLB;
+  */
 
   uint64_t alloc_sz = fob->blk_sz;
 

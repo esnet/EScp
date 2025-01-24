@@ -604,10 +604,10 @@ extern "C" {
 #[derive(Debug, Copy, Clone)]
 pub struct file_object {
     pub QD: i32,
-    pub hugepages: u8,
     pub compression: u8,
     pub is_compressed: u8,
     pub do_hash: u8,
+    pub pad: u8,
     pub blk_sz: u32,
     pub id: u16,
     pub io_type: u16,
@@ -695,14 +695,13 @@ const _: () = {
     ["Size of file_object"][::core::mem::size_of::<file_object>() - 208usize];
     ["Alignment of file_object"][::core::mem::align_of::<file_object>() - 8usize];
     ["Offset of field: file_object::QD"][::core::mem::offset_of!(file_object, QD) - 0usize];
-    ["Offset of field: file_object::hugepages"]
-        [::core::mem::offset_of!(file_object, hugepages) - 4usize];
     ["Offset of field: file_object::compression"]
-        [::core::mem::offset_of!(file_object, compression) - 5usize];
+        [::core::mem::offset_of!(file_object, compression) - 4usize];
     ["Offset of field: file_object::is_compressed"]
-        [::core::mem::offset_of!(file_object, is_compressed) - 6usize];
+        [::core::mem::offset_of!(file_object, is_compressed) - 5usize];
     ["Offset of field: file_object::do_hash"]
-        [::core::mem::offset_of!(file_object, do_hash) - 7usize];
+        [::core::mem::offset_of!(file_object, do_hash) - 6usize];
+    ["Offset of field: file_object::pad"][::core::mem::offset_of!(file_object, pad) - 7usize];
     ["Offset of field: file_object::blk_sz"][::core::mem::offset_of!(file_object, blk_sz) - 8usize];
     ["Offset of field: file_object::id"][::core::mem::offset_of!(file_object, id) - 12usize];
     ["Offset of field: file_object::io_type"]
@@ -851,15 +850,13 @@ pub struct dtn_args {
     pub do_preserve: bool,
     pub nodirect: bool,
     pub recursive: bool,
-    pub file_count: ::core::ffi::c_int,
-    pub host_count: ::core::ffi::c_int,
+    pub logging_fd: ::core::ffi::c_int,
     pub mtu: ::core::ffi::c_int,
     pub block: ::core::ffi::c_int,
     pub flags: ::core::ffi::c_int,
     pub QD: ::core::ffi::c_int,
     pub compression: ::core::ffi::c_int,
     pub sparse: ::core::ffi::c_int,
-    pub hugepages: ::core::ffi::c_int,
     pub disable_io: i64,
     pub pacing: u64,
     pub io_engine_name: *mut ::core::ffi::c_char,
@@ -872,7 +869,7 @@ pub struct dtn_args {
     pub cpumask_bytes: [u8; 32usize],
     pub nodemask: u64,
     pub sock_store_count: ::core::ffi::c_int,
-    pub __bindgen_padding_0: [u8; 36usize],
+    pub __bindgen_padding_0: [u8; 44usize],
     pub sock_store: [sockaddr_storage; 32usize],
     pub fob: *mut file_object,
     pub __bindgen_padding_1: [u32; 14usize],
@@ -912,40 +909,36 @@ const _: () = {
         [::core::mem::offset_of!(dtn_args, do_preserve) - 4usize];
     ["Offset of field: dtn_args::nodirect"][::core::mem::offset_of!(dtn_args, nodirect) - 5usize];
     ["Offset of field: dtn_args::recursive"][::core::mem::offset_of!(dtn_args, recursive) - 6usize];
-    ["Offset of field: dtn_args::file_count"]
-        [::core::mem::offset_of!(dtn_args, file_count) - 8usize];
-    ["Offset of field: dtn_args::host_count"]
-        [::core::mem::offset_of!(dtn_args, host_count) - 12usize];
-    ["Offset of field: dtn_args::mtu"][::core::mem::offset_of!(dtn_args, mtu) - 16usize];
-    ["Offset of field: dtn_args::block"][::core::mem::offset_of!(dtn_args, block) - 20usize];
-    ["Offset of field: dtn_args::flags"][::core::mem::offset_of!(dtn_args, flags) - 24usize];
-    ["Offset of field: dtn_args::QD"][::core::mem::offset_of!(dtn_args, QD) - 28usize];
+    ["Offset of field: dtn_args::logging_fd"]
+        [::core::mem::offset_of!(dtn_args, logging_fd) - 8usize];
+    ["Offset of field: dtn_args::mtu"][::core::mem::offset_of!(dtn_args, mtu) - 12usize];
+    ["Offset of field: dtn_args::block"][::core::mem::offset_of!(dtn_args, block) - 16usize];
+    ["Offset of field: dtn_args::flags"][::core::mem::offset_of!(dtn_args, flags) - 20usize];
+    ["Offset of field: dtn_args::QD"][::core::mem::offset_of!(dtn_args, QD) - 24usize];
     ["Offset of field: dtn_args::compression"]
-        [::core::mem::offset_of!(dtn_args, compression) - 32usize];
-    ["Offset of field: dtn_args::sparse"][::core::mem::offset_of!(dtn_args, sparse) - 36usize];
-    ["Offset of field: dtn_args::hugepages"]
-        [::core::mem::offset_of!(dtn_args, hugepages) - 40usize];
+        [::core::mem::offset_of!(dtn_args, compression) - 28usize];
+    ["Offset of field: dtn_args::sparse"][::core::mem::offset_of!(dtn_args, sparse) - 32usize];
     ["Offset of field: dtn_args::disable_io"]
-        [::core::mem::offset_of!(dtn_args, disable_io) - 48usize];
-    ["Offset of field: dtn_args::pacing"][::core::mem::offset_of!(dtn_args, pacing) - 56usize];
+        [::core::mem::offset_of!(dtn_args, disable_io) - 40usize];
+    ["Offset of field: dtn_args::pacing"][::core::mem::offset_of!(dtn_args, pacing) - 48usize];
     ["Offset of field: dtn_args::io_engine_name"]
-        [::core::mem::offset_of!(dtn_args, io_engine_name) - 64usize];
+        [::core::mem::offset_of!(dtn_args, io_engine_name) - 56usize];
     ["Offset of field: dtn_args::io_engine"]
-        [::core::mem::offset_of!(dtn_args, io_engine) - 72usize];
-    ["Offset of field: dtn_args::window"][::core::mem::offset_of!(dtn_args, window) - 76usize];
+        [::core::mem::offset_of!(dtn_args, io_engine) - 64usize];
+    ["Offset of field: dtn_args::window"][::core::mem::offset_of!(dtn_args, window) - 68usize];
     ["Offset of field: dtn_args::session_id"]
-        [::core::mem::offset_of!(dtn_args, session_id) - 80usize];
+        [::core::mem::offset_of!(dtn_args, session_id) - 72usize];
     ["Offset of field: dtn_args::crypto_key"]
-        [::core::mem::offset_of!(dtn_args, crypto_key) - 88usize];
+        [::core::mem::offset_of!(dtn_args, crypto_key) - 80usize];
     ["Offset of field: dtn_args::do_affinity"]
-        [::core::mem::offset_of!(dtn_args, do_affinity) - 104usize];
+        [::core::mem::offset_of!(dtn_args, do_affinity) - 96usize];
     ["Offset of field: dtn_args::cpumask_len"]
-        [::core::mem::offset_of!(dtn_args, cpumask_len) - 108usize];
+        [::core::mem::offset_of!(dtn_args, cpumask_len) - 100usize];
     ["Offset of field: dtn_args::cpumask_bytes"]
-        [::core::mem::offset_of!(dtn_args, cpumask_bytes) - 112usize];
-    ["Offset of field: dtn_args::nodemask"][::core::mem::offset_of!(dtn_args, nodemask) - 144usize];
+        [::core::mem::offset_of!(dtn_args, cpumask_bytes) - 104usize];
+    ["Offset of field: dtn_args::nodemask"][::core::mem::offset_of!(dtn_args, nodemask) - 136usize];
     ["Offset of field: dtn_args::sock_store_count"]
-        [::core::mem::offset_of!(dtn_args, sock_store_count) - 152usize];
+        [::core::mem::offset_of!(dtn_args, sock_store_count) - 144usize];
     ["Offset of field: dtn_args::sock_store"]
         [::core::mem::offset_of!(dtn_args, sock_store) - 192usize];
     ["Offset of field: dtn_args::fob"][::core::mem::offset_of!(dtn_args, fob) - 4288usize];

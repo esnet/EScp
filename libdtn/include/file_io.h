@@ -46,10 +46,10 @@ struct posix_op {
 struct file_object {
   // Generic object that abstracts file_io operation to different engines
   int32_t QD;
-  uint8_t hugepages;
   uint8_t compression;
   uint8_t is_compressed;
   uint8_t do_hash;
+  uint8_t pad;
 
   uint32_t blk_sz;
   uint16_t id;

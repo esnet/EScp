@@ -246,7 +246,7 @@ fn add_file( files_hash: &mut HashMap<u64, FileInformation>, files_add: &mut Vec
             let dir_path = path.parent().unwrap();
             let _ = fs::create_dir_all(dir_path);
 
-            info!("Create directory {dir_path:?}");
+            debug!("Create directory {dir_path:?}");
             continue;
           }
 
@@ -544,6 +544,16 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       }
 
       timeout = (timeout as f64 * 1.337) as u64;
+      if timeout > 145000 {
+        let hdr = to_header( 0, msg_keepalive );
+        unsafe {
+          meta_send( std::ptr::null_mut::<i8>(), hdr.as_ptr() as *mut i8, 0_i32 );
+        }
+
+        if timeout > 275000 {
+          timeout /= 2;
+        }
+      }
       // We didn't do anything so go ahead and delay a little bit
       thread::sleep(std::time::Duration::from_micros(timeout)); // Wait: queues to clear
       continue;
@@ -660,11 +670,6 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
     continue;
   }
 
-  unsafe {
-    debug!("Calling finish transfer");
-    finish_transfer( args );
-  }
-
   debug!("Transfer Complete. Sending Session Finished Message.");
 
   let hdr = to_header( 0, msg_session_complete );
@@ -673,7 +678,14 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   }
 
   info!("Transfer Complete!");
-  thread::sleep(std::time::Duration::from_millis(500)); // Wait: queues to clear
+  thread::sleep(std::time::Duration::from_millis(950)); // Wait: queues to clear
+
+  unsafe {
+    debug!("Calling finish transfer");
+    finish_transfer( args );
+  }
+
+  thread::sleep(std::time::Duration::from_millis(150)); // Wait: queues to clear
 
 }
 

@@ -421,7 +421,7 @@ fn handle_msg_from_receiver(
 
   if t != msg_file_stat {
     if t == msg_keepalive {
-      debug!("file_check: Got keepalive, ignoring");
+      info!("file_check: Got keepalive, ignoring");
     } else {
       info!("file_check: Got unexpected type={t}, ignoring");
     }

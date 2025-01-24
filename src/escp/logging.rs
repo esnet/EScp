@@ -1,4 +1,3 @@
-#![allow(static_mut_refs)]
 use super::*;
 
 extern crate log;
@@ -16,7 +15,7 @@ pub struct dtn_args_wrapper {
 }
 
 // static mut logger_fd:i32=0;
-static mut logger_fd:i32=0;
+static mut dtn_aw:Option<dtn_args_wrapper> = None;
 
 struct MyLogger {}
 
@@ -29,8 +28,12 @@ impl log::Log for MyLogger {
     // use chrono::prelude::*;
     let now = chrono::Local::now();
     unsafe {
-      let m = format!("{} [{}] {}\n", now.format("%y%m%d.%H%M%S.%6f"),
-                      record.level(), record.args());
+      let a = dtn_aw.unwrap();
+      let logger_fd = (*a.args).logging_fd;
+      let m = format!("{} [{:08X}] [{}] {}\n",
+          now.format("%y%m%d.%H%M%S.%6f"),
+					(*a.args).session_id & 0xFFFFFFFF,
+					record.level(), record.args());
       let msg = CString::new( m.as_str() ).unwrap();
       let res = libc::write( logger_fd, msg.as_ptr() as *const libc::c_void, m.len() );
       if res < 1 {
@@ -45,7 +48,9 @@ impl log::Log for MyLogger {
 
 pub fn initialize_logging( base_path: &str, args: dtn_args_wrapper ) {
     let mut log_level = LevelFilter::Info;
+
     unsafe {
+      dtn_aw = Some( args );
       if verbose_logging != 0 {
         log_level = LevelFilter::Debug;
       }
@@ -101,7 +106,7 @@ pub fn initialize_logging( base_path: &str, args: dtn_args_wrapper ) {
       let file_name = CString::new( base_path.to_owned() + ident ).unwrap();
 
       unsafe {
-        logger_fd =  libc::open(
+        let logger_fd =  libc::open(
           file_name.as_ptr(), libc::O_CREAT | libc::O_WRONLY | libc::O_APPEND, 0o644 );
 
 				if logger_fd < 0 {
@@ -109,6 +114,8 @@ pub fn initialize_logging( base_path: &str, args: dtn_args_wrapper ) {
 						std::io::Error::last_os_error());
           return;
 				}
+
+        (*args.args).logging_fd = logger_fd;
       }
 
       static MY_LOGGER: MyLogger = MyLogger{};

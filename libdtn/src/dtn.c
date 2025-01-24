@@ -799,6 +799,7 @@ void* rx_worker( void* arg ) {
 
   VRFY( getsockopt(rx->conn, SOL_SOCKET, SO_RCVBUF, &rbuf, &rbuf_sz) != -1,
         "SO_RCVBUF" );
+
   if ( rbuf != dtn->window ) {
     NFO("rcvbuf sz mismatch %d (cur) != %d (ask)", rbuf, dtn->window);
   }
@@ -828,13 +829,14 @@ void* rx_worker( void* arg ) {
     // allocate buffer from IO system and copy data to buffer.
 
     if ( (read_sz=network_recv(knob, &fi_type)) < 1 ) {
-      DBG("[%2d] Bad read=%ld, closing writer", id, read_sz);
+      NFO("[%2d] Bad read=%ld, closing writer", id, read_sz);
       break;
     }
 
     if ( read_sz & (0xB43UL << 32ULL) ) {
       read_sz &= 32ULL - 1;
       knob->bytes_network += read_sz;
+      NFO("[%2d] Got bye message", id);
       break;
     }
 
@@ -1134,41 +1136,6 @@ void finish_transfer( struct dtn_args* args ) {
   // an error on failure.
 
   DBG("[--] finish_transfer is called");
-
-  /*
-  int j = 0;
-
-  while (filecount) {
-    uint64_t files_closed = atomic_load( &args->files_closed );
-    j+=1;
-
-    if (files_closed >= filecount) {
-      DBG("[--] finish_transfer complete");
-      break;
-    }
-
-    if ((j & 0x3ff ) == 0x3ff) {
-      DBG("[--] Waiting on %ld/%ld", files_closed, filecount);
-    }
-
-    ESCP_DELAY(1)
-  }
-
-  {
-    int64_t tc_last=~0;
-    while(1) {
-      uint64_t thread_count = atomic_load( &threads_finished );
-      if (thread_count >= (args->thread_id-1))
-        break;
-
-      ESCP_DELAY(1)
-      if (tc_last != thread_count) {
-        tc_last = thread_count;
-        DBG("wait on thread '%d/%zd'", (args->thread_id-1), thread_count);
-      }
-    }
-  }
-  */
 
   NFO("bytes_network=%zd bytes_disk=%zd bytes_compressed=%zd TC=%d",
     atomic_load(&bytes_network), atomic_load(&bytes_disk),

@@ -43,10 +43,10 @@ char* dtn_err_getnext();
 struct file_object {
   // Generic object that abstracts file_io operation to different engines
   int32_t QD;
-  uint8_t hugepages;
   uint8_t compression;
   uint8_t is_compressed;
   uint8_t do_hash;
+  uint8_t pad;
 
   uint32_t blk_sz;
   uint16_t id;
@@ -144,8 +144,7 @@ struct dtn_args {
   bool nodirect;
   bool recursive;
 
-  int file_count;
-  int host_count;
+  int logging_fd;
   int mtu;
   int block;
   int flags;
@@ -153,7 +152,6 @@ struct dtn_args {
 
   int compression;
   int sparse;
-  int hugepages;
 
   int64_t disable_io;
   uint64_t pacing;
@@ -178,12 +176,13 @@ struct dtn_args {
   int thread_count __attribute__ ((aligned(64)));
   uint16_t active_port __attribute__ ((aligned(64)));
 
-
+  // For logging debug messages
   uint64_t debug_claim __attribute__ ((aligned(64)));
   uint64_t debug_count __attribute__ ((aligned(64)));
   uint8_t  debug_buf[ESCP_MSG_SZ*ESCP_MSG_COUNT];
   uint64_t debug_poison;
 
+  // For logging regular messages (typically errors)
   uint64_t msg_claim   __attribute__ ((aligned(64)));
   uint64_t msg_count   __attribute__ ((aligned(64)));
   uint8_t  msg_buf[ESCP_MSG_SZ*ESCP_MSG_COUNT];
