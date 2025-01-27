@@ -288,7 +288,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
         &mut files_ok,
         &fc_out, &fc2_out
       ) != 1 {
-        eprintln!("Exiting because of CRC mismatch");
+        eprintln!("Error: CRC mismatch              \n");
         thread::sleep(std::time::Duration::from_millis(2));
         process::exit(1);
       }
@@ -363,8 +363,9 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
     );
 
     if res == 0 {
-      debug!("Exiting because file_check returned EOQ");
-      break;
+      eprintln!("Error: CRC mismatch!       \n");
+      thread::sleep(std::time::Duration::from_millis(2));
+      process::exit(1);
     }
 
     debug!("Loopping {files_ok} / {files_total}");
@@ -374,20 +375,19 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   {
     // Let receiver know that we think the session is complete
 
-    info!("Send msg_session_complete");
+    debug!("Send msg_session_complete");
     let hdr = to_header( 0, msg_session_complete );
     unsafe {
       meta_send( std::ptr::null_mut::<i8>(), hdr.as_ptr() as *mut i8, 0_i32 );
     }
   }
 
-  // Tell TX readers to finish
   unsafe {
+    // Gracefully exit
     file_completetransfer();
   }
 
-  info!("Waiting for ACK");
-  // Wait for ACK
+  debug!("Waiting for ACK");
 
   while unsafe{ meta_recv() }.is_null() {
     thread::sleep(std::time::Duration::from_millis(20));
@@ -399,7 +399,11 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   _ = fi.flush();
   info!("Transfer complete");
 
-  thread::sleep(std::time::Duration::from_millis(20)); // Pause for logs
+  unsafe {
+    finish_transfer(args);
+  }
+
+  thread::sleep(std::time::Duration::from_millis(25)); // Pause for logs
   process::exit(0); // Don't wait for threads
 }
 
@@ -421,7 +425,7 @@ fn handle_msg_from_receiver(
 
   if t != msg_file_stat {
     if t == msg_keepalive {
-      info!("file_check: Got keepalive, ignoring");
+      debug!("file_check: Got keepalive, ignoring");
     } else {
       info!("file_check: Got unexpected type={t}, ignoring");
     }
@@ -500,7 +504,8 @@ fn handle_msg_from_receiver(
     if crc != rx_crc {
       // Should always be able to test CRC because if CRC not enabled
       // entry should be zero
-      error!("\rCRC mismatch on {} {:#010X}!={:#010X}\n", rx_fino, crc, rx_crc);
+      error!("CRC mismatch on {} {:#010X}!={:#010X}", rx_fino, crc, rx_crc);
+      eprintln!("\n\rCRC mismatch on {} {:#010X}!={:#010X}\n", rx_fino, crc, rx_crc);
       return -1i64;
     }
 
@@ -512,7 +517,6 @@ fn handle_msg_from_receiver(
   unsafe{ meta_complete(); }
 
   1i64
-
 }
 
 fn send_file_complete( fc2_out: &crossbeam_channel::Receiver<(u64, u64)> ) {
@@ -589,6 +593,7 @@ fn file_check(
   let res = handle_msg_from_receiver( hm, files_ok, fc_out );
 
   if res < 0 {
+    info!("file_check: Got an error!");
     return 0;
   }
 

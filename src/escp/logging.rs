@@ -167,7 +167,10 @@ fn initialize_clog() {
       continue;
     }
 
-    delay *= 1.293;
     thread::sleep(std::time::Duration::from_micros(delay as u64));
+    delay *= 1.293;
+    if delay > 15000.0 {
+      delay /= 2.0 ;
+    }
   }
 }

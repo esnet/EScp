@@ -187,7 +187,6 @@ uint64_t xorshift64r(uint64_t x) {
 }
 
 void file_completetransfer() {
-    NFO("file_completetransfer() is called");
     atomic_fetch_add( &transfer_complete, 1 );
 }
 
@@ -339,6 +338,10 @@ struct file_stat_type* file_next( int id, struct file_stat_type* test_fs ) {
 
     ESCP_DELAY( (int)delay ); // No work found, try again
     delay *= 1.057329;
+
+    if (delay > 150.0)
+      delay/=2;
+
   }
 
   // We got a file_no, now we need to translate it into a slot.

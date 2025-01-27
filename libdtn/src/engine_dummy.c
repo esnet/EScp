@@ -91,13 +91,19 @@ void* file_dummysubmit( void* arg, int32_t* sz, uint64_t* offset ) {
   file_sz = dummy_sb[op->fd].st_size;
   pthread_mutex_unlock(&dummy_lock);
 
+
   sz_ret = file_sz - op->offset;
 
   if (sz_ret > fob->blk_sz)
     sz_ret = fob->blk_sz;
 
+
   if (file_sz <= op->offset)
     sz_ret = 0;
+  else {
+      if (fob->do_hash && !(fob->io_flags & O_WRONLY) && sz_ret)
+        op->hash = file_hash( op->buf, sz_ret, *offset/fob->blk_sz );
+  }
 
   sz[0] = sz_ret;
 

@@ -36,12 +36,12 @@ pub fn create_files( dir_root: String, dir_count: u32, file_count: u32, file_sz_
       for i in 0..(sz/8) {
         hash = unsafe { xorshift64r( hash ) };
         v[(i*8) as usize] = (hash & 0xff) as u8;
-        // v[((i*8)+1) as usize] = ((hash >> 8)  & 0xff) as u8;
+        v[((i*8)+1) as usize] = ((hash >> 8)  & 0xff) as u8;
         v[((i*8)+2) as usize] = ((hash >> 16)  & 0xff) as u8;
         v[((i*8)+3) as usize] = ((hash >> 24)  & 0xff) as u8;
-        // v[((i*8)+4) as usize] = ((hash >> 32)  & 0xff) as u8;
-        // v[((i*8)+5) as usize] = ((hash >> 40)  & 0xff) as u8;
-        // v[((i*8)+6) as usize] = ((hash >> 48)  & 0xff) as u8;
+        v[((i*8)+4) as usize] = 0;
+        v[((i*8)+5) as usize] = 0;
+        v[((i*8)+6) as usize] = 0;
         v[((i*8)+7) as usize] = ((hash >> 56)  & 0xff) as u8;
       }
       let fun = format!("{}/{:02X}/test-{:08X}", dir_root, subdir, file);

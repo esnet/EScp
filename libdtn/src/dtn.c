@@ -801,7 +801,8 @@ void* rx_worker( void* arg ) {
         "SO_RCVBUF" );
 
   if ( rbuf != dtn->window ) {
-    NFO("rcvbuf sz mismatch %d (cur) != %d (ask)", rbuf, dtn->window);
+    // Usually not an error (see sender)
+    DBG("rcvbuf sz mismatch %d (cur) != %d (ask)", rbuf, dtn->window);
   }
 
   id = atomic_fetch_add(&dtn->thread_id, 1);
@@ -829,14 +830,14 @@ void* rx_worker( void* arg ) {
     // allocate buffer from IO system and copy data to buffer.
 
     if ( (read_sz=network_recv(knob, &fi_type)) < 1 ) {
-      NFO("[%2d] Bad read=%ld, closing writer", id, read_sz);
+      NFO("[%2d] Bad read=%ld, closing writer. (Expected on META writer)", id, read_sz);
       break;
     }
 
     if ( read_sz & (0xB43UL << 32ULL) ) {
       read_sz &= 32ULL - 1;
       knob->bytes_network += read_sz;
-      NFO("[%2d] Got bye message", id);
+      DBG("[%2d] Got bye message", id);
       break;
     }
 
@@ -913,7 +914,7 @@ void* rx_worker( void* arg ) {
   atomic_fetch_add(&bytes_compressed, knob->bytes_compressed);
 
   atomic_fetch_add(&threads_finished, 1);
-  NFO("[%2d] rx_worker: finish %zd %zd %zd", id, knob->bytes_network,
+  DBG("[%2d] rx_worker: finish %zd %zd %zd", id, knob->bytes_network,
       knob->bytes_disk, knob->bytes_compressed);
 
   return 0;
@@ -977,7 +978,10 @@ void* tx_worker( void* args ) {
   }
 
   if (sbuf != dtn->window) {
-    NFO("[%d] Requested TCP window size of %d, but got %d bytes",
+    // This almost always fails and it typically isn't an error as the
+    // requested window is typically close enough to the requested value
+    // such that everything should be fine.
+    DBG("[%d] Requested TCP window size of %d, but got %d bytes",
         id, dtn->window, sbuf );
   }
 
@@ -1123,7 +1127,7 @@ void* tx_worker( void* args ) {
     VRFY( network_send(knob, &mi, 16, 16, false, FIHDR_META) > 0, );
   }
 
-  NFO("[%2d] tx_worker: finish", id );
+  DBG("[%2d] tx_worker: finish", id );
 
   return 0;
 }
@@ -1137,9 +1141,29 @@ void finish_transfer( struct dtn_args* args ) {
 
   DBG("[--] finish_transfer is called");
 
-  NFO("bytes_network=%zd bytes_disk=%zd bytes_compressed=%zd TC=%d",
-    atomic_load(&bytes_network), atomic_load(&bytes_disk),
-    atomic_load(&bytes_compressed), atomic_load(&args->thread_id)-1 );
+  for (int i=0; i < args->thread_count; i++)  {
+    pthread_join( DTN_THREAD[i], NULL );
+  }
+
+  if (args->do_server) {
+    uint64_t bn, bd, bc;
+    int tc;
+    bn = atomic_load(&bytes_network);
+    bd = atomic_load(&bytes_disk);
+    bc = atomic_load(&bytes_compressed);
+    tc = atomic_load(&args->thread_id)-1;
+
+
+    if (args->compression) {
+      NFO("bytes: network:%siB disk:%siB compressed:%siB ratio: %0.2f TC: %d",
+        human_write(bn, true), human_write(bd, true), human_write(bc, true), (float) bc/ (float) bd, tc);
+    } else {
+      NFO("bytes: network:%siB disk:%siB TC: %d",
+        human_write(bn, true), human_write(bd, true), tc );
+    }
+  } else {
+    DBG("Sender exiting successfully");
+  }
 
 }
 

@@ -168,5 +168,6 @@ void affinity_set ( struct dtn_args* args, int id );
 struct sockaddr_storage dns_lookup( char*, char* );
 char* dtn_log_getnext();
 char* dtn_err_getnext();
+char* human_write(uint64_t number, bool is_bytes);
 
 #endif

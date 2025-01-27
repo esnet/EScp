@@ -652,7 +652,7 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
 
     if t == 0x430B {
       let t = t.swap_bytes();
-      info!("Got session complete (BYE) request sz={sz}, type={t:03X}");
+      debug!("Got session complete (BYE) request sz={sz}, type={t:03X}");
       transfer_complete=true;
       unsafe{ meta_complete() };
       continue;
@@ -665,7 +665,7 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       continue;
     }
 
-    info!("Got unhandled message from sender sz={sz}, type={t}");
+    debug!("Got unhandled message from sender sz={sz}, type={t}");
     unsafe{ meta_complete() };
     continue;
   }
@@ -678,10 +678,8 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   }
 
   info!("Transfer Complete!");
-  thread::sleep(std::time::Duration::from_millis(950)); // Wait: queues to clear
 
   unsafe {
-    debug!("Calling finish transfer");
     finish_transfer( args );
   }
 
