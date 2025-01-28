@@ -836,11 +836,17 @@ pub fn iterate_file_worker(
       let fino = 1+GLOBAL_FINO.fetch_add(1, SeqCst);
 
       let mut res;
+      let mut timeout = 160.3;
       loop {
         res = file_addfile( fino, fd );
         if !res.is_null() {
           break;
         }
+        timeout *= 1.05771;
+        if timeout > 275000.0 {
+          timeout /= 2.0;
+        }
+        thread::sleep(std::time::Duration::from_micros(timeout as u64)); // Wait: queues to clear
       }
 
       _ = msg_in.send( (fname.to_string(), fino, st) );

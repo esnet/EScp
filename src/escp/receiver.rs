@@ -204,6 +204,26 @@ struct FileInformation {
   crc: u32
 }
 
+impl Default for FileInformation {
+  fn default () -> FileInformation {
+    FileInformation{
+      path: String::new(),
+      fino: 0,
+      sz: 0,
+      blocks: -1,
+      fd: 0,
+      mode: 0,
+      uid: 0,
+      gid: 0,
+      atim_sec: 0,
+      atim_nano: 0,
+      mtim_sec: 0,
+      mtim_nano: 0,
+      crc: 0
+    }
+  }
+}
+
 fn add_file( files_hash: &mut HashMap<u64, FileInformation>, files_add: &mut VecDeque<u64>,
              safe_args: logging::dtn_args_wrapper) -> (u64, i64) {
   // Returns (number_of_files added, file_error)
@@ -595,6 +615,7 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
         debug!("Got file completions");
       }
 
+      let mut v = Vec::new();
       for entry in fs.files().unwrap() {
         if !is_filecompletion {
           let filename = entry.name().unwrap();
@@ -604,37 +625,49 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
             format!("{}/{}", root, filename)
           };
 
-          let fi = FileInformation {
-            path: full_path,
-            sz: entry.sz(),
-            fd: 0,
-            fino: entry.fino(),
-            mode: entry.mode(),
-            uid: entry.uid(),
-            gid: entry.gid(),
-            atim_sec: entry.atim_sec(),
-            atim_nano: entry.atim_nano(),
-            mtim_sec: entry.mtim_sec(),
-            mtim_nano: entry.mtim_nano(),
-            crc: 0,
-            blocks: -1
+          // let fi = files_hash.get_mut( &entry.fino() ).unwrap_or_default();
+          let fi_o = files_hash.get_mut( &entry.fino() );
+
+          let mut fi = match fi_o {
+            Some(&mut ref a) => { info!("OOO on {}", entry.fino()); a.clone() },
+            None => { v.push(entry.fino()); FileInformation::default() }
           };
+
+          fi.path = full_path;
+          if fi.sz == 0 {
+            fi.sz = entry.sz();
+          }
+          fi.fino = entry.fino();
+          fi.mode = entry.mode();
+          fi.uid = entry.uid();
+          fi.gid = entry.gid();
+          fi.atim_sec =  entry.atim_sec();
+          fi.atim_nano =  entry.atim_nano();
+          fi.mtim_sec =  entry.mtim_sec();
+          fi.mtim_nano =  entry.mtim_nano();
 
           files_hash.insert( entry.fino(), fi );
           files_add.push_back( entry.fino() );
         } else {
-          let fi = files_hash.get_mut( &entry.fino() ).unwrap();
+          let fi_o = files_hash.get_mut( &entry.fino() );
+
+          let mut fi = match fi_o {
+            Some(&mut ref a) => { a.clone() },
+            None => { info!("OOO_fi on {}", entry.fino()); FileInformation::default() }
+          };
 
           fi.blocks = entry.blocks();
           if entry.sz() > 0 {
             fi.sz = entry.sz();
           }
 
-          let g = fi.clone();
-          files_hash.insert( entry.fino(), g );
-
+          files_hash.insert( entry.fino(), fi );
           files_close.push_back(entry.fino());
         }
+      }
+
+      if !v.is_empty() {
+        info!("fs_completion: {:?}", v);
       }
 
       unsafe{ meta_complete() };
