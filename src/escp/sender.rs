@@ -642,16 +642,26 @@ pub fn iterate_dir_worker(  dir_out:  crossbeam_channel::Receiver<(PathBuf, Path
     let combined = prefix.join(filename.clone());
     let combined_str = combined.to_str().unwrap();
 
-    let dir = unsafe {
+    let mut dir: *mut __dirstream = std::ptr::null_mut();
+    while dir.is_null() {
       let c_str = CString::new(combined_str).unwrap();
-      opendir( c_str.as_ptr() )
-    };
 
-    if dir.is_null() {
-      info!("iterate_dir_worker: Got an error opening '{combined_str}'");
-      continue;
+      dir = unsafe {
+        opendir( c_str.as_ptr() )
+      };
+
+      if dir.is_null() {
+        if std::io::Error::last_os_error().raw_os_error().unwrap() == 24 {
+          debug!("iterate_dir_worker: err: open files > max on '{combined_str}' ({})",
+                 "Typically this is a transient error.");
+        } else {
+          error!("iterate_dir_worker: Got an error opening '{combined_str}' {:?}",
+                 std::io::Error::last_os_error().raw_os_error().unwrap());
+          process::exit(1);
+        }
+        thread::sleep(std::time::Duration::from_millis(20));
+      }
     }
-
     debug!("iterate_dir_worker: iterate {combined_str}");
 
     loop {

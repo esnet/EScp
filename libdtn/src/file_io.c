@@ -163,12 +163,13 @@ void memset_avx( void* src ) {
 // much less than HSZ (which must be ^2 aligned).
 struct file_stat_type file_stat[FILE_STAT_COUNT_HSZ]={0};
 
-uint64_t file_claim __attribute__ ((aligned(64))) = 0;
-uint64_t file_count __attribute__ ((aligned(64))) = 0;
-uint64_t file_head  __attribute__ ((aligned(64))) = 0;
-uint64_t file_tail  __attribute__ ((aligned(64))) = 0;
+// file_ atomics may need to be cleaned up to better align with new workflow
+_Atomic uint64_t file_claim __attribute__ ((aligned(64))) = 0;
+_Atomic uint64_t file_count __attribute__ ((aligned(64))) = 0;
+_Atomic uint64_t file_head  __attribute__ ((aligned(64))) = 0;
+_Atomic uint64_t file_tail  __attribute__ ((aligned(64))) = 0;
 
-uint64_t transfer_complete __attribute__ ((aligned(64))) = 0;
+_Atomic uint64_t transfer_complete __attribute__ ((aligned(64))) = 0;
 
 struct file_stat_type file_activefile[THREAD_COUNT] = {0};
 
@@ -193,25 +194,16 @@ void file_completetransfer() {
 struct file_stat_type* file_addfile( uint64_t fileno, int fd ) {
 
   struct file_stat_type fs __attribute__ ((aligned(64))) = {0};
-  uint64_t zero, slot, fc, ft, hash=fileno;
+  uint64_t zero, slot, hash=fileno;
   int i;
 
-
-  hash = xorshift64s(&hash);
-  fc = atomic_load( &file_claim );
-  ft = atomic_load( &file_tail );
-
-  if ( ((fc-ft) >= FILE_STAT_COUNT) || ((fileno-ft) >= (FILE_STAT_COUNT+50)) )
-    return NULL;
-
-
   for (i=0; i<FILE_STAT_COUNT_CC; i++) {
+    hash = xorshift64s(&hash);
     slot = FS_MASK(hash);
     zero=0;
     if ( atomic_compare_exchange_strong( &file_stat[slot].state, &zero, 0xBedFaceUL ) ) {
       break;
     }
-    hash = xorshift64s(&hash);
   }
 
   VRFY(i<FILE_STAT_COUNT_CC, "Hash table collision count exceeded. Bug Report Pls!.");

@@ -615,7 +615,6 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
         debug!("Got file completions");
       }
 
-      let mut v = Vec::new();
       for entry in fs.files().unwrap() {
         if !is_filecompletion {
           let filename = entry.name().unwrap();
@@ -629,8 +628,8 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
           let fi_o = files_hash.get_mut( &entry.fino() );
 
           let mut fi = match fi_o {
-            Some(&mut ref a) => { info!("OOO on {}", entry.fino()); a.clone() },
-            None => { v.push(entry.fino()); FileInformation::default() }
+            Some(&mut ref a) => { debug!("OOO on {}", entry.fino()); a.clone() },
+            None => { FileInformation::default() }
           };
 
           fi.path = full_path;
@@ -653,7 +652,7 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
 
           let mut fi = match fi_o {
             Some(&mut ref a) => { a.clone() },
-            None => { info!("OOO_fi on {}", entry.fino()); FileInformation::default() }
+            None => { debug!("OOO_fi on {}", entry.fino()); FileInformation::default() }
           };
 
           fi.blocks = entry.blocks();
@@ -664,10 +663,6 @@ pub fn escp_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
           files_hash.insert( entry.fino(), fi );
           files_close.push_back(entry.fino());
         }
-      }
-
-      if !v.is_empty() {
-        info!("fs_completion: {:?}", v);
       }
 
       unsafe{ meta_complete() };
