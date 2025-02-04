@@ -131,9 +131,11 @@ void* file_posixsubmit( void* arg, int32_t* sz, uint64_t* offset ) {
           }
         }
       } else {
-        DBG("[%2d] Op failed (typ: read past EOF) %d:%s fd=%d %d/%d os=%zX",
-          fob->id, errno, strerror(errno), op->fd, *sz, fob->blk_sz,
-          op->offset );
+        if (errno!=0) {
+          NFO("[%2d] Op failed, errno=%d: %s fd=%d %d/%d os=%zX",
+            fob->id, errno, strerror(errno), op->fd, *sz, fob->blk_sz,
+            op->offset );
+        }
       }
     }
 

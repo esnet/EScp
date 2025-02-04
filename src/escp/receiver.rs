@@ -1,5 +1,4 @@
 use super::*;
-use std::mem::MaybeUninit;
 
 fn start_receiver( args: logging::dtn_args_wrapper ) {
   debug!("start_receiver started");

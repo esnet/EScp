@@ -22,7 +22,7 @@ shadow-rs = "0.*"
 
 [dependencies]
 clap = { version = "4.*", features = ["derive"] }
-regex = "1"
+regex = "1.*"
 libc = "0.*"
 subprocess = "0.*"
 flatbuffers = "23.*"

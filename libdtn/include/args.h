@@ -148,16 +148,16 @@ static inline void dtn_error( char* msg ) {
   int log_idx = __sync_fetch_and_add( &ESCP_DTN_ARGS->msg_claim, 1 );
   log_idx = (log_idx % ESCP_MSG_COUNT) * ESCP_MSG_SZ;
 
+
+  strncpy ( (char*) &ESCP_DTN_ARGS->msg_buf[log_idx], msg, ESCP_MSG_SZ );
+  (&ESCP_DTN_ARGS->msg_buf[log_idx])[ESCP_MSG_SZ-1]=0;
+  __sync_fetch_and_add( &ESCP_DTN_ARGS->msg_count, 1 );
+
   openlog("EScp", LOG_NDELAY|LOG_CONS|LOG_PID|LOG_PERROR, LOG_USER);
   syslog(LOG_CRIT, "%s", msg);
   closelog();
 
-  strncpy ( (char*) &ESCP_DTN_ARGS->msg_buf[log_idx], msg, ESCP_MSG_SZ );
-  (&ESCP_DTN_ARGS->msg_buf[log_idx])[ESCP_MSG_SZ-1]=0;
-
   write( STDERR_FILENO, msg, strnlen(msg, ESCP_MSG_SZ) );
-
-  __sync_fetch_and_add( &ESCP_DTN_ARGS->msg_count, 1 );
   return;
 }
 

@@ -16,12 +16,20 @@ use std::{io, io::Read, io::Write, fs, slice, collections::VecDeque};
 use std::os::unix::net::{UnixStream,UnixListener};
 use std::os::fd::{AsRawFd, FromRawFd};
 use log::{{debug, info, error}};
+use std::mem::MaybeUninit;
 
 #[allow(dead_code, unused_imports, clippy::all)]
 mod file_spec;
+mod session_init;
+mod message;
+
+/*
+#[allow(dead_code, unused_imports, clippy::all)]
+mod session_init;
 
 #[allow(dead_code, unused_imports, clippy::all)]
 mod session_init;
+*/
 
 macro_rules! sess_init {
   ($i:tt) => {
@@ -46,6 +54,7 @@ const msg_session_init:u16      =  8;
 const msg_file_spec:u16         = 16;
 const msg_file_stat:u16         = 17;
 const msg_keepalive:u16         = 18;
+const msg_message:u16           = 19;
 const msg_compressed:u16        =128;
 const msg_session_complete:u16  =  1;
 const msg_session_terminate:u16 =  9;

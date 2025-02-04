@@ -1,5 +1,4 @@
 use super::*;
-use std::mem::MaybeUninit;
 use std::sync::atomic::AtomicU64;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering::SeqCst;
@@ -426,6 +425,23 @@ fn handle_msg_from_receiver(
   if t != msg_file_stat {
     if t == msg_keepalive {
       debug!("file_check: Got keepalive, ignoring");
+    } else if (t & 0x1f) == msg_message {
+      let dst:[MaybeUninit<u8>; 16384] = [{ std::mem::MaybeUninit::uninit() }; 16384];
+      let mut dst = unsafe { std::mem::transmute::
+        <[std::mem::MaybeUninit<u8>; 16384], [u8; 16384]>(dst) };
+
+      let res = zstd_safe::decompress(dst.as_mut_slice(),
+        unsafe{slice::from_raw_parts(ptr.add(16), sz as usize)} );
+
+      _ = res.expect("decompress failed");
+
+      let msg_l = flatbuffers::root::<message::Message_list>(&dst).unwrap();
+
+      for i in msg_l.messages().unwrap() {
+        eprintln!("\n\n {:?} \n errno: {:?} \n", i.message().unwrap(), i.code().unwrap() );
+      }
+
+
     } else {
       info!("file_check: Got unexpected type={t}, ignoring");
     }

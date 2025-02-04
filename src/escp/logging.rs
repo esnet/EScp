@@ -130,10 +130,86 @@ pub fn initialize_logging( base_path: &str, args: dtn_args_wrapper ) {
       build::BUILD_TIME,
     );
 
-    _ = thread::Builder::new().name("logr".to_string()).spawn( initialize_clog );
+    _ = thread::Builder::new().name("logr".to_string()).spawn( move ||
+          initialize_clog (args) );
 }
 
-fn initialize_clog() {
+fn parse_error( errmsg: &str ) {
+
+  let re_err = Regex::new(r"\[en: [(0-9)]+").unwrap();
+  let re_fn = Regex::new(r"\[fn: [(0-9)]+").unwrap();
+  let mut end=0;
+
+  let errno = match re_err.find(errmsg) {
+    Some(res) => {
+      end = std::cmp::max( end, res.end() );
+      let s = res.as_str().to_string();
+      let (_, sy) = s.split_at(5);
+      sy.parse::<i32>().unwrap()
+    }
+    None => { 0 }
+  };
+
+  let fino = match re_fn.find(errmsg) {
+
+     Some(res) => {
+      end = std::cmp::max( end, res.end() );
+      let s = res.as_str().to_string();
+      let (_, sy) = s.split_at(5);
+      sy.parse::<i32>().unwrap()
+    }
+    None => { 0 }
+  };
+
+  if end > 0 {
+    end += 2;
+  }
+
+  let (_, errmsg) = errmsg.split_at(end);
+
+  let mut v = Vec::new();
+  let mut builder = flatbuffers::FlatBufferBuilder::with_capacity(1024);
+  let errmsg = Some( builder.create_string(errmsg) );
+  let mut en = Vec::new();
+  en.push(fino as i64);
+  en.push(errno as i64);
+  let code = Some(builder.create_vector( &en ));
+  
+  v.push( message::Message::create (&mut builder,
+    &message::MessageArgs {
+     is_error: true,
+     message: errmsg,
+     code,
+     ..Default::default()
+    }));
+
+  let msg= Some(builder.create_vector( &v ));
+  let bu = message::Message_list::create(
+    &mut builder, &message::Message_listArgs{
+      messages: msg,
+      ..Default::default()
+    }
+  );
+
+  builder.finish( bu, None );
+  let buf = builder.finished_data();
+
+  let dst:[MaybeUninit<u8>; 8192] = [{ std::mem::MaybeUninit::uninit() }; 8192 ];
+  let mut dst = unsafe { std::mem::transmute::
+    <[std::mem::MaybeUninit<u8>; 8192], [u8; 8192]>(dst) };
+
+  let res = zstd_safe::compress( &mut dst, buf, 3 );
+
+  let csz = res.expect("Compression failed");
+  let hdr = to_header( csz as u32, msg_message|msg_compressed );
+
+  unsafe {
+    meta_send( dst.as_ptr() as *mut i8, hdr.as_ptr() as *mut i8,
+         csz as i32 );
+  }
+}
+
+fn initialize_clog( args: dtn_args_wrapper ) {
   let mut ret;
   debug!("Start C logging thread");
 
@@ -160,9 +236,18 @@ fn initialize_clog() {
 
     if !ret.is_null()  {
       let c_str: &CStr = unsafe { CStr::from_ptr(ret) };
-      let msg = c_str.to_str().unwrap().trim() ;
-      error!("[C] {} ", msg );
-      eprintln!("ERROR: {}", msg );
+
+      let d = c_str.to_str().unwrap_or("Error decoding message").trim();
+      let (_a,b) = d.split_at(6);
+      let s = format!( "[C] {} ", b);
+
+      let do_server = unsafe { (*args.args).do_server };
+      if do_server {
+        parse_error(b);
+      }
+
+      error!("{}", s);
+      eprintln!("ERROR: {}", s);
       delay = 10.0;
       continue;
     }

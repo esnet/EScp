@@ -713,6 +713,8 @@ void meta_send( char* buf, char* hdr, int len ) {
   // buf should be 16 byte aligned and padded to 16 bytes
   static char* temp_buf=0;
   static struct network_obj* knob = NULL;
+  _Atomic static int64_t meta_lock __attribute__ ((aligned(64))) = 0;
+  int64_t old_value;
 
   /* Header is minimally defined as:
    *
@@ -725,6 +727,11 @@ void meta_send( char* buf, char* hdr, int len ) {
    * However, see struct meta_info. sz is bytes after 16 byte header.
    */
 
+  while ( ( old_value=atomic_fetch_add(&meta_lock, 1) ) != 0 ) {
+    atomic_fetch_add( &meta_lock, -1 );
+    ESCP_DELAY(1);
+  }
+
   if (!temp_buf)
     temp_buf = aligned_alloc( 16, 1024*1024 );
 
@@ -734,7 +741,6 @@ void meta_send( char* buf, char* hdr, int len ) {
     VRFY(len <= (1024*1024), "meta must be less than 1M");
     memcpy( temp_buf, buf, len );
   }
-
 
   while (knob==NULL) {
 
@@ -765,6 +771,8 @@ void meta_send( char* buf, char* hdr, int len ) {
       VRFY( network_send(knob, b,   16,  16, false,  FIHDR_META) > 0, "meta send C");
     }
   }
+
+  atomic_fetch_add( &meta_lock, -1 );
 }
 
 void do_meta( struct network_obj* knob ) {
@@ -895,8 +903,8 @@ void* rx_worker( void* arg ) {
         //      For instance when UIO is added back.
         int64_t written;
 
-        VRFY(sz > 0, "[%2d] WRITE ERR, b=%08ld fd=%d fn=%ld os=%zX sz=%d crc=%08x",
-             id, fs.bytes, fs.fd, file_no, offset, orig_sz, fs_ptr->crc );
+        VRFY(sz > 0, "[%2d] [en: %d] [fn: %ld] WRITE ERR, b=%ld fd=%d os=%zX sz=%d crc=%08x",
+             id, -sz, file_no, fs.bytes, fs.fd, offset, orig_sz, fs_ptr->crc );
 
         fob->complete(fob, knob->token);
         written = atomic_fetch_add(&fs_ptr->bytes_total, sz) + sz;
@@ -1251,13 +1259,12 @@ int rx_start( void* fn_arg ) {
 
   VRFY ( listen( sock, THREAD_COUNT ) != -1, "listening" );
 
-  /* setsockopt(sock, SOL_SOCKET, SO_RCVLOWAT, &Block_sz, sizeof(Block_sz)) */
-
   {
     uint64_t rbuf = args->window;
     socklen_t rbuf_sz = sizeof(rbuf);
     if (setsockopt(sock, SOL_SOCKET, SO_RCVBUF, &rbuf, rbuf_sz) == -1) {
       perror("SO_RCVBUF");
+      ERR("Setting SO_RCVBUF: %s", strerror(errno));
       exit(-1);
     }
   }
