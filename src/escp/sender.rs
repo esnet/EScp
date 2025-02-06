@@ -13,10 +13,34 @@ static GLOBAL_FILEOPEN_MASK:    AtomicU64 = AtomicU64::new(0);
 static GLOBAL_FINO: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 
+fn convert_time( ti: f32, precise: bool ) -> String {
+  let t = ti as i64;
+
+  if !precise {
+    if t > 3600 {
+      format!("{:02}:{:02}:{:02}", t/3600, (t/60)%60, t%60)
+    } else {
+      format!("{:02}:{:02}", t/60, t%60)
+    }
+  } else {
+    let mut suffix = format!{"{:0.03}", ti%1.0};
+    let (_,b) = suffix.split_at(3);
+    suffix = b.to_string();
+
+    if t < 60 {
+      format!("{}.{suffix}s", t)
+    } else if t < 3600 {
+      format!("{}:{}.{suffix}", t/60, t%60)
+    } else {
+      format!("{:02}:{:02}:{:02}.{:0.02}", t/3600, (t/60)%60, t%60, ti%1.0)
+    }
+  }
+}
+
 pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   let args = safe_args.args;
   let (host,dest_tmp,dest);
-  let mut fc_hash: HashMap<u64, u32> = HashMap::new();
+  let mut fc_hash: HashMap<u64, u32, String> = HashMap::new();
 
   match flags.destination.rfind(':') {
     Some (a) => { (host, dest_tmp) = flags.destination.split_at(a); },
@@ -300,21 +324,16 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
 
       let duration = start.elapsed();
 
-      let width= ((bytes_now as f32 / bytes_total as f32) * 40.0) as usize ;
+      let width= ((bytes_now as f32 / bytes_total as f32) * 30.0) as usize ;
       let progress = format!("{1:=>0$}", width, ">");
       let rate = if bytes_now>0 {
         bytes_now as f32/duration.as_secs_f32() } else {0.0 };
 
-      let eta= ((bytes_total - bytes_now) as f32 / rate) as i64;
+      let eta= ((bytes_total - bytes_now) as f32 / rate) + duration.as_secs_f32();
 
-      let eta_human = if eta > 3600 {
-        format!("{:02}:{:02}:{:02}", eta/3600, (eta/60)%60, eta%60)
-      } else {
-        format!("{:02}:{:02}", eta/60, eta%60)
-      };
-
-      let rate_str;
-      let tot_str;
+      let elapsed = convert_time(duration.as_secs_f32(), false );
+      let eta_human = convert_time(eta, false );
+      let (rate_str, tot_str);
 
       unsafe {
         let tmp = human_write( rate as u64, !flags.bits );
@@ -328,14 +347,14 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
 
       let units = if flags.bits { "bits" } else { "B" };
 
-      let bar = format!("\r [{: <40}] {}B {}{}/s {: <10}",
-                        progress, tot_str, rate_str, units, eta_human);
+      let bar = format!("\r [{progress: <30}] {tot_str}B {rate_str}{units}/s {elapsed:>8}/{eta_human:<8}");
+
       _ = fi.write(bar.as_bytes());
       _ = fi.flush();
 
       if (bytes_now >= bytes_total) || (files_ok >= files_total) {
-        let s = format!("\rSent    : {tot_str}B in {files_total} files at {rate_str}{units}/s in {:0.2}s {:18}\r",
-          duration.as_secs_f32(), "");
+        let s = format!("\rSent    : {tot_str}B in {files_total} files at {rate_str}{units}/s in {:<22}\r",
+          convert_time(duration.as_secs_f32(), true));
         _ = fi.write(s.as_bytes());
         _ = fi.flush();
         info!("{}", s.trim());
@@ -984,6 +1003,7 @@ fn iterate_files ( flags: &EScp_Args,
       let mut transfer = String::from("");
 
       let bytes_now = unsafe { get_bytes_io(args.args) };
+      let mut elapsed = "".to_string();
       if bytes_now > 0 {
 
         let duration = start.elapsed();
@@ -998,9 +1018,13 @@ fn iterate_files ( flags: &EScp_Args,
 
         transfer = format!("Bytes: {}B {}{}/s",
                            tot_str, rate_str, units);
+
+        let seconds = (duration.as_secs_f32() % 60.0) as i32;
+        let minutes = (duration.as_secs_f32() / 60.0) as i64;
+        elapsed = format!("{:02}:{:02}", minutes, seconds);
       }
 
-      let l = format!("\rCalculating ... Files: {tot} ({rate}/s)   {transfer}");
+      let l = format!("\rIterating ... Files: {tot} ({rate}/s)   {transfer} {elapsed} ");
       _ = sout.write(l.as_bytes());
       _ = sout.flush();
     }
