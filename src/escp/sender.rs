@@ -40,7 +40,7 @@ fn convert_time( ti: f32, precise: bool ) -> String {
 pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   let args = safe_args.args;
   let (host,dest_tmp,dest);
-  let mut fc_hash: HashMap<u64, u32, String> = HashMap::new();
+  let mut fc_hash: HashMap<u64, (i64, String)> = HashMap::new();
 
   match flags.destination.rfind(':') {
     Some (a) => { (host, dest_tmp) = flags.destination.split_at(a); },
@@ -426,7 +426,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
 }
 
 fn handle_msg_from_receiver(
-    hm: &mut HashMap<u64, u32>,
+    hm: &mut HashMap<u64, (i64, String)>,
     files_ok: &mut u64,
     fc_out:  &crossbeam_channel::Receiver<(u64, u32)> ) -> i64
 {
@@ -456,9 +456,24 @@ fn handle_msg_from_receiver(
 
       let msg_l = flatbuffers::root::<message::Message_list>(&dst).unwrap();
 
+      let mut baz = String::new();
+
       for i in msg_l.messages().unwrap() {
-        eprintln!("\n\n {:?} \n errno: {:?} \n", i.message().unwrap(), i.code().unwrap() );
+        let v = i.code().unwrap();
+        if v.len() > 1 {
+          let fino=v.get(0) as u64;
+          let errno=v.get(1) as i32;
+          if (*hm).contains_key(&fino) {
+            let b = (*hm).get(&fino).unwrap();
+            (_, baz) = (*b).clone();
+          }
+          eprintln!("\nReceiver Error: {:?}\nfile: {:?} OS msg: {}", i.message().unwrap(),
+            baz, io::Error::from_raw_os_error(errno) );
+        } else {
+          eprintln!("\nReceiver Error: {:?}", i.message().unwrap());
+        }
       }
+      process::exit(1);
 
 
     } else {
@@ -504,30 +519,41 @@ fn handle_msg_from_receiver(
       continue;
     }
 
-    if !(*hm).contains_key(&rx_fino) {
-      loop {
-        // loop until the hm contains key or fc_out returns error
-        let (tx_fino, crc);
+    loop {
+      // loop until the hm contains key or fc_out returns error
+      let (tx_fino, crc);
 
-        match fc_out.recv_timeout(std::time::Duration::from_millis(2)) {
-          Ok((a,b)) => { (tx_fino, crc) = (a, b); }
-          Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
-            continue;
-          }
-          Err(_) => { debug!("file_check: fc_out empty; returning"); return -1i64; }
-        }
-
-        debug!("fc_pop() returned {} {:#X}", tx_fino, crc );
-
-        (*hm).insert( tx_fino, crc );
-        if rx_fino == tx_fino {
+      if (*hm).contains_key(&rx_fino) {
+        let (c, _) = (*hm).get(&rx_fino).unwrap();
+        if *c != -1 {
           break;
         }
       }
+
+      match fc_out.recv_timeout(std::time::Duration::from_millis(20)) {
+        Ok((a,b)) => { (tx_fino, crc) = (a, b); }
+        Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
+          continue;
+        }
+        Err(_) => { debug!("file_check: fc_out empty; returning"); return -1i64; }
+      }
+
+      debug!("fc_pop() returned {} {:#X}", tx_fino, crc );
+
+      if (*hm).contains_key(&tx_fino) {
+        let (_, n) = (*hm).get(&tx_fino).unwrap();
+        (*hm).insert( tx_fino, (crc as i64, n.to_string()) );
+      } else {
+        (*hm).insert( tx_fino, (crc as i64, String::new()) );
+      }
+
+      if rx_fino == tx_fino {
+        break;
+      }
     }
 
-    let crc = (*hm).get(&rx_fino).unwrap();
-    let crc = *crc;
+    let (crc, _) = (*hm).get(&rx_fino).unwrap();
+    let crc = *crc as u32;
 
     /*
     if sz as i64 != rx_sz {
@@ -618,7 +644,7 @@ fn send_file_complete( fc2_out: &crossbeam_channel::Receiver<(u64, u64)> ) {
 }
 
 fn file_check(
-    hm: &mut HashMap<u64, u32>,
+    hm: &mut HashMap<u64, (i64, String)>,
     run_until: std::time::Instant,
     files_ok: &mut u64,
     fc_out:  &crossbeam_channel::Receiver<(u64, u32)>,
@@ -907,7 +933,7 @@ fn iterate_files ( flags: &EScp_Args,
                     args: logging::dtn_args_wrapper,
                dest_path: String,
                 mut sout: &std::fs::File,
-                 fc_hash: &mut HashMap<u64, u32>,
+                 fc_hash: &mut HashMap<u64, (i64, String)>,
                   fc_out: &crossbeam_channel::Receiver<(u64, u32)>,
                   fc2_out: &crossbeam_channel::Receiver<(u64, u64)>
                  ) -> (i64,u64,u64) {
@@ -1061,6 +1087,13 @@ fn iterate_files ( flags: &EScp_Args,
           do_break = true;
           break;
         }
+      }
+
+      if (*fc_hash).contains_key(&fino) {
+        let (crc, _) = (*fc_hash).get(&fino).unwrap();
+        (*fc_hash).insert( fino, ( *crc, fi.clone() ) );
+      } else {
+        (*fc_hash).insert( fino, ( -1, fi.clone() ) );
       }
 
       vec.push_back( (fino, fi, st) );

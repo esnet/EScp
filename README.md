@@ -557,7 +557,9 @@ c91d47a3b0c6578e7a727af26700dabd79e0acbf0db7eeffbf3151b48980b8a6  EScp-0.7.0.zip
  * [0.7.1.tar.gz](https://github.com/esnet/EScp/archive/refs/tags/0.7.1.tar.gz)
 
 Changes from 0.8.0 to 0.9.0:
-  * Change how files are marked finished; Transmit and use blocks read
+  * File completion criteria changed to blocks written instead of bytes written
+  * Format of progress bars changed
+  * Stability Improvements / Bug Fixes
 
 Changes from 0.7.1 to 0.8.0 (07 Nov 2024):
   * Breaks compatability with previous versions
@@ -593,7 +595,7 @@ Changes from 0.7.0 to 0.7.1 (20 June 2024):
   * Code cleanup w/ clippy & cargo audit
 
 Changes from 0.6.0 to 0.7.0 (5 June 2024):
-  * Complete rewrite of python code
+  * Complete rewrite of python code to rust
   * Change to fully lockless design
     - Previous versions locked when iterating through files
   * CLI Syntax more closely mirrors scp, w/ some borrow from iPerf
