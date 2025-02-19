@@ -174,7 +174,7 @@ fn parse_error( errmsg: &str ) {
   en.push(fino as i64);
   en.push(errno as i64);
   let code = Some(builder.create_vector( &en ));
-  
+
   v.push( message::Message::create (&mut builder,
     &message::MessageArgs {
      is_error: true,

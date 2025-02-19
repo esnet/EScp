@@ -14,7 +14,6 @@
 
 #include "file_io.h"
 
-
 void* file_shmemsubmit( void* arg, int32_t* sz, uint64_t* offset ) {
   struct file_object* fob = arg;
   struct posix_op* op = (struct posix_op*) fob->pvdr;

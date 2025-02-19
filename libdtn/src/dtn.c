@@ -451,7 +451,8 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
 
     memcpy ( &buf[h*64], knob->buf, 16 );
 
-    VRFY( read_fixed(knob->socket, &buf[(h*64)+16], sz) == sz, "FIHDR_META read fail");
+    VRFY(read_fixed(knob->socket, &buf[(h*64)+16], sz) == sz,
+         "FIHDR_META read fail");
     isal_aes_gcm_dec_128_update( &knob->gkey, &knob->gctx,
       &buf[(h*64)+16], &buf[(h*64)+16], sz );
 
@@ -462,7 +463,7 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
     uint8_t* buffer=0;
     uint64_t block_sz;
 
-    VRFY (read_fixed( knob->socket, knob->buf, 20) == 20, "Bad read");
+    VRFY(read_fixed( knob->socket, knob->buf, 20) == 20, "Bad read");
     isal_aes_gcm_dec_128_update(&knob->gkey, &knob->gctx, knob->buf, knob->buf, 20);
     bytes_read += 20;
 
@@ -527,7 +528,7 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
 
       DBG("[%2d] Read of %zd sz", knob->id, block_sz);
       if ((rs=read_fixed(knob->socket, buffer, block_sz)) != block_sz) {
-        VRFY( 0, "bad" );
+        VRFY( 0, "Bad data from socket" );
         DBG("[%2d] network_recv: bad data from socket (rs=%d)!=(block_sz=%zd) se=%s s=%d/0x%016zX", knob->id, rs, block_sz, strerror(errno), knob->socket, (uint64_t) buffer);
         return 0;
       }
@@ -903,8 +904,8 @@ void* rx_worker( void* arg ) {
         //      For instance when UIO is added back.
         int64_t written;
 
-        VRFY(sz > 0, "[%2d] [en: %d] [fn: %ld] WRITE ERR, b=%ld fd=%d os=%zX sz=%d crc=%08x",
-             id, -sz, file_no, fs.bytes, fs.fd, offset, orig_sz, fs_ptr->crc );
+        VRFY(sz > 0, "[%2d] [en: %d] [fn: %ld] Writing File fd=%d os=%zX sz=%d",
+             id, -sz, file_no, fs.fd, offset, orig_sz );
 
         fob->complete(fob, knob->token);
         written = atomic_fetch_add(&fs_ptr->bytes_total, sz) + sz;

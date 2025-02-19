@@ -467,8 +467,8 @@ fn handle_msg_from_receiver(
             let b = (*hm).get(&fino).unwrap();
             (_, baz) = (*b).clone();
           }
-          eprintln!("\nReceiver Error: {:?}\nfile: {:?} OS msg: {}", i.message().unwrap(),
-            baz, io::Error::from_raw_os_error(errno) );
+          eprintln!("\nReceiver Error: {:?}\nfile: {:?} msg: {}",
+            i.message().unwrap(), baz, io::Error::from_raw_os_error(errno) );
         } else {
           eprintln!("\nReceiver Error: {:?}", i.message().unwrap());
         }
