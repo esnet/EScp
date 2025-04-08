@@ -1,6 +1,6 @@
 [package]
 name = "escp"
-version = "0.8.0"
+version = "0.8.1"
 edition = "2018"
 author = "Charles Shiflett <cshiflett@ESnet>"
 authors = [ "Charles Shiflett" ]
@@ -14,7 +14,7 @@ build = "src/build.rs"
 
 [build-dependencies]
 libc = "0.*"
-shadow-rs = "*"
+shadow-rs = "1.*"
 
 [dependencies]
 clap = { version = "*", features = ["derive"] }
