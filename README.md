@@ -12,57 +12,49 @@ SCP. Some features include:
   * AES-GCM 128 over the wire encryption, optimized for performance
   * Authentication to remote systems through SSH
   * Swappable I/O Engines ( Currently: DUMMY & POSIX )
-  * Block based interface to transferring data (API expected in 0.9)
+  * Block based interface to transferring data
   * Compression (using zstd)
   * Checksums, Direct I/O, API's.
 
 In general, the approach taken by EScp is to have algorithms optimized to give
-good performance across all metrics (i.e. billions of small files, single large
-file), that scale linearly with core count.
+good performance while providing full-set functionality. This means baseline
+security (AES-GCM 128 Encryption, SSH Authorization) and File Reliability
+(Checksumming, File Verification, and Transfer Reliability) that scale with
+core-count. Additional functionality is available through API's, CLI options,
+and so on.
 
-EScp isn't intended to replace SCP; Instead it is meant to fill a void in
-efficiently transferring science data. That means supporting different use
-cases, such as block based data transfer instead of file based data, supporting
-the types of files used in science, such as sparse files, and, importantly,
-being able to transfer at any scale, securely, efficiently, and with commodity
-hardware. EScp is also intended to fit into existing science frameworks, and
-is therefore meant to be called through an API. If these features interest
-you, please reach out.
-
-EScp is currently only available for x86 on Linux. For the most part, this
-isn't a case of it not being able to support other platforms, but more a
-reflection of the type of servers that are typically used for science. If you
-have a use case for something that isn't supported, please create a GitHub
-issue. We also accept Pull requests if you happen to have a patch for us.
+EScp is currently only available for x86-64 on Linux. If you would like to see
+*Platform* supported, please open a ticket at https://github.com/ESnet/EScp.
 
 RELEASE NOTES
 =============
 
-EScp 0.8 adds feature parity with most SCP flags, improves session handling,
-and fixes a number of edge cases around things like directory handling, zero
-byte files, and so on. Overall the result should be further improvements to
-stability, performance, and ease of use.
+**EScp is in active development**. The latest tagged releases likely offers the
+best stability. Currently that is 0.8. 
 
-**WARNING:** This software is in development. If you are using a *tagged*
-release, for instance, 0.8.0, it has passed a number of tests to verify that
-the application works as the developer expects. If you are using the latest
-git version expect that things will break.
+At this point, most scp flags are supported. EScp adds additional flags to
+support high performance transfer flows.
 
-In any event, while EScp has successfully transferred PBs of data and hundreds
-of millions of files. It may fail for you! If you run into a case where EScp
-is failing, but SCP is not, please create a bug report. At this point in
-the EScp software life-cycle, it should be transferring files safely and
-successfully, although there are still a few differences. For instance, EScp
-won't transfer symlinks and it only preserves attributes on files.
+Installation
+============
 
-If you found this software useful and/or have any questions/requests, please
-reach out. The primary author, see AUTHOR, can be reached using the first
-letter of the first name followed by the full lastname @ ESnet domain.
-Bugs/Issues are appreciated and should be reported using the Github Issues
-feature.
+# Ubuntu
+apt install cmake libtool g++ nasm autoconf automake rustup
+git checkout 0.8.0
+cargo install cargo-deb
+cargo deb
+
+
 
 How EScp is different from SCP
 ==============================
+
+EScp is focused on performance. From the ground up, it is a zero-copy design
+that is page aligned to support direct disk-IO.
+
+At high speed, many things are bottle-necks, these include external things, 
+i.e. the linux disk-cache (VFS) or SSH as well as internal things like,
+concurrency, 
 
 After initiating a transfer with EScp, system SSH is invoked to connect to the
 remote host, however, unlike SCP, it uses SSH only to spawn a receiver and
@@ -166,8 +158,8 @@ COMPILING
 
 ```
 # Install system dependencies (Debian)
-apt install cmake libtool g++ libnuma-dev nasm autoconf automake \
-   curl           # for get rust stanza \
+apt install cmake libtool g++ nasm autoconf automake \
+   rustup         # for rust
    libclang-dev   # for bindgen
 
 # Install system dependecies (RHEL Family)
@@ -175,7 +167,7 @@ sudo dnf group install "Development Tools"
 dnf install epel-release
 dnf install nasm autoconf automake libtool cmake curl
 
-# Get rust
+# Get rust (if not already acquired above)
 curl https://sh.rustup.rs -sSf | sh
 . "$HOME/.cargo/env"
 
@@ -216,6 +208,7 @@ complete -F _scp -o nospace escp
 _completion_loader scp
 
 # To prepare for a release
+cargo install cargo-audit
 rustup update
 cargo update
 ./mk.sh
