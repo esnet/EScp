@@ -17,19 +17,10 @@ use std::os::unix::net::{UnixStream,UnixListener};
 use std::os::fd::{AsRawFd, FromRawFd};
 use log::{{debug, info, error}};
 use std::mem::MaybeUninit;
-
 #[allow(dead_code, unused_imports, clippy::all)]
 mod file_spec;
 mod session_init;
 mod message;
-
-/*
-#[allow(dead_code, unused_imports, clippy::all)]
-mod session_init;
-
-#[allow(dead_code, unused_imports, clippy::all)]
-mod session_init;
-*/
 
 macro_rules! sess_init {
   ($i:tt) => {
@@ -187,6 +178,10 @@ pub struct EScp_Args {
    #[arg(hide=true, long="dest", default_value_t=String::from(""))]
    destination: String,
 
+   /// FILE_LIST instead of SOURCE (YAML or '\n' list)
+   #[arg(long="filelist", default_value_t=String::from(""))]
+   file_list: String,
+
    /// SSH Port
    #[arg(short='P', long="port", hide_default_value=true, default_value_t = 22)]
    ssh_port: u16,
@@ -322,12 +317,6 @@ pub struct EScp_Args {
 
 }
 
-/* ToDo:
- *  - 3
- *
- */
-
-
 fn load_yaml(file_str: &str) -> HashMap<String, String> {
     let file_raw = std::fs::File::open(file_str);
     let mut file;
@@ -411,7 +400,7 @@ pub fn start_escp() {
 
     let l = flags.source.len();
     flags.destination=flags.source.last().unwrap_or(&String::new()).to_string();
-    if l >= 2 {
+    if l >= 1 {
       flags.source.truncate(l-1);
     }
 
@@ -472,7 +461,7 @@ pub fn start_escp() {
       process::exit(0);
     };
 
-    if l < 2 && !flags.server {
+    if l < 2 && !flags.server && flags.file_list.is_empty() {
       eprintln!("Error: Not enough arguments\n");
 
       use clap::CommandFactory;

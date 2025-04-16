@@ -97,7 +97,10 @@ pub fn iterate_dir( dir_root: String ) -> bool {
   }
 
   let path = std::path::Path::new( &dir_root );
-  _ = files_in.send( (path.parent().unwrap().to_path_buf(), path.file_name().unwrap().into() ) );
+  _ = files_in.send( (path.parent().unwrap().to_path_buf(),
+                      path.file_name().unwrap().into(),
+                      String::new())
+                   );
 
   println!("Starting tests!");
 

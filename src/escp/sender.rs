@@ -2,6 +2,7 @@ use super::*;
 use std::sync::atomic::AtomicU64;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering::SeqCst;
+use yaml_rust2::Yaml;
 
 static GLOBAL_FILEOPEN_COUNT: usize = 4; // # threads to use for opening files
 static GLOBAL_DIROPEN_COUNT: usize = 2;  // # Threads to iterate directory
@@ -680,7 +681,7 @@ fn file_check(
 }
 
 pub fn iterate_dir_worker(  dir_out:  crossbeam_channel::Receiver<(PathBuf, PathBuf)>,
-                        files_in: crossbeam_channel::Sender<(PathBuf, PathBuf)>,
+                        files_in: crossbeam_channel::Sender<(PathBuf, PathBuf, String)>,
                         args:     logging::dtn_args_wrapper ) {
 
   let (opendir, readdir, closedir);
@@ -743,7 +744,7 @@ pub fn iterate_dir_worker(  dir_out:  crossbeam_channel::Receiver<(PathBuf, Path
 
         if ((*fi).d_type as u32 == DT_REG) || ((*fi).d_type as u32 == DT_DIR) {
           debug!("iterate_dir_worker: added {p_str} {path_name}");
-          _ = files_in.send((prefix.clone(), new_path));
+          _ = files_in.send((prefix.clone(), new_path, String::new()));
         } else {
           debug!("iterate_dir_worker: ignoring {p_str} {path_name}");
         }
@@ -760,7 +761,7 @@ pub fn iterate_dir_worker(  dir_out:  crossbeam_channel::Receiver<(PathBuf, Path
 }
 
 pub fn iterate_file_worker(
-  files_out: crossbeam_channel::Receiver<(PathBuf, PathBuf)>,
+  files_out: crossbeam_channel::Receiver<(PathBuf, PathBuf, String)>,
   dir_in:    crossbeam_channel::Sender<(PathBuf, PathBuf)>,
   msg_in:    crossbeam_channel::Sender<(String, u64, stat)>,
   args:      logging::dtn_args_wrapper,
@@ -780,12 +781,12 @@ pub fn iterate_file_worker(
   }
 
   let mut fd;
-  let (mut filename, mut prefix, mut c_str);
+  let (mut filename, mut prefix, mut c_str, mut destname);
 
   loop {
 
     match files_out.recv_timeout(std::time::Duration::from_millis(4)) {
-      Ok((p, f)) => { (prefix, filename) = (p, f); }
+      Ok((p, f, d)) => { (prefix, filename, destname) = (p, f, d); }
       Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
 
         if GLOBAL_FILEOPEN_TAIL.load(SeqCst) ==
@@ -816,10 +817,13 @@ pub fn iterate_file_worker(
 
     let path = prefix.join(filename.clone()).canonicalize().unwrap_or("".into());
     if path.to_str().unwrap() == "" {
-      info!("iterate_file_worker: Ignoring {:?}, not on disk", prefix);
+      info!("iterate_file_worker: Ignoring p={:?} f={:?}, not on disk", prefix, filename);
+      eprintln!("iterate_file_worker: Ignoring p={:?} f={:?}, not on disk", prefix, filename);
       continue;
     }
     if ! path.starts_with(prefix.clone()) {
+      eprintln!("iterate_file_worker: Ignoring {:?}, outside of prefix {:?}",
+            path, prefix);
       info!("iterate_file_worker: Ignoring {:?}, outside of prefix {:?}",
             path, prefix);
       continue;
@@ -920,9 +924,16 @@ pub fn iterate_file_worker(
         thread::sleep(std::time::Duration::from_micros(timeout as u64)); // Wait: queues to clear
       }
 
-      _ = msg_in.send( (fname.to_string(), fino, st) );
-      debug!("addfile: {fname} fn={fino} sz={:?} slot={}",
-        st.st_size, (*res).position);
+
+      if destname.is_empty() {
+        _ = msg_in.send( (fname.to_string(), fino, st) );
+        debug!("addfile: {fname} fn={fino} sz={:?} slot={}",
+          st.st_size, (*res).position);
+      } else {
+        debug!("addfile_destname: {destname} fn={fino} sz={:?} slot={}",
+          st.st_size, (*res).position);
+        _ = msg_in.send( (destname, fino, st) );
+      }
     }
   }
 
@@ -931,19 +942,19 @@ pub fn iterate_file_worker(
 
 fn iterate_files ( flags: &EScp_Args,
                     args: logging::dtn_args_wrapper,
-               dest_path: String,
+           mut dest_path: String,
                 mut sout: &std::fs::File,
                  fc_hash: &mut HashMap<u64, (i64, String)>,
                   fc_out: &crossbeam_channel::Receiver<(u64, u32)>,
-                  fc2_out: &crossbeam_channel::Receiver<(u64, u64)>
+                 fc2_out: &crossbeam_channel::Receiver<(u64, u64)>
                  ) -> (i64,u64,u64) {
 
   let msg_out;
   let mut files_ok:u64=0;
+  let (files_in, files_out) = crossbeam_channel::bounded(15000);
 
   {
     // Spawn helper threads
-    let (files_in, files_out) = crossbeam_channel::bounded(15000);
     let (dir_in, dir_out) = crossbeam_channel::unbounded();
 
     let msg_in;
@@ -984,11 +995,86 @@ fn iterate_files ( flags: &EScp_Args,
         }
       };
 
-      _ = files_in.send(
-            (fi_path.parent().unwrap().to_path_buf(),
-             std::path::Path::new(fi_path.file_name().unwrap().to_str().unwrap()).to_path_buf()
-            ));
+      if flags.source.len() == 1 {
+        _ = files_in.send(
+              (fi_path.parent().unwrap().to_path_buf(),
+               std::path::Path::new(fi_path.file_name().unwrap().to_str().unwrap()).to_path_buf(),
+               dest_path
+              ));
+         dest_path = String::from("");
+      } else {
+        _ = files_in.send(
+              (fi_path.parent().unwrap().to_path_buf(),
+               std::path::Path::new(fi_path.file_name().unwrap().to_str().unwrap()).to_path_buf(),
+               String::new()
+              ));
+      }
     }
+  }
+
+  let mut file_list = Vec::new();
+  if !flags.file_list.is_empty() {
+
+    let mut file;
+    let mut content = String::new();
+
+    match std::fs::File::open( &flags.file_list ) {
+        Ok(value) => { file = value }
+        Err(e) =>  {
+          info!("Error opening file_list, err={:?}", e);
+          eprintln!("\nError opening file_list, err={:?}", e);
+          thread::sleep(std::time::Duration::from_millis(2));
+          process::exit(1);
+        }
+    }
+    let _ = file.read_to_string(&mut content);
+
+    let mut is_yaml = true;
+    let mut yaml = None;
+    match yaml_rust2::YamlLoader::load_from_str(&content) {
+        Ok(value) => { yaml = Some(value) }
+        Err(_) => { is_yaml = false }
+    }
+
+    if is_yaml {
+      /* Process YAML */
+      for i in yaml.unwrap() {
+        for j in i {
+          match j {
+            yaml_rust2::Yaml::Array(x) => {
+              if x.len() >= 2 {
+                match (x[0].as_str(), x[1].as_str()) {
+                  (Some(a),Some(b)) => {
+                    file_list.push([String::from(a), String::from(b)])
+                  }
+                  _ => { println!("Error parsing YAML line {:?}", x); }
+                }
+              } else if x.len() >= 1 {
+                match x[0].as_str() {
+                  Some(a) => {
+                    file_list.push([String::from(a), String::new()])
+                  }
+                  _ => { println!("Error parsing YAML line {:?}", x); }
+                }
+              }
+            }
+            yaml_rust2::Yaml::String(value) => {
+              file_list.push([String::from(value), String::new()])
+            }
+            _ => { println!("Error parsing YAML line: {:?}", j) }
+          }
+        }
+      }
+    } else {  // Process new-line
+      let nl = content.split("\n");
+      for i in nl {
+        if !i.is_empty() {
+          file_list.push([String::from(i).trim_end_matches("\r").to_string(), String::new()]);
+        }
+      }
+    }
+
+    debug!("file_list parsed as: {:?}", file_list);
   }
 
 
@@ -1011,6 +1097,30 @@ fn iterate_files ( flags: &EScp_Args,
   let mut last_update = std::time::Instant::now();
 
   loop {
+    loop {  // Try to add files from file_list (if any)
+      let i = match file_list.pop() {
+        Some(v) => { v }
+        _ => { break }
+      };
+
+      let res;
+      {
+        let pb = std::path::Path::new(&i[0]);
+        res = files_in.send(
+          (pb.parent().unwrap().to_path_buf(),
+           std::path::Path::new(pb.file_name().unwrap().to_str().unwrap()).to_path_buf(),
+           i[1].clone() ));
+      }
+
+      if res == Ok(()) {
+        debug!("add: {:?} {:?}", i[0], i[1]);
+      } else {
+        file_list.push(i);
+        break;
+      }
+    }
+
+
     if !flags.quiet && (last_update.elapsed().as_secs_f32() > 0.15) {
       last_update = std::time::Instant::now();
 
