@@ -36,7 +36,7 @@ extern uint64_t ESCP_DROPPED_MSG;
 
 struct dtn_args* args_new () ;
 void affinity_set ( struct dtn_args* args );
-struct sockaddr_storage dns_lookup( char*, char* );
+struct sockaddr_storage dns_lookup( struct dtn_args*, char* a, char* b);
 char* dtn_log_getnext();
 char* dtn_err_getnext();
 
@@ -143,6 +143,7 @@ struct dtn_args {
   bool do_preserve;
   bool nodirect;
   bool recursive;
+  uint8_t ip_mode;
 
   int logging_fd;
   int mtu;

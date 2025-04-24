@@ -89,6 +89,14 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       ssh_args.extend(["-o", flags.ssh_option.as_str()]);
     }
 
+    if flags.ipv4 {
+      ssh_args.extend(["-4"]);
+    }
+
+    if flags.ipv6 {
+      ssh_args.extend(["-6"]);
+    }
+
     if flags.batch_mode {
       ssh_args.extend(["-o", "BatchMode=True"]);
     }
@@ -137,7 +145,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   { // Send session INIT message
     let (session_id, start_port, do_verbose, crypto_key, io_engine, nodirect,
          thread_count, block_sz, do_hash, do_compression, do_sparse,
-         do_preserve, log_file
+         do_preserve, log_file, ip_mode, bind_interface
         );
 
     crypto_key = vec![ 0i8; 16 ];
@@ -154,7 +162,17 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       do_hash = (*args).do_hash;
       thread_count = (*args).thread_count;
       block_sz = (*args).block;
+      bind_interface = Some(builder.create_string(host));
 
+      if flags.ipv4 {
+        (*args).ip_mode |= 1;
+      }
+
+      if flags.ipv6 {
+        (*args).ip_mode |= 2;
+      }
+
+      ip_mode = (*args).ip_mode;
       do_preserve = (*args).do_preserve;
       do_compression = (*args).compression > 0;
       do_sparse = (*args).sparse > 0;
@@ -185,6 +203,8 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
         do_sparse,
         do_preserve,
         log_file,
+        ip_mode,
+        bind_interface,
         ..Default::default()
       }
     );
@@ -250,7 +270,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       let host_str = CString::new( host ).unwrap();
 
       debug!("Sender params: {:?} {:?}", host_str, d_str);
-      (*(args)).sock_store[0] =  dns_lookup( host_str.as_ptr() as *mut i8 , d_str.as_ptr() as *mut i8);
+      (*(args)).sock_store[0] =  dns_lookup( args, host_str.as_ptr() as *mut i8 , d_str.as_ptr() as *mut i8);
       (*args).sock_store_count = 1;
       (*args).active_port = helo.port_start() as u16;
 

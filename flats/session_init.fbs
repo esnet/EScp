@@ -26,5 +26,6 @@ table Session_Init {
   io_engine:       int32;
   thread_count:    int32;
   block_sz:        int32;
+  ip_mode:         uint8;
 }
 

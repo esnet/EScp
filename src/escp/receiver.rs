@@ -121,6 +121,7 @@ fn initialize_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) 
     (*args).thread_count = helo.thread_count();
     (*args).do_hash = helo.do_hash();
     (*args).nodirect = helo.no_direct();
+    (*args).ip_mode = helo.ip_mode();
   }
 
   let bind_interface = CString::new( helo.bind_interface().unwrap_or("") ).unwrap();
@@ -131,7 +132,7 @@ fn initialize_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) 
   let mut connection_count=0;
 
   unsafe {
-    (*args).sock_store[connection_count] =  dns_lookup( bind_interface.as_ptr() as *mut i8 , p.as_ptr() as *mut i8);
+    (*args).sock_store[connection_count] =  dns_lookup( args, bind_interface.as_ptr() as *mut i8 , p.as_ptr() as *mut i8);
     connection_count += 1;
     (*args).sock_store_count = connection_count as i32;
     (*args).flags |= libc::O_CREAT|libc::O_WRONLY|libc::O_TRUNC;

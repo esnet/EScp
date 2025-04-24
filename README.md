@@ -66,38 +66,41 @@ USAGE
 ```
 Energy Sciences Network transfer tool (EScp)
 
-Usage: escp [OPTIONS] <SOURCE>... <DESTINATION>
+Usage: escp [OPTIONS] [SOURCE]...
 
 Arguments:
-  <SOURCE>...    Source Files/Path
-  <DESTINATION>  Destination host:<path/file> [default: ]
+  [SOURCE]...  [ Destination ]
 
 Options:
-  -P, --port <SSH_PORT>        SSH Port
-      --escp_port <ESCP_PORT>  ESCP Port [default: 1232]
-  -v, --verbose                Verbose/Debug output
+      --filelist <FILE_LIST>             FILE_LIST instead of SOURCE (YAML or '\n' list) [default: ]
+  -P, --port <SSH_PORT>                  SSH Port
+      --escp_port <ESCP_PORT>            ESCP Port [default: 1232]
+      --escp_portrange <ESCP_PORTRANGE>  ESCP Port range (if unset, use 1232-1242) [default: 10]
+  -v, --verbose                          Verbose/Debug output (use with logfile)
+      --logfile <LOG_FILE>               Log to FILE (or syslog LOCALN where N between 0-7)
   -q, --quiet
-  -A, --agent                  Enable SSH Agent Forwarding
-  -c, --cipher <CIPHER>        CIPHER used by SSH
-  -i, --identity <IDENTITY>    IDENTITY pubkey for SSH auth
-  -l, --limit <LIMIT>          LIMIT/thread (bytes/sec) using SO_MAX_PACING_RATE
-  -p, --preserve               Preserve source attributes (TODO)
-  -C, --compress               Enable Compression
-      --sparse                 Sparse file support, use with compression
-  -r, --recursive              Copy recursively
-  -o <SSH_OPTION>              SSH_OPTION to SSH
-  -S, --ssh <SSH>              SSH binary [default: ssh]
-  -D, --escp <ESCP>            EScp binary [default: escp]
-      --blocksize <BLOCK_SZ>   [default: 1M]
-      --ioengine <IO_ENGINE>   posix,dummy [default: posix]
-  -t, --parallel <THREADS>     # of EScp parallel threads [default: 4]
-      --bits                   Display speed in bits/s
-      --nodirect               Don't enable direct mode
-      --nochecksum             Don't enable file checksum
-  -L, --license                Display License
-  -h, --help                   Print help
-  -V, --version                Print version
-
+  -l, --limit <LIMIT>                    LIMIT/thread (bytes/sec) using SO_MAX_PACING_RATE
+  -p, --preserve                         Preserve source attributes
+  -C, --compress                         Compression
+      --sparse                           Sparse file support, use with compression
+  -r, --recursive                        Copy recursively
+  -o <SSH_OPTION>                        SSH_OPTION to SSH
+  -S, --ssh <SSH>                        SSH binary [default: ssh]
+  -D, --escp <ESCP>                      EScp binary [default: escp]
+      --blocksize <BLOCK_SZ>             [default: 1M]
+      --ioengine <IO_ENGINE>             posix,dummy [default: posix]
+  -t, --parallel <THREADS>               # of IO worker threads [default: 4]
+      --bits                             Display speed in bits/s
+      --nodirect                         Disable direct (O_DIRECT) mode
+      --nochecksum                       disable checksum
+  -A, --agent                            Enable SSH Agent Forwarding
+  -c, --cipher <CIPHER>                  CIPHER used by SSH
+  -i, --identity <IDENTITY>              IDENTITY pubkey for SSH auth
+  -F, --ssh_config <SSH_CONFIG>          SSH_CONFIG passed to SSH [default: ]
+  -J, --jump_host <JUMP_HOST>            JUMP_HOST used by SSH [default: ]
+  -L, --license                          Display License
+  -h, --help                             Print help
+  -V, --version                          Print version
 
 Example:
 
@@ -106,6 +109,23 @@ escp file1 file2 host:/remoteDirectory
 
 
 ```
+
+Notes:
+
+**filelist** option expects either a file containing newline seperated
+strings or YAML. The YAML option allows specifying source/dest pairs,
+as an example:
+
+```
+  - [ "SRC_A", "DST_A" ]
+  - [ "SRC_B", "DST_B" ]
+```
+
+** compress ** is using zstd at compression level 3. If a block of data
+fails to compress, compression is skipped for that block.
+
+** preserve ** only applies to files at present. This should be fixed in
+a later release.
 
 
 

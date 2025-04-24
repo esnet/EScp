@@ -590,8 +590,9 @@ extern "C" {
 }
 extern "C" {
     pub fn dns_lookup(
-        arg1: *mut ::core::ffi::c_char,
-        arg2: *mut ::core::ffi::c_char,
+        arg1: *mut dtn_args,
+        a: *mut ::core::ffi::c_char,
+        b: *mut ::core::ffi::c_char,
     ) -> sockaddr_storage;
 }
 extern "C" {
@@ -850,6 +851,7 @@ pub struct dtn_args {
     pub do_preserve: bool,
     pub nodirect: bool,
     pub recursive: bool,
+    pub ip_mode: u8,
     pub logging_fd: ::core::ffi::c_int,
     pub mtu: ::core::ffi::c_int,
     pub block: ::core::ffi::c_int,
@@ -909,6 +911,7 @@ const _: () = {
         [::core::mem::offset_of!(dtn_args, do_preserve) - 4usize];
     ["Offset of field: dtn_args::nodirect"][::core::mem::offset_of!(dtn_args, nodirect) - 5usize];
     ["Offset of field: dtn_args::recursive"][::core::mem::offset_of!(dtn_args, recursive) - 6usize];
+    ["Offset of field: dtn_args::ip_mode"][::core::mem::offset_of!(dtn_args, ip_mode) - 7usize];
     ["Offset of field: dtn_args::logging_fd"]
         [::core::mem::offset_of!(dtn_args, logging_fd) - 8usize];
     ["Offset of field: dtn_args::mtu"][::core::mem::offset_of!(dtn_args, mtu) - 12usize];

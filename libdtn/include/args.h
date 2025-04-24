@@ -81,6 +81,7 @@ struct dtn_args {
   bool do_preserve;
   bool nodirect;
   bool recursive;
+  uint8_t ip_mode;
 
   int logging_fd;
   int mtu;
@@ -165,7 +166,7 @@ struct fc_info_struct* fc_pop();
 
 struct dtn_args* args_new () ;
 void affinity_set ( struct dtn_args* args, int id );
-struct sockaddr_storage dns_lookup( char*, char* );
+// struct sockaddr_storage dns_lookup( char*, char* );
 char* dtn_log_getnext();
 char* dtn_err_getnext();
 char* human_write(uint64_t number, bool is_bytes);

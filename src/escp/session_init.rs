@@ -45,6 +45,7 @@ impl<'a> Session_Init<'a> {
   pub const VT_IO_ENGINE: flatbuffers::VOffsetT = 38;
   pub const VT_THREAD_COUNT: flatbuffers::VOffsetT = 40;
   pub const VT_BLOCK_SZ: flatbuffers::VOffsetT = 42;
+  pub const VT_IP_MODE: flatbuffers::VOffsetT = 44;
 
   #[inline]
   pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
@@ -68,6 +69,7 @@ impl<'a> Session_Init<'a> {
     if let Some(x) = args.crypto_key { builder.add_crypto_key(x); }
     builder.add_version_minor(args.version_minor);
     builder.add_version_major(args.version_major);
+    builder.add_ip_mode(args.ip_mode);
     builder.add_is_error(args.is_error);
     builder.add_no_direct(args.no_direct);
     builder.add_do_sparse(args.do_sparse);
@@ -220,6 +222,13 @@ impl<'a> Session_Init<'a> {
     // which contains a valid value in this slot
     unsafe { self._tab.get::<i32>(Session_Init::VT_BLOCK_SZ, Some(0)).unwrap()}
   }
+  #[inline]
+  pub fn ip_mode(&self) -> u8 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<u8>(Session_Init::VT_IP_MODE, Some(0)).unwrap()}
+  }
 }
 
 impl flatbuffers::Verifiable for Session_Init<'_> {
@@ -249,6 +258,7 @@ impl flatbuffers::Verifiable for Session_Init<'_> {
      .visit_field::<i32>("io_engine", Self::VT_IO_ENGINE, false)?
      .visit_field::<i32>("thread_count", Self::VT_THREAD_COUNT, false)?
      .visit_field::<i32>("block_sz", Self::VT_BLOCK_SZ, false)?
+     .visit_field::<u8>("ip_mode", Self::VT_IP_MODE, false)?
      .finish();
     Ok(())
   }
@@ -274,6 +284,7 @@ pub struct Session_InitArgs<'a> {
     pub io_engine: i32,
     pub thread_count: i32,
     pub block_sz: i32,
+    pub ip_mode: u8,
 }
 impl<'a> Default for Session_InitArgs<'a> {
   #[inline]
@@ -299,6 +310,7 @@ impl<'a> Default for Session_InitArgs<'a> {
       io_engine: 0,
       thread_count: 0,
       block_sz: 0,
+      ip_mode: 0,
     }
   }
 }
@@ -389,6 +401,10 @@ impl<'a: 'b, 'b> Session_InitBuilder<'a, 'b> {
     self.fbb_.push_slot::<i32>(Session_Init::VT_BLOCK_SZ, block_sz, 0);
   }
   #[inline]
+  pub fn add_ip_mode(&mut self, ip_mode: u8) {
+    self.fbb_.push_slot::<u8>(Session_Init::VT_IP_MODE, ip_mode, 0);
+  }
+  #[inline]
   pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a>) -> Session_InitBuilder<'a, 'b> {
     let start = _fbb.start_table();
     Session_InitBuilder {
@@ -426,6 +442,7 @@ impl core::fmt::Debug for Session_Init<'_> {
       ds.field("io_engine", &self.io_engine());
       ds.field("thread_count", &self.thread_count());
       ds.field("block_sz", &self.block_sz());
+      ds.field("ip_mode", &self.ip_mode());
       ds.finish()
   }
 }

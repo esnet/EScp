@@ -107,12 +107,23 @@ char* human_write(uint64_t number, bool is_bytes) {
 
 }
 
-struct sockaddr_storage dns_lookup( char* host, char* port) {
+struct sockaddr_storage dns_lookup(struct dtn_args* args, char* host, char* port) {
   struct sockaddr_storage ret;  // Function not thread safe
   int res;
   struct addrinfo *result;
+  struct addrinfo hints = {0};
 
   DBG( "do getaddrinfo %s %s", host, port)
+
+  hints.ai_family = AF_UNSPEC;
+  if ( args->ip_mode ) {
+    if (args->ip_mode == 1)
+      hints.ai_family = AF_INET;
+    if (args->ip_mode == 2)
+      hints.ai_family = AF_INET6;
+  }
+
+  hints.ai_socktype = SOCK_STREAM;
 
   if (strlen(host) < 1) {
     errno=0;
@@ -129,7 +140,7 @@ struct sockaddr_storage dns_lookup( char* host, char* port) {
 
   VRFY(host, "Bad host argument");
 
-  VRFY( (res=getaddrinfo(host, port, NULL, &result)) == 0,
+  VRFY( (res=getaddrinfo(host, port, &hints, &result)) == 0,
     "Host lookup failed (host='%s',port=%s); %s", host, port, gai_strerror(res) );
 
   memcpy( &ret, result->ai_addr, result->ai_addrlen );
