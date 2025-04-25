@@ -525,10 +525,10 @@ fn handle_msg_from_receiver(
       if e.errmsg().unwrap().is_empty() {
         let error = io::Error::from_raw_os_error(errno);
 
-        eprintln!("\nSender error writing '{}': {}",
+        eprintln!("\nReceiver error writing '{}': {}",
           e.name().unwrap(), error);
       } else {
-        eprintln!("\nSender err writing '{}': {}:{}",
+        eprintln!("\nReceiver err writing '{}': {}:{}",
           e.name().unwrap(), e.errmsg().unwrap(), errno);
       }
       process::exit(1);
@@ -952,7 +952,13 @@ pub fn iterate_file_worker(
       } else {
         debug!("addfile_destname: {destname} fn={fino} sz={:?} slot={}",
           st.st_size, (*res).position);
-        _ = msg_in.send( (destname, fino, st) );
+        
+        let mut combined = String::new();
+        combined.push_str(destname.as_str());
+        combined.push_str("\0");
+        combined.push_str(fname);
+
+        _ = msg_in.send( (combined, fino, st) );
       }
     }
   }

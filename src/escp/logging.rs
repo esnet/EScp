@@ -34,11 +34,13 @@ impl log::Log for MyLogger {
           now.format("%y%m%d.%H%M%S.%6f"),
 					(*a.args).session_id & 0xFFFFFFFF,
 					record.level(), record.args());
-      let msg = CString::new( m.as_str() ).unwrap();
-      let res = libc::write( logger_fd, msg.as_ptr() as *const libc::c_void, m.len() );
-      if res < 1 {
-					eprintln!("Error writing to log: {} {}",
-						std::io::Error::last_os_error(), logger_fd);
+      let msg = CString::new( m.as_str() );
+      if msg.is_ok() {
+				let res = libc::write( logger_fd, msg.unwrap().as_ptr() as *const libc::c_void, m.len() );
+				if res < 1 {
+						eprintln!("Error writing to log: {} {}",
+							std::io::Error::last_os_error(), logger_fd);
+				}
       }
     }
   }

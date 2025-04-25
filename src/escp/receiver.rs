@@ -244,9 +244,23 @@ fn add_file( files_hash: &mut HashMap<u64, FileInformation>, files_add: &mut Vec
       let open  = (*(*args).fob).open.unwrap();
       let mut fd;
 
-      let fp = CString::new( i.path.clone() ).unwrap();
+      let mut fp;
+      let mut alt_fp = None;
+      let fp_s = String::from(i.path.clone());
 
-      for _ in 1..4 {
+      if fp_s.contains("\0") {
+        let v: Vec<&str> = fp_s.split("\0").collect();
+
+        let t = std::path::Path::new(v[0]).join(v[1]);
+        fp = CString::new( v[0] ).unwrap();
+        debug!("Computed alt_fp as {:?} and fp as {:?}", t, fp);
+        alt_fp = Some(String::from(t.as_os_str().to_str().unwrap()));
+      } else {
+        fp = CString::new( i.path.clone() ).unwrap();
+      }
+
+      for _ in 1..5 {
+
         if !(*args).nodirect {
           fd = open( fp.as_ptr(), (*args).flags | libc::O_DIRECT, 0o644 );
           if (fd == -1) && (*libc::__errno_location() == 22) {
@@ -258,7 +272,20 @@ fn add_file( files_hash: &mut HashMap<u64, FileInformation>, files_add: &mut Vec
           fd = open( fp.as_ptr(), (*args).flags, 0o644 );
         }
 
+        if (fd == -1) && (*libc::__errno_location() == 21) {
+          debug!("{:?} is a directory;", fp );
+          if alt_fp.is_some() {
+            let t = CString::new( alt_fp.clone().unwrap() ).unwrap();
+            if t != fp {
+              debug!("Trying alt_fp");
+              fp = t;
+              continue;
+            }
+          }
+        }
+
         if fd < 1 {
+          debug!("In error loop");
           let err = io::Error::last_os_error();
           if err.kind() == std::io::ErrorKind::NotFound {
 
