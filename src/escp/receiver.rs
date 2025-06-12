@@ -102,7 +102,7 @@ fn initialize_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) 
     unsafe {
       let ptr: Vec<i8> = helo.crypto_key().unwrap().iter().collect() ;
 
-      std::intrinsics::copy_nonoverlapping( ptr.as_ptr(),
+      std::ptr::copy_nonoverlapping( ptr.as_ptr(),
         (*args).crypto_key.as_ptr() as *mut i8, 16 );
       (*args).do_crypto = true;
     }

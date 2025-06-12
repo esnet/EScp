@@ -179,7 +179,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       do_verbose = verbose_logging  > 0;
       log_file = Some(builder.create_string(flags.log_file.as_str()));
 
-      std::intrinsics::copy_nonoverlapping( (*args).crypto_key.as_ptr() , crypto_key.as_ptr() as *mut u8, 16 );
+      std::ptr::copy_nonoverlapping( (*args).crypto_key.as_ptr() , crypto_key.as_ptr() as *mut u8, 16 );
     }
 
     let ckey = Some( builder.create_vector( &crypto_key ) );
