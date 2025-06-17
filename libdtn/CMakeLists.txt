@@ -86,6 +86,7 @@ set(SOURCES src/file_io.c src/args.c
             src/engine_shmem.c
             src/engine_posix.c
             src/engine_dummy.c)
+set (ENGINES __ENGINE_POSIX__ __ENGINE_DUMMY__ __ENGINE_SHMEM__ __ENGINE_URING__)
 
 set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
 find_library(LIBURING_LIBRARY uring)
@@ -93,6 +94,7 @@ if (LIBURING_LIBRARY)
   message(STATUS "Found liburing at: ${LIBURING_LIBRARY}")
   file(APPEND "${OUTPUT_FILE}" "${LIBURING_LIBRARY}\n")
   list(APPEND SOURCES src/engine_uring.c)
+  list(APPEND ENGINES __ENGINE_URING__)
 else()
   message(WARNING "liburing not found. uring support disabled.")
 endif()
@@ -101,4 +103,4 @@ endif()
 add_library(dtn STATIC ${SOURCES} src/dtn.c)
 add_dependencies(dtn isa-l_crypto_project zstd_project)
 
-target_compile_definitions(dtn PUBLIC __ENGINE_POSIX__ __ENGINE_DUMMY__ __ENGINE_SHMEM__ __ENGINE_URING__)
+target_compile_definitions(dtn PUBLIC ${ENGINES})
