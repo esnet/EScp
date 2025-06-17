@@ -86,7 +86,7 @@ set(SOURCES src/file_io.c src/args.c
             src/engine_shmem.c
             src/engine_posix.c
             src/engine_dummy.c)
-set (ENGINES __ENGINE_POSIX__ __ENGINE_DUMMY__ __ENGINE_SHMEM__ __ENGINE_URING__)
+set (ENGINES __ENGINE_POSIX__ __ENGINE_DUMMY__ __ENGINE_SHMEM__ )
 
 set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
 find_library(LIBURING_LIBRARY uring)
