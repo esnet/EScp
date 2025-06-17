@@ -30,7 +30,6 @@
 #include <poll.h>
 #include <linux/tcp.h>
 
-#include <numaif.h>
 #include <isa-l_crypto.h>
 #include <zstd.h>
 

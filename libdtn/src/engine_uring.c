@@ -30,7 +30,9 @@ struct uring_op {
 
 void* file_uringfetch( void* arg ) {
   struct file_object* fob = arg;
-  struct uring_op* op = fob->pvdr;
+  struct posix_op* pop = fob->pvdr;
+  struct uring_op* op = pop->ptr;
+
   int i;
 
   if ( (fob->head - fob->tail) >= fob->QD )
@@ -50,14 +52,13 @@ void* file_uringfetch( void* arg ) {
   op->order[fob->head%fob->QD] = i;
   fob->head++;
 
-  op->entry[i].pop.fd = fob->fd;
-  op->entry[i].pop.truncate = 0;
   return &op->entry[i];
 }
 
 void file_uringflush( void* arg ) {
   struct file_object* fob = arg;
-  struct uring_op* op = fob->pvdr;
+  struct posix_op* pop = fob->pvdr;
+  struct uring_op* op = pop->ptr;
 
   static __thread uint64_t last_submit=0;
   bool did_work = false;
@@ -68,13 +69,13 @@ void file_uringflush( void* arg ) {
     j = op->order[i % fob->QD];
     if ( fob->io_flags  & O_WRONLY ) {
       io_uring_prep_writev( op->entry[j].sqe,
-                            op->entry[j].pop.fd,
+                            pop->fd,
                             &op->entry[j].pop.vec, 1,
-                            op->entry[j].pop.offset
+                            pop->offset
                           );
     } else {
       io_uring_prep_readv(  op->entry[j].sqe,
-                            op->entry[j].pop.fd,
+                            pop->fd,
                             &op->entry[j].pop.vec, 1,
                             op->entry[j].pop.offset
                          );
@@ -91,7 +92,8 @@ void file_uringflush( void* arg ) {
 
 void* file_uringsubmit( void* arg, int32_t* sz, uint64_t* offset ) {
   struct file_object* fob = arg;
-  struct uring_op* op = fob->pvdr;
+  struct posix_op* pop = fob->pvdr;
+  struct uring_op* op = pop->ptr;
 
   file_uringflush(fob);
 
@@ -123,18 +125,12 @@ void* file_uringsubmit( void* arg, int32_t* sz, uint64_t* offset ) {
 void* file_uringcomplete( void* arg, void* tok ) {
   struct uring_entry* entry = tok;
   struct file_object* fob = arg;
-  struct uring_op* op= fob->pvdr;
-  struct posix_op* pop = &entry->pop;
-
-  if ( pop->truncate ) {
-    DBG("[%2d] Applying truncate to fd=%d len=%zd",
-      fob->id, pop->fd, pop->truncate);
-    VRFY( ftruncate( pop->fd, pop->truncate ) == 0, );
-  }
+  struct posix_op* pop = fob->pvdr;
+  struct uring_op* op= pop->ptr;
 
   fob->tail++;
-
   io_uring_cqe_seen( op->ring, entry->cqe );
+
   return 0;
 }
 
@@ -145,6 +141,12 @@ int file_uringinit( struct file_object* fob ) {
 
   memset( &op, 0, sizeof(op) );
 
+  struct posix_op *pop;
+
+  pop = malloc( sizeof(struct posix_op) );
+  VRFY( pop, "bad malloc" );
+  memset( pop, 0, sizeof(struct posix_op) );
+
   res = io_uring_queue_init(fob->QD, &ring, 0);
   if (res < 0) {
     DBG("Failed to initialize io_uring: %s", strerror(-res));
@@ -153,25 +155,43 @@ int file_uringinit( struct file_object* fob ) {
 
   op.ring = &ring;
 
+  struct iovec* iov;
+  iov = malloc ( sizeof(struct iovec) * fob->QD );
+  VRFY(iov, "bad malloc");
+
   for ( i=0; i<fob->QD; i++ ) {
-    op.entry[i].pop.buf = mmap (  NULL, fob->blk_sz,
+    iov[i].iov_base = mmap (  NULL, fob->blk_sz,
       PROT_READ|PROT_WRITE, MAP_SHARED|MAP_ANONYMOUS, -1, 0 );
-    VRFY(op.entry[i].pop.buf, "mmap fail, QD=%d", i);
+    VRFY(iov->iov_base, "mmap fail, QD=%d", i);
+
+    iov[i].iov_len = fob->blk_sz;
   }
 
-  fob->pvdr = &op;
+  io_uring_register_buffers( &ring, iov, fob->QD );
+
+  pop->ptr = &op;
+  pop->ptr2 = iov;
+
+  fob->pvdr = pop;
 
   fob->fetch    = file_uringfetch;
-  fob->get      = file_posixget;
-  fob->set      = file_posixset;
-
   fob->flush    = file_uringflush;
+  fob->get      = file_posixget;
   fob->submit   = file_uringsubmit;
   fob->complete = file_uringcomplete;
+  fob->set      = file_posixset;
 
   fob->open     = open;
-  fob->close    = close;
+  fob->close    = file_posixclose;
+
+  fob->close_fd = close;
+  fob->opendir  = opendir;
+  fob->closedir = closedir;
+  fob->readdir  = readdir;
+
+  fob->truncate = file_posixtruncate;
   fob->fstat    = fstat;
+  fob->preserve = file_posixpreserve;
 
   return 0;
 }

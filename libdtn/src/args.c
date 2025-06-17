@@ -8,8 +8,9 @@
 #include <fcntl.h>
 
 #include <libgen.h>
-#include <numaif.h>
 #include <sched.h>
+#include <sys/syscall.h>
+#include <linux/mempolicy.h>
 
 #include <byteswap.h>
 #include <sys/types.h>
@@ -48,7 +49,10 @@ void affinity_set ( struct dtn_args* args, int id ) {
 
   DBG("[%2d] Set CPU affinity to %lX", id, mask);
 
-  set_mempolicy( MPOL_BIND, &args->nodemask, 64 );
+  // Instead of: set_mempolicy( MPOL_BIND, &args->nodemask, 64 );
+  int ret = syscall(SYS_set_mempolicy, MPOL_BIND, &args->nodemask, 64);
+  VRFY( ret, "syscall set_mempolicy" );
+
   if ( sched_setaffinity(0, sizeof(set), &set) ) {
     VRFY(0, "[%2d] Setting CPU Affinity", id);
   }
