@@ -33,6 +33,11 @@ void* file_uringfetch( void* arg ) {
   struct posix_op* pop = fob->pvdr;
   struct uring_op* op = pop->ptr;
 
+  struct uring_op* op = pop->ptr;
+  struct iovec* iov = pop->ptr2;
+
+  struct io_uring_sqe* sqe;
+
   int i;
 
   if ( (fob->head - fob->tail) >= fob->QD )
@@ -44,17 +49,28 @@ void* file_uringfetch( void* arg ) {
   }
   VRFY( i < fob->QD, "Internal Error" );
 
-  op->entry[i].sqe = io_uring_get_sqe( op->ring );
-  if (! op->entry[i].sqe )
+  sqe = io_uring_get_sqe( op->ring );
+  if (! sqe )
     return 0;
 
-  op->map |= 1 << i;
-  op->order[fob->head%fob->QD] = i;
+  // op->map |= 1 << i;
+  // op->order[fob->head%fob->QD] = i;
+  //
+
+
+  // XXX: We check if the sqe is already set. If it isn't, then we set it
+  // with the next available buffer.
+
+  if (fob->head < fob->QD)
+    io_uring_sqe_set_data( op->entry[i].sqe, &iov[fob->head] );
+
   fob->head++;
 
-  return &op->entry[i];
+
+  return sqe;
 }
 
+// mojibake: should take sqe as argument...
 void file_uringflush( void* arg ) {
   struct file_object* fob = arg;
   struct posix_op* pop = fob->pvdr;
