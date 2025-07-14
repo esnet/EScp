@@ -880,14 +880,13 @@ void* rx_worker( void* arg ) {
 
         DBV("[%2d] FIHDR_SHORT: call file_wait for fn=%ld", id, file_no);
         fs_ptr = file_wait( file_no, &fs, id );
-
         DBV("[%2d] FIHDR_SHORT: file_wait returned fd=%d for fn=%ld", id, fs.fd, file_no);
 
         file_cur = file_no;
       }
 
       fob->set( knob->token, FOB_FD, fs.fd );
-      fob->flush( fob );
+      fob->flush( fob, knob->token );
 
       if (dtn->do_hash) {
         uint8_t* buf = fob->get( knob->token, FOB_BUF );
@@ -1035,7 +1034,7 @@ void* tx_worker( void* args ) {
       // We get as many I/O blocks as we can, and populate them
       // with operations. The assumption is that the file is large
       // and we will be able to read all of these. With small files
-      // the extra I/O operations are superflus.
+      // the extra I/O operations are superfluous.
 
       offset = atomic_fetch_add( &fs->block_offset, 1 );
       offset *= dtn->block;

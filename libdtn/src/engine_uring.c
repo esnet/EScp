@@ -32,8 +32,6 @@ void* file_uringfetch( void* arg ) {
   struct file_object* fob = arg;
   struct posix_op* pop = fob->pvdr;
   struct uring_op* op = pop->ptr;
-
-  struct uring_op* op = pop->ptr;
   struct iovec* iov = pop->ptr2;
 
   struct io_uring_sqe* sqe;
@@ -61,8 +59,10 @@ void* file_uringfetch( void* arg ) {
   // XXX: We check if the sqe is already set. If it isn't, then we set it
   // with the next available buffer.
 
-  if (fob->head < fob->QD)
-    io_uring_sqe_set_data( op->entry[i].sqe, &iov[fob->head] );
+  if (fob->head < fob->QD) {
+    VRFY( sqe->user_data == 0, "Assert failed, user data should be blank" );
+    io_uring_sqe_set_data( sqe, &iov[fob->head] );
+  }
 
   fob->head++;
 
@@ -71,38 +71,30 @@ void* file_uringfetch( void* arg ) {
 }
 
 // mojibake: should take sqe as argument...
-void file_uringflush( void* arg ) {
+void file_uringflush( void* arg, void* token ) {
+
+  struct io_uring_sqe* sqe = token;
   struct file_object* fob = arg;
   struct posix_op* pop = fob->pvdr;
   struct uring_op* op = pop->ptr;
 
-  static __thread uint64_t last_submit=0;
-  bool did_work = false;
-  uint64_t i, j;
+  struct iovec* iov = (struct iovec*) sqe->user_data;
 
-  for (i=last_submit; i < fob->head; i++) {
-    did_work = true;
-    j = op->order[i % fob->QD];
-    if ( fob->io_flags  & O_WRONLY ) {
-      io_uring_prep_writev( op->entry[j].sqe,
-                            pop->fd,
-                            &op->entry[j].pop.vec, 1,
-                            pop->offset
-                          );
-    } else {
-      io_uring_prep_readv(  op->entry[j].sqe,
-                            pop->fd,
-                            &op->entry[j].pop.vec, 1,
-                            op->entry[j].pop.offset
-                         );
-    }
-    op->entry[j].sqe->user_data = op->entry[j].pop.offset;
+  if ( fob->io_flags  & O_WRONLY ) {
+    io_uring_prep_writev( sqe,
+                          pop->fd,
+                          iov, 1,
+                          pop->offset
+                        );
+  } else {
+    io_uring_prep_readv(  sqe,
+                          pop->fd,
+                          iov, 1,
+                          pop->offset
+                       );
   }
 
-  if (did_work) {
-    last_submit = fob->head;
-    VRFY ( io_uring_submit(op->ring) >= 0, "io_uring_submit" );
-  }
+  VRFY ( io_uring_submit(op->ring) >= 0, "io_uring_submit" );
 
 }
 
@@ -110,8 +102,6 @@ void* file_uringsubmit( void* arg, int32_t* sz, uint64_t* offset ) {
   struct file_object* fob = arg;
   struct posix_op* pop = fob->pvdr;
   struct uring_op* op = pop->ptr;
-
-  file_uringflush(fob);
 
   if ( fob->head > fob->tail ) {
     struct io_uring_cqe *cqe;
@@ -163,11 +153,16 @@ int file_uringinit( struct file_object* fob ) {
   VRFY( pop, "bad malloc" );
   memset( pop, 0, sizeof(struct posix_op) );
 
-  res = io_uring_queue_init(fob->QD, &ring, 0);
-  if (res < 0) {
-    DBG("Failed to initialize io_uring: %s", strerror(-res));
-    return res;
+  {
+    struct io_uring_params params = {0};
+
+    params.flags = IORING_SETUP_SQPOLL;
+    params.sq_thread_idle = 10; // Idle timeout in ms
+
+    res = io_uring_queue_init_params(fob->QD, &ring, &params);
+    VRFY( res == 0, "Failed to initialize io_uring: %s", strerror(-res));
   }
+
 
   op.ring = &ring;
 

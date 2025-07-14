@@ -79,8 +79,9 @@ void* file_posixget( void* arg, int32_t key ) {
 }
 
 
-void file_posixflush( void* arg ) {
+void file_posixflush( void* arg, void* token ) {
   (void) arg;
+  (void) token;
   return ;
 }
 

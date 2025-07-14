@@ -89,7 +89,7 @@ struct file_object {
   int   (*fstat)   (int, struct stat*);
 
   void* (*fetch)   (void*);
-  void  (*flush)   (void*);
+  void  (*flush)   (void*, void*);
   void* (*set)     (void*, int32_t key, uint64_t value);
   void* (*get)     (void*, int32_t key);
   void* (*submit)  (void*, int32_t* sz, uint64_t* offset);
@@ -138,7 +138,7 @@ void* file_posixset( void* arg, int32_t key, uint64_t value );
 
 int file_posixinit( struct file_object* fob );
 void* file_posixfetch( void* arg );
-void file_posixflush( void* arg );
+void file_posixflush( void* arg, void* token );
 void* file_posixpreserve(int32_t fd, uint32_t mode, uint32_t uid, uint32_t gid, int64_t atim_sec, int64_t atim_nano, int64_t mtim_sec, int64_t mtim_nano);
 int file_posixtruncate( int fd, int64_t sz );
 int file_posixclose(void* arg);
