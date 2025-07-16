@@ -36,60 +36,55 @@ void* file_uringfetch( void* arg ) {
 
   struct io_uring_sqe* sqe;
 
-  int i;
-
   if ( (fob->head - fob->tail) >= fob->QD )
     return 0;
-
-  for (i=0; i<fob->QD; i++) {
-    if ( !(op->map & (1 <<  i)) )
-      break;
-  }
-  VRFY( i < fob->QD, "Internal Error" );
 
   sqe = io_uring_get_sqe( op->ring );
   if (! sqe )
     return 0;
 
-  // op->map |= 1 << i;
-  // op->order[fob->head%fob->QD] = i;
-  //
-
-
-  // XXX: We check if the sqe is already set. If it isn't, then we set it
-  // with the next available buffer.
-
-  if (fob->head < fob->QD) {
-    VRFY( sqe->user_data == 0, "Assert failed, user data should be blank" );
-    io_uring_sqe_set_data( sqe, &iov[fob->head] );
+  if (!sqe->user_data) {
+    uint64_t i;
+    for (i=1; i<=fob->QD; i++) {
+      struct posix_op* p = (struct posix_op*) ((uint64_t)fob->pvdr + (i*sizeof( struct posix_op)) );
+      if (!p->buf) {
+        DBG("Assign SQE: %zd (%zX)\n", (uint64_t) i, (uint64_t) sqe );
+        p->buf = (void*) sqe;
+        p->ptr = (void*) &iov[i-1];
+        io_uring_sqe_set_data( sqe, (void*) i );
+        break;
+      }
+    }
+    VRFY( i<=fob->QD, "file_uringfetch failed to acquire free IOV" );
   }
 
-  fob->head++;
-
-
-  return sqe;
+  {
+    DBG("Using SQE: %zd/%d\n", (uint64_t) sqe->user_data, fob->QD );
+    struct posix_op* p = (struct posix_op*) ((uint64_t)fob->pvdr +
+                         ((uint64_t)sqe->user_data*sizeof( struct posix_op)) );
+    fob->head++;
+    return p;
+  }
 }
 
 // mojibake: should take sqe as argument...
 void file_uringflush( void* arg, void* token ) {
 
-  struct io_uring_sqe* sqe = token;
   struct file_object* fob = arg;
-  struct posix_op* pop = fob->pvdr;
-  struct uring_op* op = pop->ptr;
-
-  struct iovec* iov = (struct iovec*) sqe->user_data;
+  struct posix_op* pop = token;
+  struct io_uring_sqe* sqe = (void*) pop->buf;
+  struct uring_op* op = ((struct posix_op*) fob->pvdr)->ptr;
 
   if ( fob->io_flags  & O_WRONLY ) {
     io_uring_prep_writev( sqe,
                           pop->fd,
-                          iov, 1,
+                          pop->ptr, 1,
                           pop->offset
                         );
   } else {
     io_uring_prep_readv(  sqe,
                           pop->fd,
-                          iov, 1,
+                          pop->ptr, 1,
                           pop->offset
                        );
   }
@@ -105,23 +100,20 @@ void* file_uringsubmit( void* arg, int32_t* sz, uint64_t* offset ) {
 
   if ( fob->head > fob->tail ) {
     struct io_uring_cqe *cqe;
-    int i;
 
     // match sqe to cqe, then return
     VRFY( io_uring_wait_cqe(op->ring, &cqe) >= 0, "io_uring_wait_cqe" );
 
+    uint64_t user_data = (uint64_t) io_uring_cqe_get_data( cqe );
+
+    struct posix_op* p = (struct posix_op*) ((uint64_t)fob->pvdr +
+                         (user_data*sizeof(struct posix_op)) );
+
     sz[0] = cqe->res;
-    offset[0] = cqe->user_data;
+    offset[0] = p->offset;
+    p->ptr2 = cqe;
 
-    for ( i=0; i<fob->QD; i++ ) {
-      if (op->entry[i].pop.offset == offset[0]) {
-        op->entry[i].cqe = cqe;
-        op->map &= ~(1 << i);
-        return &op->entry[i];
-      }
-    }
-
-    VRFY( 0, "Couldn't find CQE associated with SQE\n");
+    return p;
   }
 
   return 0;
@@ -129,13 +121,13 @@ void* file_uringsubmit( void* arg, int32_t* sz, uint64_t* offset ) {
 }
 
 void* file_uringcomplete( void* arg, void* tok ) {
-  struct uring_entry* entry = tok;
+  struct posix_op* p = tok;
   struct file_object* fob = arg;
   struct posix_op* pop = fob->pvdr;
   struct uring_op* op= pop->ptr;
 
   fob->tail++;
-  io_uring_cqe_seen( op->ring, entry->cqe );
+  io_uring_cqe_seen( op->ring, p->ptr2 );
 
   return 0;
 }
@@ -145,19 +137,24 @@ int file_uringinit( struct file_object* fob ) {
   static __thread struct io_uring ring;
   static __thread struct uring_op op;
 
-  memset( &op, 0, sizeof(op) );
 
-  struct posix_op *pop;
+  // NOTE: We allocate one posix_op structure as a "root", then one for each
+  //       entry in QD. These subsequent structures track the IO operation.
+  struct posix_op *pop = malloc( sizeof(struct posix_op) * (fob->QD+1) );
 
-  pop = malloc( sizeof(struct posix_op) );
   VRFY( pop, "bad malloc" );
-  memset( pop, 0, sizeof(struct posix_op) );
+  memset( &op, 0, sizeof(op) );
+  memset( pop, 0, sizeof(struct posix_op)*(fob->QD+1) );
 
   {
     struct io_uring_params params = {0};
 
-    params.flags = IORING_SETUP_SQPOLL;
-    params.sq_thread_idle = 10; // Idle timeout in ms
+    /* 
+    TODO: Add feature flags to engines. Ex: 
+
+    params.flags = IORING_SETUP_SQPOLL; // Enable Submission Queue Polling
+    params.sq_thread_idle = 10;         // Idle timeout in ms
+    */
 
     res = io_uring_queue_init_params(fob->QD, &ring, &params);
     VRFY( res == 0, "Failed to initialize io_uring: %s", strerror(-res));

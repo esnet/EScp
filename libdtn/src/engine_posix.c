@@ -40,7 +40,8 @@ void* file_posixset( void* arg, int32_t key, uint64_t value ) {
       op->offset = value;
       break;
     case FOB_BUF:
-      op->buf = (uint8_t*) value;
+      VRFY( 0, "FOB_BUF should never be set" );
+      // op->buf = (uint8_t*) value;
       break;
     case FOB_FD:
       op->fd  = (int32_t) value;

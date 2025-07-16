@@ -1044,6 +1044,7 @@ void* tx_worker( void* args ) {
       fob->set(token, FOB_OFFSET, offset);
       fob->set(token, FOB_SZ, dtn->block);
       fob->set(token, FOB_FD, fs_lcl.fd);
+      fob->flush( fob, token );
     }
 
     token = fob->submit( fob, &bytes_read, &offset );
