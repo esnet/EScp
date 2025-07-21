@@ -49,17 +49,18 @@ void* file_uringfetch( void* arg ) {
       struct posix_op* p = (struct posix_op*) ((uint64_t)fob->pvdr + (i*sizeof( struct posix_op)) );
       if (!p->buf) {
         DBG("Assign SQE: %zd (%zX)\n", (uint64_t) i, (uint64_t) sqe );
-        p->buf = (void*) sqe;
+        p->buf = iov[i-1].iov_base;
+        p->ptr2 = (void*) sqe;
         p->ptr = (void*) &iov[i-1];
         io_uring_sqe_set_data( sqe, (void*) i );
         break;
       }
     }
-    VRFY( i<=fob->QD, "file_uringfetch failed to acquire free IOV" );
+    VRFY( i<=fob->QD, "[%2d] file_uringfetch failed to acquire free IOV", fob->id );
   }
 
   {
-    DBG("Using SQE: %zd/%d\n", (uint64_t) sqe->user_data, fob->QD );
+    DBG("[%2d] Using SQE: %zd/%d\n", fob->id, (uint64_t) sqe->user_data, fob->QD );
     struct posix_op* p = (struct posix_op*) ((uint64_t)fob->pvdr +
                          ((uint64_t)sqe->user_data*sizeof( struct posix_op)) );
     fob->head++;
@@ -72,8 +73,10 @@ void file_uringflush( void* arg, void* token ) {
 
   struct file_object* fob = arg;
   struct posix_op* pop = token;
-  struct io_uring_sqe* sqe = (void*) pop->buf;
+  struct io_uring_sqe* sqe = (void*) pop->ptr2;
   struct uring_op* op = ((struct posix_op*) fob->pvdr)->ptr;
+
+  ((struct iovec*) (pop->ptr))->iov_len = pop->sz;
 
   if ( fob->io_flags  & O_WRONLY ) {
     io_uring_prep_writev( sqe,
@@ -89,7 +92,7 @@ void file_uringflush( void* arg, void* token ) {
                        );
   }
 
-  VRFY ( io_uring_submit(op->ring) >= 0, "io_uring_submit" );
+  VRFY ( io_uring_submit(op->ring) >= 0, "[%2d] io_uring_submit", fob->id );
 
 }
 
@@ -102,7 +105,7 @@ void* file_uringsubmit( void* arg, int32_t* sz, uint64_t* offset ) {
     struct io_uring_cqe *cqe;
 
     // match sqe to cqe, then return
-    VRFY( io_uring_wait_cqe(op->ring, &cqe) >= 0, "io_uring_wait_cqe" );
+    VRFY( io_uring_wait_cqe(op->ring, &cqe) >= 0, "[%2d] io_uring_wait_cqe", fob->id );
 
     uint64_t user_data = (uint64_t) io_uring_cqe_get_data( cqe );
 
@@ -112,6 +115,10 @@ void* file_uringsubmit( void* arg, int32_t* sz, uint64_t* offset ) {
     sz[0] = cqe->res;
     offset[0] = p->offset;
     p->ptr2 = cqe;
+
+    if (fob->do_hash) {
+      p->hash = file_hash( p->buf, *sz, *offset/fob->blk_sz );
+    }
 
     return p;
   }

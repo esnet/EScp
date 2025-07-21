@@ -157,7 +157,8 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       file_randrd( &mut (*args).session_id as *mut ::std::os::raw::c_ulong as *mut ::std::os::raw::c_void , 8 );
       session_id = (*args).session_id;
       start_port = (*args).active_port;
-      io_engine  = (*args).io_engine;
+      // XXX: io_engine  = (*args).io_engine;
+      io_engine  = 1;
       nodirect  = (*args).nodirect;
       do_hash = (*args).do_hash;
       thread_count = (*args).thread_count;
@@ -586,7 +587,7 @@ fn handle_msg_from_receiver(
     if crc != rx_crc {
       // Should always be able to test CRC because if CRC not enabled
       // entry should be zero
-      error!("CRC mismatch on {} {:#010X}!={:#010X}", rx_fino, crc, rx_crc);
+      error!("CRC mismatch on {} (computed) {:#010X}!={:#010X} (sent)", rx_fino, crc, rx_crc);
       eprintln!("\n\rCRC mismatch on {} {:#010X}!={:#010X}\n", rx_fino, crc, rx_crc);
       return -1i64;
     }
