@@ -36,19 +36,24 @@ void* file_uringfetch( void* arg ) {
 
   struct io_uring_sqe* sqe;
 
-  if ( (fob->head - fob->tail) >= fob->QD )
+  if ( (fob->head - fob->tail) >= fob->QD ) {
+    DBV("[%2d] file_uringfetch: fob->head (%zd) > fob->tail (%zd) + fob->QD (%d)",
+       fob->id, fob->head, fob->tail, fob->QD );
     return 0;
+  }
 
   sqe = io_uring_get_sqe( op->ring );
-  if (! sqe )
+  if (! sqe ) {
+    DBV("[%2d] file_uringfetch: !sqe", fob->id);
     return 0;
+  }
 
   if (!sqe->user_data) {
     uint64_t i;
     for (i=1; i<=fob->QD; i++) {
       struct posix_op* p = (struct posix_op*) ((uint64_t)fob->pvdr + (i*sizeof( struct posix_op)) );
       if (!p->buf) {
-        DBG("Assign SQE: %zd (%zX)\n", (uint64_t) i, (uint64_t) sqe );
+        DBV("Assign SQE: %zd (%zX/%zX)", (uint64_t) i, (uint64_t) sqe, (uint64_t) iov[i-1].iov_base );
         p->buf = iov[i-1].iov_base;
         p->ptr2 = (void*) sqe;
         p->ptr = (void*) &iov[i-1];
@@ -60,15 +65,16 @@ void* file_uringfetch( void* arg ) {
   }
 
   {
-    DBG("[%2d] Using SQE: %zd/%d\n", fob->id, (uint64_t) sqe->user_data, fob->QD );
     struct posix_op* p = (struct posix_op*) ((uint64_t)fob->pvdr +
                          ((uint64_t)sqe->user_data*sizeof( struct posix_op)) );
+
+    p->ptr2 = (void*) sqe;
+    DBV("[%2d] Using SQE: %zd/%d %zX\n", fob->id, (uint64_t) sqe->user_data, fob->QD, (uint64_t) p->buf );
     fob->head++;
     return p;
   }
 }
 
-// mojibake: should take sqe as argument...
 void file_uringflush( void* arg, void* token ) {
 
   struct file_object* fob = arg;
@@ -92,6 +98,9 @@ void file_uringflush( void* arg, void* token ) {
                        );
   }
 
+  DBV("[%2d] file_uringflush: %zd/%zX (%zX)\n",
+      fob->id, (uint64_t) sqe->user_data, (uint64_t) pop->ptr, (uint64_t) sqe);
+
   VRFY ( io_uring_submit(op->ring) >= 0, "[%2d] io_uring_submit", fob->id );
 
 }
@@ -100,15 +109,16 @@ void* file_uringsubmit( void* arg, int32_t* sz, uint64_t* offset ) {
   struct file_object* fob = arg;
   struct posix_op* pop = fob->pvdr;
   struct uring_op* op = pop->ptr;
+  struct io_uring_cqe cqe_copy;
 
   if ( fob->head > fob->tail ) {
     struct io_uring_cqe *cqe;
 
     // match sqe to cqe, then return
-    VRFY( io_uring_wait_cqe(op->ring, &cqe) >= 0, "[%2d] io_uring_wait_cqe", fob->id );
+    VRFY( io_uring_wait_cqe(op->ring, &cqe) == 0, "[%2d] io_uring_wait_cqe", fob->id );
+    memcpy( &cqe_copy, cqe, sizeof( cqe_copy ) );
 
-    uint64_t user_data = (uint64_t) io_uring_cqe_get_data( cqe );
-
+    uint64_t user_data = io_uring_cqe_get_data64( cqe );
     struct posix_op* p = (struct posix_op*) ((uint64_t)fob->pvdr +
                          (user_data*sizeof(struct posix_op)) );
 
@@ -178,7 +188,7 @@ int file_uringinit( struct file_object* fob ) {
     iov[i].iov_base = mmap (  NULL, fob->blk_sz,
       PROT_READ|PROT_WRITE, MAP_SHARED|MAP_ANONYMOUS, -1, 0 );
     VRFY(iov->iov_base, "mmap fail, QD=%d", i);
-
+    DBV("[%2d] Allocated: %zX to %d\n", fob->id, (uint64_t) iov->iov_base, i+1);
     iov[i].iov_len = fob->blk_sz;
   }
 
