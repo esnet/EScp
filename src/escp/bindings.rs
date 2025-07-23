@@ -862,7 +862,8 @@ pub struct dtn_args {
     pub disable_io: i64,
     pub pacing: u64,
     pub io_engine_name: *mut ::core::ffi::c_char,
-    pub io_engine: ::core::ffi::c_int,
+    pub io_engine_tx: ::core::ffi::c_int,
+    pub io_engine_rx: ::core::ffi::c_int,
     pub window: ::core::ffi::c_uint,
     pub session_id: u64,
     pub crypto_key: [u8; 16usize],
@@ -871,7 +872,7 @@ pub struct dtn_args {
     pub cpumask_bytes: [u8; 32usize],
     pub nodemask: u64,
     pub sock_store_count: ::core::ffi::c_int,
-    pub __bindgen_padding_0: [u8; 44usize],
+    pub __bindgen_padding_0: [u8; 36usize],
     pub sock_store: [sockaddr_storage; 32usize],
     pub fob: *mut file_object,
     pub __bindgen_padding_1: [u32; 14usize],
@@ -926,22 +927,24 @@ const _: () = {
     ["Offset of field: dtn_args::pacing"][::core::mem::offset_of!(dtn_args, pacing) - 48usize];
     ["Offset of field: dtn_args::io_engine_name"]
         [::core::mem::offset_of!(dtn_args, io_engine_name) - 56usize];
-    ["Offset of field: dtn_args::io_engine"]
-        [::core::mem::offset_of!(dtn_args, io_engine) - 64usize];
-    ["Offset of field: dtn_args::window"][::core::mem::offset_of!(dtn_args, window) - 68usize];
+    ["Offset of field: dtn_args::io_engine_tx"]
+        [::core::mem::offset_of!(dtn_args, io_engine_tx) - 64usize];
+    ["Offset of field: dtn_args::io_engine_rx"]
+        [::core::mem::offset_of!(dtn_args, io_engine_rx) - 68usize];
+    ["Offset of field: dtn_args::window"][::core::mem::offset_of!(dtn_args, window) - 72usize];
     ["Offset of field: dtn_args::session_id"]
-        [::core::mem::offset_of!(dtn_args, session_id) - 72usize];
+        [::core::mem::offset_of!(dtn_args, session_id) - 80usize];
     ["Offset of field: dtn_args::crypto_key"]
-        [::core::mem::offset_of!(dtn_args, crypto_key) - 80usize];
+        [::core::mem::offset_of!(dtn_args, crypto_key) - 88usize];
     ["Offset of field: dtn_args::do_affinity"]
-        [::core::mem::offset_of!(dtn_args, do_affinity) - 96usize];
+        [::core::mem::offset_of!(dtn_args, do_affinity) - 104usize];
     ["Offset of field: dtn_args::cpumask_len"]
-        [::core::mem::offset_of!(dtn_args, cpumask_len) - 100usize];
+        [::core::mem::offset_of!(dtn_args, cpumask_len) - 108usize];
     ["Offset of field: dtn_args::cpumask_bytes"]
-        [::core::mem::offset_of!(dtn_args, cpumask_bytes) - 104usize];
-    ["Offset of field: dtn_args::nodemask"][::core::mem::offset_of!(dtn_args, nodemask) - 136usize];
+        [::core::mem::offset_of!(dtn_args, cpumask_bytes) - 112usize];
+    ["Offset of field: dtn_args::nodemask"][::core::mem::offset_of!(dtn_args, nodemask) - 144usize];
     ["Offset of field: dtn_args::sock_store_count"]
-        [::core::mem::offset_of!(dtn_args, sock_store_count) - 144usize];
+        [::core::mem::offset_of!(dtn_args, sock_store_count) - 152usize];
     ["Offset of field: dtn_args::sock_store"]
         [::core::mem::offset_of!(dtn_args, sock_store) - 192usize];
     ["Offset of field: dtn_args::fob"][::core::mem::offset_of!(dtn_args, fob) - 4288usize];

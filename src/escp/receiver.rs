@@ -110,7 +110,7 @@ fn initialize_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) 
 
   if helo.io_engine() > 0 {
     unsafe {
-      (*args).io_engine = helo.io_engine();
+      (*args).io_engine_tx = helo.io_engine();
       (*args).io_engine_name = "RCVER".as_ptr() as *mut i8; // five letter
                                                             // engine name
     }

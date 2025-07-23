@@ -22,6 +22,9 @@ execute_process(
 set(CMAKE_C_FLAGS_RELEASE "-g -march=sandybridge -pthread -O -fPIC")
 set(CMAKE_C_FLAGS_DEBUG "-g -march=native -pthread -O -fPIC")
 
+#set(CMAKE_C_FLAGS_RELEASE "-g -march=sandybridge -pthread -fPIC")
+#set(CMAKE_C_FLAGS_DEBUG "-g -march=native -pthread -fPIC")
+
 add_definitions("-Wall -Wno-unused-result -Wno-stringop-truncation")
 
 #add_compile_options(-fsanitize=address)

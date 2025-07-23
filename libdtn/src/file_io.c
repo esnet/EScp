@@ -433,7 +433,7 @@ struct file_object* file_memoryinit( void* arg, int id ) {
 
   memset( fob, 0, sizeof(struct file_object) );
 
-  f.io_type = dtn->io_engine;
+  f.io_type = dtn->io_engine_tx;
   f.QD          = dtn->QD;
   f.blk_sz      = dtn->block;
   f.io_flags    = dtn->flags;

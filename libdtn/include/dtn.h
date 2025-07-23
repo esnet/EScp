@@ -158,7 +158,8 @@ struct dtn_args {
   uint64_t pacing;
 
   char* io_engine_name;
-  int io_engine;
+  int io_engine_tx;
+  int io_engine_rx;
   unsigned int window;
 
   uint64_t session_id;

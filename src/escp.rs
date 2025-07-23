@@ -407,7 +407,9 @@ pub fn start_escp() {
     unsafe {
 
       let io_engine = flags.io_engine.to_lowercase();
-      (*args).io_engine = io_engine_names.get(&io_engine.as_str()).cloned().unwrap_or(-1);
+      (*args).io_engine_tx = io_engine_names.get(&io_engine.split("::").next().unwrap()).cloned().unwrap_or(-1);
+      (*args).io_engine_rx = io_engine_names.get(&io_engine.rsplit("::").next().unwrap()).cloned().unwrap_or(-1);
+      // (*args).io_engine = io_engine_names.get(&io_engine.as_str())   .cloned().unwrap_or(-1)
       (*args).io_engine_name = io_engine.as_ptr() as *mut i8;
 
       (*args).block = int_from_human(flags.block_sz.to_string()) as i32;
@@ -417,8 +419,14 @@ pub fn start_escp() {
         (*args).block = 256*1024;
       }
 
-      if (*args).io_engine  == -1 {
-        eprintln!("io_engine='{}' not in compiled io_engines {:?}",
+      if (*args).io_engine_tx  == -1 {
+        eprintln!("io_engine_tx='{}' not in compiled io_engines {:?}",
+                  io_engine, io_engine_names.keys());
+        process::exit(0);
+      }
+
+      if (*args).io_engine_rx  == -1 {
+        eprintln!("io_engine_tx='{}' not in compiled io_engines {:?}",
                   io_engine, io_engine_names.keys());
         process::exit(0);
       }

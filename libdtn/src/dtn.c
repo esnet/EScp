@@ -927,6 +927,98 @@ void* rx_worker( void* arg ) {
   return 0;
 }
 
+int submit_work(
+  struct file_object* fob, void* token, struct network_obj* knob,
+  struct file_stat_type* fs_lcl, struct dtn_args* dtn, struct file_stat_type** fs)
+{
+
+  struct file_info fi = {0};
+  uint64_t offset;
+  int32_t bytes_read;
+
+  token = fob->submit( fob, &bytes_read, &offset );
+
+  if (!token) {
+    DBG("[%2d] fob->submit resulted in an emptry result fn=%ld", fob->id, fs_lcl->file_no);
+    return -1;
+  }
+
+  uint64_t compressed = (uint64_t) fob->get( token, FOB_COMPRESSED );
+  uint8_t* buf = fob->get( token, FOB_BUF );
+
+  if (bytes_read <= 0) {
+    if (bytes_read == 0 /* EOF */ ) {
+
+      int wipe = 0;
+
+      fob->complete(fob, token);
+      while ( submit_work(fob, token, knob, fs_lcl, dtn, fs)==0 );
+
+      if (!*fs)
+        return 0;
+
+      if (file_iow_remove( *fs, fob->id ) == (1UL << 30)) {
+        fob->close( fob );
+        DBG("[%2d] Worker finished with fn=%ld closing fd=%d",
+            fob->id, fs_lcl->file_no, fs_lcl->fd);
+
+        memcpy_avx( fs_lcl, *fs );
+        fc_push(fs_lcl->file_no, fs_lcl->bytes_total, fs_lcl->block_total, fs_lcl->crc);
+        wipe ++;
+      } else {
+        DBG("[%2d] Worker finished with fn=%ld", fob->id, fs_lcl->file_no);
+      }
+
+
+      if (wipe) {
+        DBG("[%2d] Wiping fn=%ld slot=%d %08X", fob->id, fs_lcl->file_no, fs_lcl->position, fs_lcl->poison );
+        memset_avx((void*) *fs);
+      }
+
+      *fs = 0;
+      return 0;
+    }
+
+    VRFY( bytes_read >= 0, "[%2d] Read Error fd=%d fn=%ld offset=%ld %lX/%lX",
+      fob->id, fs_lcl->fd, fs_lcl->file_no, offset, fs_lcl->state, fs[0]->state );
+
+    return -1; // Not reached
+  }
+
+  int bytes_sent = bytes_read;
+  fi.sz = bytes_read;
+
+  if (compressed) {
+     fi.sz = compressed | (1<<31);
+     bytes_sent = compressed;
+  }
+
+  fi.file_no = fs_lcl->file_no;
+  fi.offset = offset;
+
+  if ( dtn->do_hash ) {
+    atomic_fetch_xor( &fs[0]->crc, fob->get( token, FOB_HASH ) );
+  }
+
+  DBG("[%2d] FI_HDR sent with fn=%ld offset=%lX, bytes_read=%d, bytes_sent=%d",
+      fob->id, fs_lcl->file_no, offset, bytes_read, bytes_sent);
+
+  VRFY( network_send(knob, &fi, 20, 20+bytes_sent, true, FIHDR_SHORT) > 0, );
+  VRFY( network_send(knob, buf, bytes_sent, 20+bytes_sent, false, FIHDR_SHORT) > 0, );
+
+  atomic_fetch_add( &fs[0]->bytes_total, bytes_read );
+  atomic_fetch_add( &fs[0]->block_total, 1 );
+  atomic_fetch_add( &dtn->bytes_io,   bytes_read );
+
+  fob->complete(fob, token);
+
+  DBG("[%2d] Finish block crc=%08x fn=%zd offset=%zx sz=%d sent=%d",
+      fob->id, fs[0]->crc, fs_lcl->file_no, offset, bytes_read, bytes_sent);
+
+  return 0;
+}
+
+
 void* tx_worker( void* args ) {
 
   struct tx_args* arg = (struct tx_args*) args;
@@ -935,7 +1027,6 @@ void* tx_worker( void* args ) {
   struct dtn_args* dtn = arg->dtn;
   int sock=0, id; // , file_no=-1;
   uint64_t offset;
-  int32_t bytes_read;
   struct file_stat_type fs_lcl;
   struct file_stat_type* fs=0;
 
@@ -1031,10 +1122,8 @@ void* tx_worker( void* args ) {
     }
 
     while ( (token=fob->fetch(fob)) ) {
-      // We get as many I/O blocks as we can, and populate them
-      // with operations. The assumption is that the file is large
-      // and we will be able to read all of these. With small files
-      // the extra I/O operations are superfluous.
+      // We try to fill the I/O queue with operations. Obviously if this
+      // is a small file, it will result in a lot of EOF's.
 
       offset = atomic_fetch_add( &fs->block_offset, 1 );
       offset *= dtn->block;
@@ -1047,86 +1136,7 @@ void* tx_worker( void* args ) {
       fob->flush( fob, token );
     }
 
-    token = fob->submit( fob, &bytes_read, &offset );
-    if (!token) {
-      NFO("[%2d] fob->submit resulted in an emptry result fn=%ld", id, fs_lcl.file_no);
-      continue;
-    }
-
-    if (bytes_read <= 0) {
-      if (bytes_read == 0 /* EOF */ ) {
-
-        int wipe = 0;
-
-        if (file_iow_remove( fs, id ) == (1UL << 30)) {
-          fob->close( fob );
-          DBG("[%2d] Worker finished with fn=%ld closing fd=%d",
-              id, fs_lcl.file_no, fs_lcl.fd);
-
-          memcpy_avx( &fs_lcl, fs );
-          fc_push(fs_lcl.file_no, fs_lcl.bytes_total, fs_lcl.block_total, fs_lcl.crc);
-          wipe ++;
-        } else {
-          DBG("[%2d] Worker finished with fn=%ld", id, fs_lcl.file_no);
-        }
-
-        while ( (token=fob->submit( fob, &bytes_read, &offset )) ) {
-          // Drain I/O queue of stale requests
-          fob->complete(fob, token);
-        };
-
-        if (wipe) {
-          DBG("[%2d] Wiping fn=%ld slot=%d %08X", id, fs_lcl.file_no, fs_lcl.position, fs_lcl.poison );
-          memset_avx((void*) fs);
-        }
-
-        fs = 0;
-        continue;
-      }
-
-      VRFY( bytes_read >= 0, "[%2d] Read Error fd=%d fn=%ld offset=%ld %lX/%lX",
-        id, fs_lcl.fd, fs_lcl.file_no, offset, fs_lcl.state, fs->state );
-
-      return (void*) -1; // Not reached
-    }
-
-    {
-      uint8_t* buf = fob->get( token, FOB_BUF );
-      struct file_info fi = {0};
-      int bytes_sent = bytes_read;
-
-      uint64_t compressed = (uint64_t) fob->get( token, FOB_COMPRESSED );
-
-      fi.sz = bytes_read;
-
-      if (compressed) {
-         fi.sz = compressed | (1<<31);
-         bytes_sent = compressed;
-      }
-
-      fi.file_no = fs_lcl.file_no;
-      fi.offset = offset;
-
-      if ( dtn->do_hash ) {
-        atomic_fetch_xor( &fs->crc, fob->get( token, FOB_HASH ) );
-      }
-
-      DBG("[%2d] FI_HDR sent with fn=%ld offset=%lX, bytes_read=%d, bytes_sent=%d",
-          id, fs_lcl.file_no, offset, bytes_read, bytes_sent);
-
-      VRFY( network_send(knob, &fi, 20, 20+bytes_sent, true, FIHDR_SHORT) > 0, );
-      VRFY( network_send(knob, buf, bytes_sent, 20+bytes_sent, false, FIHDR_SHORT) > 0, );
-
-      atomic_fetch_add( &fs->bytes_total, bytes_read );
-      atomic_fetch_add( &fs->block_total, 1 );
-      atomic_fetch_add( &dtn->bytes_io,   bytes_read );
-
-      fob->complete(fob, token);
-
-      DBG("[%2d] Finish block crc=%08x fn=%zd offset=%zx sz=%d sent=%d",
-          id, fs->crc, fs_lcl.file_no, offset, bytes_read, bytes_sent);
-    }
-
+    submit_work(fob, token, knob, &fs_lcl, dtn, &fs);
   }
 
   {

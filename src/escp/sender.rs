@@ -158,7 +158,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       session_id = (*args).session_id;
       start_port = (*args).active_port;
       // XXX: io_engine  = (*args).io_engine;
-      io_engine  = 1;
+      io_engine  = (*args).io_engine_rx;
       nodirect  = (*args).nodirect;
       do_hash = (*args).do_hash;
       thread_count = (*args).thread_count;

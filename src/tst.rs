@@ -63,7 +63,7 @@ pub fn iterate_dir( dir_root: String ) -> bool {
   unsafe {
     (*args).recursive = true;
     (*args).io_engine_name = "posix".as_ptr() as *mut i8;
-    (*args).io_engine = 1;
+    (*args).io_engine_tx = 1;
     (*args).QD = 1;
     (*args).thread_count = 1;
     (*args).block = 1024*1024;
