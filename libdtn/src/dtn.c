@@ -517,7 +517,6 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
       VRFY( zstd_err == 0, "Compression error: %s", ZSTD_getErrorName(zstd_err) );
 
       fi->sz = res;
-
       knob->bytes_disk +=  res;
 
     } else {
@@ -527,8 +526,8 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
 
       DBG("[%2d] Read of %zd sz", knob->id, block_sz);
       if ((rs=read_fixed(knob->socket, buffer, block_sz)) != block_sz) {
-        VRFY( 0, "Bad data from socket" );
         DBG("[%2d] network_recv: bad data from socket (rs=%d)!=(block_sz=%zd) se=%s s=%d/0x%016zX", knob->id, rs, block_sz, strerror(errno), knob->socket, (uint64_t) buffer);
+        VRFY( 0, "Bad data from socket" );
         return 0;
       }
 

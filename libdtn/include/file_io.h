@@ -142,6 +142,7 @@ void file_posixflush( void* arg, void* token );
 void* file_posixpreserve(int32_t fd, uint32_t mode, uint32_t uid, uint32_t gid, int64_t atim_sec, int64_t atim_nano, int64_t mtim_sec, int64_t mtim_nano);
 int file_posixtruncate( int fd, int64_t sz );
 int file_posixclose(void* arg);
+void* file_posixcomplete( void* arg, void* arg2 );
 
 int file_uringinit( struct file_object* fob );
 int file_dummyinit( struct file_object* fob );
@@ -151,7 +152,6 @@ void* file_dummypreserve( int32_t fd, uint32_t mode, uint32_t uid,
   uint32_t gid, int64_t atim_sec, int64_t atim_nano, int64_t mtim_sec,
   int64_t mtim_nano );
 int file_dummytruncate( int fd, int64_t size );
-void* file_dummycomplete( void* arg, void* arg2 );
 
 
 int32_t file_hash( void* block, int sz, int seed );

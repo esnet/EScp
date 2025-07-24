@@ -20,6 +20,7 @@ static struct stat dummy_sb[THREAD_COUNT] __attribute__ ((aligned(64))) = {0};
 
 
 int file_dummyopen( const char* filename, int flags, ... ) {
+  DBG("file_dummyopen");
   int fd;
   struct stat sb;
 
@@ -43,15 +44,18 @@ int file_dummyopen( const char* filename, int flags, ... ) {
 }
 
 int file_dummystat( int fd, struct stat *sbuf ) {
+  DBG("file_dummystat");
   memcpy ( sbuf, &dummy_sb[fd], sizeof (struct stat) );
   return 0;
 }
 
 int file_dummytruncate( int fd, int64_t size) {
+  DBG("file_dummytruncate");
   return 0;
 }
 
 int file_dummyclose( void* ptr) {
+  DBG("file_dummyclose");
   VRFY( pthread_mutex_lock(&dummy_lock) == 0, );
   --dummy_fd_head;
   pthread_mutex_unlock(&dummy_lock);
@@ -62,6 +66,7 @@ int file_dummyclose( void* ptr) {
 
 void* file_dummysubmit( void* arg, int32_t* sz, uint64_t* offset ) {
 
+  DBG("file_dummysubmit");
   struct file_object* fob = arg;
   struct posix_op* op = (struct posix_op*) fob->pvdr;
 
@@ -115,11 +120,8 @@ void* file_dummysubmit( void* arg, int32_t* sz, uint64_t* offset ) {
   return (void*) op;
 }
 
-void* file_dummycomplete( void* arg, void* arg2 ) {
-  return 0;
-}
-
 int file_dummyclosefd( int size) {
+  DBG("file_dummyclosefd");
   return 0;
 }
 
@@ -134,6 +136,7 @@ int file_dummyinit( struct file_object* fob ) {
 
   op = malloc( sizeof(struct posix_op) );
   VRFY( op, "bad malloc" );
+  memset( op, 0, sizeof(struct posix_op) );
 
   op->buf = mmap (  NULL, fob->blk_sz, PROT_READ|PROT_WRITE,
                          MAP_SHARED|MAP_ANONYMOUS, -1, 0 );
@@ -141,11 +144,12 @@ int file_dummyinit( struct file_object* fob ) {
 
   fob->pvdr = op;
   fob->QD   = 1;
+  DBG("[%2d] file_dummyinit with buf=%016zX", fob->id, (uint64_t) op->buf);
 
   fob->submit   = file_dummysubmit;
   fob->flush    = file_posixflush;
   fob->fetch    = file_posixfetch;
-  fob->complete = file_dummycomplete;
+  fob->complete = file_posixcomplete;
   fob->get      = file_posixget;
   fob->set      = file_posixset;
 
@@ -154,7 +158,7 @@ int file_dummyinit( struct file_object* fob ) {
   fob->fstat    = file_dummystat;
   fob->truncate = file_dummytruncate;
 
-  fob->close_fd = file_dummyclosefd;
+  fob->close_fd = close;
   fob->opendir = opendir;
   fob->closedir = closedir;
   fob->readdir  = readdir;

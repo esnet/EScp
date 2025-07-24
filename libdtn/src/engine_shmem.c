@@ -135,7 +135,7 @@ int file_shmeminit( struct file_object* fob ) {
   fob->set      = file_posixset;
 
   fob->submit   = file_shmemsubmit;
-  fob->complete = file_dummycomplete;
+  fob->complete = file_posixcomplete;
   fob->open     = file_shmemopen;
   fob->close    = file_shmemclose;
 
