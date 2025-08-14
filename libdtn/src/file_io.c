@@ -413,6 +413,11 @@ int32_t file_hash( void* block, int sz, int seed ) {
   hash = xorshift64s(&hash);
   int i=0;
 
+  /*
+  DBG("file_hash block=%016zX, sz=%d, seed=%08X",
+      (uint64_t) block, sz, seed );
+  */
+
   if (sz%4) {
     for ( i=0; i < (4-(sz%4)); i++ ) {
       ((uint8_t*)block_ptr)[sz+i] = 0;

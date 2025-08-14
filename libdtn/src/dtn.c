@@ -558,10 +558,12 @@ int64_t network_recv( struct network_obj* knob, uint16_t* subheader ) {
     }
 
     VRFY( memcmp(computed_hash, actual_hash, 16) == 0,
-          "[%2d] Bad auth tag hdr=%d %02X%02X%02X%02X!=%02X%02X%02X%02X",
+          "[%2d] Bad auth tag hdr=%d %02X%02X%02X%02X!=%02X%02X%02X%02X sz=%zd, iv=%016zX %016zx",
           knob->id, *subheader,
           actual_hash[0], actual_hash[1], actual_hash[2], actual_hash[3],
-          computed_hash[0], computed_hash[1], computed_hash[2], computed_hash[3]
+          computed_hash[0], computed_hash[1], computed_hash[2], computed_hash[3],
+          bytes_read, ((uint64_t*)knob->iv)[0],
+          ((uint64_t*)knob->iv)[1]
         );
     bytes_read += 16;
   }
@@ -587,6 +589,7 @@ int64_t network_send (
   static __thread bool did_header=0;
 
   if (knob->do_crypto) {
+
     if ( !did_header ) {
 
       if (knob->dtn && knob->dtn->do_server) {
@@ -621,7 +624,18 @@ int64_t network_send (
       }
 
       isal_aes_gcm_init_128( &knob->gkey, &knob->gctx, knob->iv, (uint8_t*) &hdr, 8 );
+
     }
+    /*
+
+      DBG("[%2d] network_send (hdr): sz=%d total=%d partial=%d iv=%016zX-%016zX", knob->id, sz, total,
+        (int) partial,
+        ((uint64_t*) knob->iv)[0],
+        ((uint64_t*) knob->iv)[1] );
+    } else {
+      DBG("[%2d] network_send (continue): sz=%d total=%d partial=%d", knob->id, sz, total, (int) partial);
+    }
+    */
 
     isal_aes_gcm_enc_128_update( &knob->gkey, &knob->gctx,
       buf, buf, sz );
@@ -647,6 +661,8 @@ int64_t network_send (
     }
 
   } else {
+    DBG("[%2d] network_send (UNENCRYPTED): sz=%d total=%d partial=%d",
+        knob->id, sz, total, (int) partial);
     if (!did_header) {
       sent =  write_fixed( knob->socket, &subheader, 2 );
       did_header = true;
@@ -934,6 +950,8 @@ int submit_work(
   struct file_info fi = {0};
   uint64_t offset;
   int32_t bytes_read;
+
+  DBG("[%2d] Start block fn=%zd", fob->id, fs_lcl->file_no);
 
   token = fob->submit( fob, &bytes_read, &offset );
 

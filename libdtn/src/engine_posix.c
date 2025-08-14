@@ -110,7 +110,7 @@ void* file_posixsubmit( void* arg, int32_t* sz, uint64_t* offset ) {
       if (*sz > 0) {
 
         if (fob->do_hash)
-          op->hash = file_hash(op->buf, *sz, *offset/fob->blk_sz);
+          op->hash = file_hash(op->buf, *sz, op->offset/fob->blk_sz);
 
         if (fob->compression) {
 
@@ -141,9 +141,10 @@ void* file_posixsubmit( void* arg, int32_t* sz, uint64_t* offset ) {
       }
     }
 
-    DBG( "[%2d] %s op fd=%d sz=%zd, offset=0x%zX %ld:%ld %s=%d",
+    DBG( "[%2d] %s op fd=%d sz=%d/%zd, offset=0x%zX %ld:%ld %s=%d",
       fob->id, fob->io_flags & O_WRONLY ? "write":"read",
-      op->fd, fob->io_flags & O_WRONLY ? op->sz: fob->blk_sz,
+      op->fd, *sz,
+      fob->io_flags & O_WRONLY ? op->sz: fob->blk_sz,
       op->offset, fob->tail, fob->head,
       fob->io_flags & O_WRONLY ? "do_write":"compress",
       fob->io_flags & O_WRONLY ? do_write:(int) csz );
