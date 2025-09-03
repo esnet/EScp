@@ -157,14 +157,11 @@ struct network_obj {
   int16_t id;
   int32_t socket;
   uint32_t block;
+  uint32_t pad;
 
   uint64_t bytes_network;
   uint64_t bytes_disk;
   uint64_t bytes_compressed;
-
-  uint64_t timestamp;      // Set by RX when message mostly received.
-                           // I.e. after decrypting header but before
-                           // full decryption/decompression
 
   struct dtn_args* dtn;
 

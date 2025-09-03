@@ -72,19 +72,39 @@ ExternalProject_Add(isa-l_crypto_project
   DOWNLOAD_EXTRACT_TIMESTAMP true
 )
 
+
 add_library(isal STATIC IMPORTED)
 set_property(TARGET isal PROPERTY IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/isal/lib/libisal_crypto.a)
 add_dependencies(isal isa-l_crypto_project)
 
+ExternalProject_Add(ck_project
+  URL https://github.com/concurrencykit/ck/archive/refs/tags/0.7.2.zip
+  URL_HASH SHA256=b558c9f92d8ee8c115ce41dc1f6e4d08f0ec3c38401a3aa3f75017a0383eccfc
+  CONFIGURE_COMMAND ./configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/ck
+  BUILD_COMMAND     make -j 24
+  INSTALL_COMMAND   make install
+  BUILD_BYPRODUCTS  libck.a
+  BUILD_IN_SOURCE   1
+  DOWNLOAD_EXTRACT_TIMESTAMP true
+)
+
+# Create link_libraries.txt for RUST application
 set(OUTPUT_FILE "${CMAKE_CURRENT_BINARY_DIR}/link_libraries.txt")
 file(WRITE "${OUTPUT_FILE}" "${CMAKE_CURRENT_BINARY_DIR}/libdtn.a\n")
 file(APPEND "${OUTPUT_FILE}" "${CMAKE_CURRENT_BINARY_DIR}/isal/lib/libisal_crypto.a\n")
 file(APPEND "${OUTPUT_FILE}" "${CMAKE_CURRENT_BINARY_DIR}/zstd/lib/libzstd.a\n")
+file(APPEND "${OUTPUT_FILE}" "${CMAKE_CURRENT_BINARY_DIR}/ck/lib/libck.a\n")
 
-# Build DTN
+# Build test
+include_directories(include ${CMAKE_CURRENT_BINARY_DIR}/ck/include)
+add_executable(ck_test test/ck.c)
+add_dependencies(ck_test ck_project)
 
+
+# Build libdtn.a
 include_directories(include ${CMAKE_CURRENT_BINARY_DIR}/isal/include)
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/zstd/include)
+include_directories(${CMAKE_CURRENT_BINARY_DIR}/ck/include)
 set(SOURCES src/file_io.c src/args.c
             src/engine_shmem.c
             src/engine_posix.c
@@ -104,6 +124,6 @@ endif()
 
 
 add_library(dtn STATIC ${SOURCES} src/dtn.c)
-add_dependencies(dtn isa-l_crypto_project zstd_project)
+add_dependencies(dtn isa-l_crypto_project zstd_project ck_project)
 
 target_compile_definitions(dtn PUBLIC ${ENGINES})
