@@ -103,28 +103,17 @@ int file_shmeminit( struct file_object* fob ) {
   memset( op, 0, sizeof(struct posix_op) );
 
 
-  if (fob->id == 0) {
-    write( STDERR_FILENO, "MOO", 3 );
-  }
+  uint64_t alloc_sz = 1024 + (fob->blk_sz*fob->QD);
+  VRFY( fob->compression == 0, "Compression not supported by SHM engine" );
+  char buf[512];
+  sprintf(buf, "/tmp.escp.test.%02d", fob->id);
+  int fd = shm_open(buf, O_CREAT|O_RDWR, 0666);
 
+  NFO("file_shmeminit: Initialized with '%s'", buf);
+  VRFY(fd != -1, "Error, shm_open in file_shmeminint");
 
-  int flags = MAP_SHARED|MAP_ANONYMOUS;
-
-  /*
-  if (fob->hugepages)
-    flags |= MAP_HUGETLB;
-  */
-
-  uint64_t alloc_sz = fob->blk_sz;
-
-  if (fob->compression)
-    // We could do alloc_sz + FIO_COMPRESS_MARGIN if receiver. *=2 is OK
-    // because fob->blk_sz always ?= 256K
-    alloc_sz *= 2;
-
-
-  op->buf = mmap( NULL, alloc_sz, PROT_READ|PROT_WRITE, flags, -1, 0 );
-  VRFY( op->buf != (void*) -1, "mmap (block_sz=%d)", fob->blk_sz );
+  op->buf = mmap( NULL, alloc_sz, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0 );
+  VRFY( op->buf != MAP_FAILED, "mmap (block_sz=%d)", fob->blk_sz );
 
   fob->pvdr = op;
   fob->QD   = 1;
