@@ -311,7 +311,6 @@ fn add_file( files_hash: &mut HashMap<u64, FileInformation>, files_add: &mut Vec
         }
 
         if fd < 1 {
-          debug!("In error loop");
           let err = io::Error::last_os_error();
           if err.kind() == std::io::ErrorKind::NotFound {
 

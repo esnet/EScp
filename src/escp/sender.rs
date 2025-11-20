@@ -13,6 +13,107 @@ static GLOBAL_FILEOPEN_ID:      AtomicU64 = AtomicU64::new(0);
 static GLOBAL_FILEOPEN_MASK:    AtomicU64 = AtomicU64::new(0);
 static GLOBAL_FINO: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+pub struct DestParts {
+  pub user: Option<String>,
+  pub host: Option<String>,
+  pub port: Option<u16>,
+  pub dest: Option<String>,
+  pub error: Option<String>,
+}
+
+pub fn parse_dest(input: &str) -> DestParts {
+  let mut host = None;
+  let mut user = None;
+  let mut port = None;
+  let mut dest = None;
+  let mut error = None;
+
+  if input.is_empty() {
+    error = Some("Nothing to parse".to_string());
+    return DestParts { user, host, port, dest, error, };
+  }
+
+  // Parse regular or URI style destination string
+  if let Some(mut remainder) = input.strip_prefix("scp://") {
+    // URI style: scp://[user@]host[:port][/path] ---
+
+    // Extract user if present.
+    if let Some((user_part, rest)) = remainder.rsplit_once('@') {
+      user = Some(user_part.to_string());
+      remainder = rest;
+    }
+
+    // Separate the host/port from the path. The path starts at the first '/'.
+    if let Some((host_port_part, path_part)) = remainder.split_once('/') {
+      dest = Some(path_part.to_string());
+      remainder = host_port_part;
+    }
+
+    // It could be a bracketed IPv6 address or a standard hostname.
+    if remainder.starts_with('[') {
+      // Handle bracketed IPv6
+      if let Some((host_part, port_part)) = remainder.rsplit_once(']') {
+        host = Some(host_part[1..].to_string()); // Remove leading '['
+        if !port_part.is_empty() {
+          match port_part
+            .strip_prefix(':')
+            .and_then(|s| s.parse::<u16>().ok())
+          {
+            Some(p) => port = Some(p),
+            None => {
+              error = Some("Parsing port".to_string());
+              return DestParts { user, host: None, port, dest, error };
+            }
+          }
+        }
+      } else {
+        error = Some("Bracketed IPv6 address is malformed".to_string());
+        return DestParts { user, host: None, port, dest, error };
+      }
+    } else {
+      // Not Bracketed IPv6
+      if let Some((host_part, port_part)) = remainder.rsplit_once(':') {
+        host = Some(host_part.to_string());
+        port = port_part.parse::<u16>().ok();
+      } else {
+        host = Some(remainder.to_string());
+      }
+    }
+
+    if host.as_deref() == Some("") {
+      error = Some("Host not specified. Expected [user@]host:[path]".to_string());
+      return DestParts { user, host: None, port, dest, error };
+    }
+
+    return DestParts { user, host, port, dest, error, };
+  } else {
+    // Parse [user@]host:[path]
+
+    if let Some((user_host_part, path)) = input.rsplit_once(':') {
+      // Within the user/host part, find the last '@' to separate them.
+      if let Some((user_part, host_part)) = user_host_part.rsplit_once('@') {
+        user = Some(user_part.to_string());
+        host = Some(host_part.to_string());
+      } else {
+        host = Some(user_host_part.to_string());
+      }
+
+      if host.as_deref() == Some("") {
+        error = Some("Host not specified. Expected [user@]host:[path]".to_string());
+        return DestParts { user, host: None, port, dest, error };
+      }
+
+      host = host.as_deref().map(|s| s.strip_prefix('[').and_then(|s| s.strip_suffix(']')).unwrap_or(s).to_string());
+      dest = Some(path.to_string());
+
+    } else {
+      error = Some("Host not specified. Expected [user@]host:[path]".to_string());
+      return DestParts { user, host: None, port, dest, error };
+    }
+  }
+  DestParts { user, host, port, dest, error }
+}
+
 
 fn convert_time( ti: f32, precise: bool ) -> String {
   let t = ti as i64;
@@ -40,22 +141,22 @@ fn convert_time( ti: f32, precise: bool ) -> String {
 
 pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   let args = safe_args.args;
-  let (host,dest_tmp,dest);
+  let (host,dest, user, ssh_port);
   let mut fc_hash: HashMap<u64, (i64, String)> = HashMap::new();
 
-  match flags.destination.rfind(':') {
-    Some (a) => { (host, dest_tmp) = flags.destination.split_at(a); },
-    _        => {
-      eprintln!("Expected ':' in argument '{}'; local copy not implemented",
-                flags.destination);
-      process::exit(-1);
-    }
+  let destParts = parse_dest( flags.destination.as_str() );
+  if destParts.host.is_none() {
+    eprintln!("Error: {:?}", destParts.error.unwrap_or("Undefined".to_string()));
+    process::exit(-1);
   }
 
-  (_, dest) = dest_tmp.split_at(1);
+  host = destParts.host.unwrap();
+  dest = destParts.dest;
+  ssh_port = destParts.port;
+  user = destParts.user;
 
   logging::initialize_logging(flags.log_file.as_str(), safe_args);
-  debug!("Transfer to host: {}, dest_files: {} ", host, dest );
+  debug!("Transfer to host: {}, dest_files: {:?} ", host, dest );
 
   let (mut sin, mut sout, mut serr, file, proc, stream, fd);
 
@@ -75,7 +176,13 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   } else {
     // SSH to remote host
 
-    let port_str = flags.ssh_port.to_string();
+    let user_str;
+    let mut port_str = flags.ssh_port.to_string();
+
+    if ssh_port.is_some() {
+      debug!("Using ssh_port={:?} from commandline", ssh_port);
+      port_str = format!("{}", ssh_port.unwrap());
+    }
     let mut ssh_args = vec![flags.ssh.as_str(), "-p", port_str.as_str()];
     let escp_cmd;
 
@@ -117,12 +224,17 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       ssh_args.push("-A");
     }
 
-    ssh_args.push(host);
+    if user.is_some() {
+      user_str = format!("{}@{}", user.unwrap(), host);
+      ssh_args.push(user_str.as_str());
+    } else {
+      ssh_args.push(host.as_str());
+    }
 
     if flags.verbose {
       escp_cmd = format!("RUST_BACKTRACE=1 {}", flags.escp);
       ssh_args.push(escp_cmd.as_str());
-      ssh_args.push("-v"); // This is redundant because we set in sess_init also
+      ssh_args.push("-v");
     } else {
       ssh_args.push(flags.escp.as_str());
     }
@@ -163,7 +275,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       do_hash = (*args).do_hash;
       thread_count = (*args).thread_count;
       block_sz = (*args).block;
-      bind_interface = Some(builder.create_string(host));
+      bind_interface = Some(builder.create_string(host.as_str()));
 
       if flags.ipv4 {
         (*args).ip_mode |= 1;
@@ -307,7 +419,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
   }
 
   let (bytes_total, files_total, mut files_ok) = iterate_files(
-    flags, safe_args, dest.to_string(),
+    flags, safe_args, dest.unwrap_or("".to_string()),
     &fi,
     &mut fc_hash,
     &fc_out, &fc2_out );
@@ -643,11 +755,9 @@ fn send_file_complete( fc2_out: &crossbeam_channel::Receiver<(u64, u64)> ) {
     builder.finish( bu, None );
     let buf = builder.finished_data();
 
-    let dst:[MaybeUninit<u8>; 49152] = [{ std::mem::MaybeUninit::uninit() }; 49152 ];
+    let dst:[MaybeUninit<u8>; 65536] = [{ std::mem::MaybeUninit::uninit() }; 65536];
     let mut dst = unsafe { std::mem::transmute::
-      <[std::mem::MaybeUninit<u8>; 49152], [u8; 49152]>(dst) };
-
-    // let dst = Vec::<u8>::with_capacity(49152);
+      <[std::mem::MaybeUninit<u8>; 65536], [u8; 65536]>(dst) };
 
     let res = zstd_safe::compress( &mut dst, buf, 3 );
 
