@@ -180,8 +180,9 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
     let mut port_str = flags.ssh_port.to_string();
 
     if ssh_port.is_some() {
-      debug!("Using ssh_port={:?} from commandline", ssh_port);
-      port_str = format!("{}", ssh_port.unwrap());
+      let  p = ssh_port.unwrap();
+      debug!("Using ssh_port={} from commandline", p);
+      port_str = format!("{}", p);
     }
     let mut ssh_args = vec![flags.ssh.as_str(), "-p", port_str.as_str()];
     let escp_cmd;
@@ -1123,7 +1124,7 @@ fn iterate_files ( flags: &EScp_Args,
         iterate_dir_worker(dir_o, fi, a)).unwrap();
     }
 
-    debug!("iterate_files:\n  source: {:#?} {:?}\n  dest: {:#?}", flags.source, flags.source.len(), dest_path);
+    debug!("iterate_files: source={:?} ({:?}) dest={:?}", flags.source, flags.source.len(), dest_path);
 
     for fi in &flags.source {
       if fi.is_empty() { continue; };
