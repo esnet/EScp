@@ -20,7 +20,7 @@ impl<'a> flatbuffers::Follow<'a> for ESCP_file_list<'a> {
   type Inner = ESCP_file_list<'a>;
   #[inline]
   unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: flatbuffers::Table::new(buf, loc) }
+    Self { _tab: unsafe { flatbuffers::Table::new(buf, loc) } }
   }
 }
 
@@ -35,8 +35,8 @@ impl<'a> ESCP_file_list<'a> {
     ESCP_file_list { _tab: table }
   }
   #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr>(
-    _fbb: &'mut_bldr mut flatbuffers::FlatBufferBuilder<'bldr>,
+  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: flatbuffers::Allocator + 'bldr>(
+    _fbb: &'mut_bldr mut flatbuffers::FlatBufferBuilder<'bldr, A>,
     args: &'args ESCP_file_listArgs<'args>
   ) -> flatbuffers::WIPOffset<ESCP_file_list<'bldr>> {
     let mut builder = ESCP_file_listBuilder::new(_fbb);
@@ -111,11 +111,11 @@ impl<'a> Default for ESCP_file_listArgs<'a> {
   }
 }
 
-pub struct ESCP_file_listBuilder<'a: 'b, 'b> {
-  fbb_: &'b mut flatbuffers::FlatBufferBuilder<'a>,
+pub struct ESCP_file_listBuilder<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> {
+  fbb_: &'b mut flatbuffers::FlatBufferBuilder<'a, A>,
   start_: flatbuffers::WIPOffset<flatbuffers::TableUnfinishedWIPOffset>,
 }
-impl<'a: 'b, 'b> ESCP_file_listBuilder<'a, 'b> {
+impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> ESCP_file_listBuilder<'a, 'b, A> {
   #[inline]
   pub fn add_root(&mut self, root: flatbuffers::WIPOffset<&'b  str>) {
     self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(ESCP_file_list::VT_ROOT, root);
@@ -133,7 +133,7 @@ impl<'a: 'b, 'b> ESCP_file_listBuilder<'a, 'b> {
     self.fbb_.push_slot::<bool>(ESCP_file_list::VT_FC_STAT, fc_stat, false);
   }
   #[inline]
-  pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a>) -> ESCP_file_listBuilder<'a, 'b> {
+  pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> ESCP_file_listBuilder<'a, 'b, A> {
     let start = _fbb.start_table();
     ESCP_file_listBuilder {
       fbb_: _fbb,
@@ -168,7 +168,7 @@ impl<'a> flatbuffers::Follow<'a> for File<'a> {
   type Inner = File<'a>;
   #[inline]
   unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: flatbuffers::Table::new(buf, loc) }
+    Self { _tab: unsafe { flatbuffers::Table::new(buf, loc) } }
   }
 }
 
@@ -194,8 +194,8 @@ impl<'a> File<'a> {
     File { _tab: table }
   }
   #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr>(
-    _fbb: &'mut_bldr mut flatbuffers::FlatBufferBuilder<'bldr>,
+  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: flatbuffers::Allocator + 'bldr>(
+    _fbb: &'mut_bldr mut flatbuffers::FlatBufferBuilder<'bldr, A>,
     args: &'args FileArgs<'args>
   ) -> flatbuffers::WIPOffset<File<'bldr>> {
     let mut builder = FileBuilder::new(_fbb);
@@ -391,11 +391,11 @@ impl<'a> Default for FileArgs<'a> {
   }
 }
 
-pub struct FileBuilder<'a: 'b, 'b> {
-  fbb_: &'b mut flatbuffers::FlatBufferBuilder<'a>,
+pub struct FileBuilder<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> {
+  fbb_: &'b mut flatbuffers::FlatBufferBuilder<'a, A>,
   start_: flatbuffers::WIPOffset<flatbuffers::TableUnfinishedWIPOffset>,
 }
-impl<'a: 'b, 'b> FileBuilder<'a, 'b> {
+impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> FileBuilder<'a, 'b, A> {
   #[inline]
   pub fn add_fino(&mut self, fino: u64) {
     self.fbb_.push_slot::<u64>(File::VT_FINO, fino, 0);
@@ -457,7 +457,7 @@ impl<'a: 'b, 'b> FileBuilder<'a, 'b> {
     self.fbb_.push_slot::<i32>(File::VT_ERRNO, errno, 0);
   }
   #[inline]
-  pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a>) -> FileBuilder<'a, 'b> {
+  pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> FileBuilder<'a, 'b, A> {
     let start = _fbb.start_table();
     FileBuilder {
       fbb_: _fbb,
@@ -543,23 +543,23 @@ pub fn size_prefixed_root_as_escp_file_list_with_opts<'b, 'o>(
 /// # Safety
 /// Callers must trust the given bytes do indeed contain a valid `ESCP_file_list`.
 pub unsafe fn root_as_escp_file_list_unchecked(buf: &[u8]) -> ESCP_file_list {
-  flatbuffers::root_unchecked::<ESCP_file_list>(buf)
+  unsafe { flatbuffers::root_unchecked::<ESCP_file_list>(buf) }
 }
 #[inline]
 /// Assumes, without verification, that a buffer of bytes contains a size prefixed ESCP_file_list and returns it.
 /// # Safety
 /// Callers must trust the given bytes do indeed contain a valid size prefixed `ESCP_file_list`.
 pub unsafe fn size_prefixed_root_as_escp_file_list_unchecked(buf: &[u8]) -> ESCP_file_list {
-  flatbuffers::size_prefixed_root_unchecked::<ESCP_file_list>(buf)
+  unsafe { flatbuffers::size_prefixed_root_unchecked::<ESCP_file_list>(buf) }
 }
 #[inline]
-pub fn finish_escp_file_list_buffer<'a, 'b>(
-    fbb: &'b mut flatbuffers::FlatBufferBuilder<'a>,
+pub fn finish_escp_file_list_buffer<'a, 'b, A: flatbuffers::Allocator + 'a>(
+    fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>,
     root: flatbuffers::WIPOffset<ESCP_file_list<'a>>) {
   fbb.finish(root, None);
 }
 
 #[inline]
-pub fn finish_size_prefixed_escp_file_list_buffer<'a, 'b>(fbb: &'b mut flatbuffers::FlatBufferBuilder<'a>, root: flatbuffers::WIPOffset<ESCP_file_list<'a>>) {
+pub fn finish_size_prefixed_escp_file_list_buffer<'a, 'b, A: flatbuffers::Allocator + 'a>(fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>, root: flatbuffers::WIPOffset<ESCP_file_list<'a>>) {
   fbb.finish_size_prefixed(root, None);
 }

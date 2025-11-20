@@ -17,9 +17,13 @@ use std::os::unix::net::{UnixStream,UnixListener};
 use std::os::fd::{AsRawFd, FromRawFd};
 use log::{{debug, info, error}};
 use std::mem::MaybeUninit;
-#[allow(dead_code, unused_imports, clippy::all)]
+
+
+#[allow(mismatched_lifetime_syntaxes)]
 mod file_spec;
+#[allow(mismatched_lifetime_syntaxes)]
 mod session_init;
+#[allow(mismatched_lifetime_syntaxes)]
 mod message;
 
 macro_rules! sess_init {

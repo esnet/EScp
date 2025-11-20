@@ -1009,6 +1009,8 @@ fn iterate_files ( flags: &EScp_Args,
         iterate_dir_worker(dir_o, fi, a)).unwrap();
     }
 
+    debug!("iterate_files:\n  source: {:#?} {:?}\n  dest: {:#?}", flags.source, flags.source.len(), dest_path);
+
     for fi in &flags.source {
       if fi.is_empty() { continue; };
 
@@ -1022,7 +1024,9 @@ fn iterate_files ( flags: &EScp_Args,
         }
       };
 
-      if flags.source.len() == 1 {
+      let recursive = unsafe { (*args.args).recursive };
+
+      if flags.source.len() == 1 && recursive==false {
         _ = files_in.send(
               (fi_path.parent().unwrap().to_path_buf(),
                std::path::Path::new(fi_path.file_name().unwrap().to_str().unwrap()).to_path_buf(),

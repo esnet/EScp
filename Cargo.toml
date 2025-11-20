@@ -25,7 +25,7 @@ clap = { version = "4.*", features = ["derive"] }
 regex = "1.*"
 libc = "0.*"
 subprocess = "0.*"
-flatbuffers = "23.*"
+flatbuffers = "25.*"
 log = "0.*"
 syslog = "7.*"
 shadow-rs = "0.*"

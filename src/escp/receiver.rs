@@ -183,8 +183,34 @@ fn initialize_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) 
   unsafe {
     dtn_waituntilready(  args as *mut ::std::os::raw::c_void );
   }
-  debug!("Finished Session Init bytes={:?}", buf.len() );
+  if log::log_enabled!(log::Level::Debug) {
+    print_session_init( helo );
+  }
 
+}
+
+fn print_session_init(session: session_init::Session_Init) {
+    debug!("Session_Init:");
+    debug!("  version_major: {}", session.version_major());
+    debug!("  version_minor: {}", session.version_minor());
+    debug!("  session_id: {}", session.session_id());
+    debug!("  do_hash: {}", session.do_hash());
+    debug!("  do_crypto: {}", session.do_crypto());
+    debug!("  do_verbose: {}", session.do_verbose());
+    debug!("  do_compression: {}", session.do_compression());
+    debug!("  do_preserve: {}", session.do_preserve());
+    debug!("  do_sparse: {}", session.do_sparse());
+    debug!("  no_direct: {}", session.no_direct());
+    debug!("  is_error: {}", session.is_error());
+    debug!("  log_file: {:?}", session.log_file());
+    debug!("  message: {:?}", session.message());
+    debug!("  bind_interface: {:?}", session.bind_interface());
+    debug!("  port_start: {}", session.port_start());
+    debug!("  port_end: {}", session.port_end());
+    debug!("  io_engine: {}", session.io_engine());
+    debug!("  thread_count: {}", session.thread_count());
+    debug!("  block_sz: {}", session.block_sz());
+    debug!("  ip_mode: {}", session.ip_mode());
 }
 
 #[derive(Clone)]

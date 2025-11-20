@@ -20,7 +20,7 @@ impl<'a> flatbuffers::Follow<'a> for Session_Init<'a> {
   type Inner = Session_Init<'a>;
   #[inline]
   unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: flatbuffers::Table::new(buf, loc) }
+    Self { _tab: unsafe { flatbuffers::Table::new(buf, loc) } }
   }
 }
 
@@ -52,8 +52,8 @@ impl<'a> Session_Init<'a> {
     Session_Init { _tab: table }
   }
   #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr>(
-    _fbb: &'mut_bldr mut flatbuffers::FlatBufferBuilder<'bldr>,
+  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: flatbuffers::Allocator + 'bldr>(
+    _fbb: &'mut_bldr mut flatbuffers::FlatBufferBuilder<'bldr, A>,
     args: &'args Session_InitArgs<'args>
   ) -> flatbuffers::WIPOffset<Session_Init<'bldr>> {
     let mut builder = Session_InitBuilder::new(_fbb);
@@ -315,11 +315,11 @@ impl<'a> Default for Session_InitArgs<'a> {
   }
 }
 
-pub struct Session_InitBuilder<'a: 'b, 'b> {
-  fbb_: &'b mut flatbuffers::FlatBufferBuilder<'a>,
+pub struct Session_InitBuilder<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> {
+  fbb_: &'b mut flatbuffers::FlatBufferBuilder<'a, A>,
   start_: flatbuffers::WIPOffset<flatbuffers::TableUnfinishedWIPOffset>,
 }
-impl<'a: 'b, 'b> Session_InitBuilder<'a, 'b> {
+impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> Session_InitBuilder<'a, 'b, A> {
   #[inline]
   pub fn add_version_major(&mut self, version_major: i32) {
     self.fbb_.push_slot::<i32>(Session_Init::VT_VERSION_MAJOR, version_major, 0);
@@ -405,7 +405,7 @@ impl<'a: 'b, 'b> Session_InitBuilder<'a, 'b> {
     self.fbb_.push_slot::<u8>(Session_Init::VT_IP_MODE, ip_mode, 0);
   }
   #[inline]
-  pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a>) -> Session_InitBuilder<'a, 'b> {
+  pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> Session_InitBuilder<'a, 'b, A> {
     let start = _fbb.start_table();
     Session_InitBuilder {
       fbb_: _fbb,
