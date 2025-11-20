@@ -727,6 +727,10 @@ fn send_file_complete( fc2_out: &crossbeam_channel::Receiver<(u64, u64)> ) {
       Err(_) => { debug!("send_file_complete: fc_out empty; returning"); return; }
     }
     vec.push_back( (fino, blocks) );
+
+    if vec.len() > 2600 {
+      break;
+    }
   }
 
   vec.make_contiguous().sort_by_key(|k| k.0);
@@ -755,9 +759,9 @@ fn send_file_complete( fc2_out: &crossbeam_channel::Receiver<(u64, u64)> ) {
     builder.finish( bu, None );
     let buf = builder.finished_data();
 
-    let dst:[MaybeUninit<u8>; 65536] = [{ std::mem::MaybeUninit::uninit() }; 65536];
+    let dst:[MaybeUninit<u8>; 49152] = [{ std::mem::MaybeUninit::uninit() }; 49152];
     let mut dst = unsafe { std::mem::transmute::
-      <[std::mem::MaybeUninit<u8>; 65536], [u8; 65536]>(dst) };
+      <[std::mem::MaybeUninit<u8>; 49152], [u8; 49152]>(dst) };
 
     let res = zstd_safe::compress( &mut dst, buf, 3 );
 
@@ -1063,7 +1067,7 @@ pub fn iterate_file_worker(
       } else {
         debug!("addfile_destname: {destname} fn={fino} sz={:?} slot={}",
           st.st_size, (*res).position);
-        
+
         let mut combined = String::new();
         combined.push_str(destname.as_str());
         combined.push_str("\0");
