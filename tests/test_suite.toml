@@ -1,0 +1,18 @@
+[config]
+scp_binary = ""
+dest_host = "localhost"
+fixtures_base = "/tmp/test"
+
+[[test]]
+name = "basic_file_copy"
+flags = []
+source = "00/test-00003FFF"
+destination = "<dest_host>:/tmp/scp_test/dest_file.txt"
+verify = "file_match"
+
+[[test]]
+name = "recursive_directory"
+flags = ["-r"]
+source = "01/"
+destination = "<dest_host>:/tmp/scp_test/small_files_dest"
+verify = "directory_match"

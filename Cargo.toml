@@ -34,7 +34,15 @@ hex = "0.*"
 crossbeam-channel = "0.5"
 zstd-safe = "7.*"
 chrono = "0.*"
+
+[dev-dependencies]
 ntest = "0.9.3"
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
+serde_json = "1.0"
+anyhow = "1.0"
+sha2 = "0.10"
+walkdir = "2.4"
 
 [profile.release]
 opt-level = 'z'     # Optimize for size
