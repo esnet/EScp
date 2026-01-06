@@ -31,11 +31,12 @@ EScp is currently only available for x86-64 on Linux. If you would like to see
 RELEASE NOTES
 =============
 
-**EScp is in active development**. The latest tagged releases likely offers the
-best stability. Currently that is 0.8.1.
+**EScp is in active development**. You should be using the main branch until
+the 0.9.0 release is tagged.
 
-At this point, most scp flags are supported although not necessarily 1:1. EScp
-adds additional flags to support high performance transfer flows.
+At this point, most scp flags are supported although not necessarily 1:1, nor
+do they necessarily work the same way. Additionally, EScp adds additional flags
+to support high performance transfer flows.
 
 Installation
 ============
@@ -43,10 +44,11 @@ Installation
 ```
 # Ubuntu
 apt install cmake libtool g++ nasm autoconf automake rustup
-git checkout 0.8.1
+git clone https://github.com/esnet/EScp.git
+cd EScp
 cargo install cargo-deb
 cargo deb
-sudo dpkg -i target/debian/escp_0.8.1-1_amd64.deb
+sudo dpkg -i target/debian/escp_0.9.0-1_amd64.deb
 
 # Uninstall
 # dpkg -r escp
