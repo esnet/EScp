@@ -46,6 +46,7 @@ Installation
 apt install cmake libtool g++ nasm autoconf automake rustup
 git clone https://github.com/esnet/EScp.git
 cd EScp
+./mk.sh
 cargo install cargo-deb
 cargo deb
 sudo dpkg -i target/debian/escp_0.9.0-1_amd64.deb
