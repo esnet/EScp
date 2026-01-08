@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.5)
 include(ExternalProject)
+cmake_policy(SET CMP0135 NEW)
 project(dtn)
 
 if(NOT CMAKE_BUILD_TYPE)
@@ -88,23 +89,40 @@ ExternalProject_Add(ck_project
   DOWNLOAD_EXTRACT_TIMESTAMP true
 )
 
+include(FetchContent)
+FetchContent_Declare(
+  blake3
+  URL https://github.com/BLAKE3-team/BLAKE3/archive/refs/tags/1.8.2.tar.gz
+  URL_HASH SHA256=6b51aefe515969785da02e87befafc7fdc7a065cd3458cf1141f29267749e81f
+  SOURCE_SUBDIR c
+)
+FetchContent_MakeAvailable(blake3)
+FetchContent_GetProperties(blake3 SOURCE_DIR blake3_SOURCE_DIR BINARY_DIR blake3_BINARY_DIR)
+
 # Create link_libraries.txt for RUST application
 set(OUTPUT_FILE "${CMAKE_CURRENT_BINARY_DIR}/link_libraries.txt")
 file(WRITE "${OUTPUT_FILE}" "${CMAKE_CURRENT_BINARY_DIR}/libdtn.a\n")
 file(APPEND "${OUTPUT_FILE}" "${CMAKE_CURRENT_BINARY_DIR}/isal/lib/libisal_crypto.a\n")
 file(APPEND "${OUTPUT_FILE}" "${CMAKE_CURRENT_BINARY_DIR}/zstd/lib/libzstd.a\n")
 file(APPEND "${OUTPUT_FILE}" "${CMAKE_CURRENT_BINARY_DIR}/ck/lib/libck.a\n")
+file(APPEND "${OUTPUT_FILE}" "${blake3_BINARY_DIR}/libblake3.a\n")
 
 # Build test
 include_directories(include ${CMAKE_CURRENT_BINARY_DIR}/ck/include)
+
 add_executable(ck_test test/ck.c)
 add_dependencies(ck_test ck_project)
+
+add_executable(blake3_test test/test_blake3.c)
+target_link_libraries(blake3_test blake3)
 
 
 # Build libdtn.a
 include_directories(include ${CMAKE_CURRENT_BINARY_DIR}/isal/include)
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/zstd/include)
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/ck/include)
+include_directories(${blake3_SOURCE_DIR}/c)
+
 set(SOURCES src/file_io.c src/args.c
             src/engine_shmem.c
             src/engine_posix.c

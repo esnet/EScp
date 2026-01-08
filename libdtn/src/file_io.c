@@ -16,6 +16,7 @@
 
 #include <immintrin.h>
 #include <stdatomic.h>
+#include <blake3.h>
 
 #include "file_io.h"
 #include "args.h"
@@ -408,27 +409,15 @@ int file_get_activeport( void* args_raw ) {
 
 
 int32_t file_hash( void* block, int sz, int seed ) {
-  uint32_t *block_ptr = (uint32_t*) block;
-  uint64_t hash = seed;
-  hash = xorshift64s(&hash);
-  int i=0;
+  uint64_t hash_output[4];
 
-  /*
-  DBG("file_hash block=%016zX, sz=%d, seed=%08X",
-      (uint64_t) block, sz, seed );
-  */
+  blake3_hasher hasher;
+  blake3_hasher_init(&hasher);
+  blake3_hasher_update(&hasher, &seed, 4);
+  blake3_hasher_update(&hasher, block, sz);
+  blake3_hasher_finalize(&hasher, (void*) hash_output, BLAKE3_OUT_LEN);
 
-  if (sz%4) {
-    for ( i=0; i < (4-(sz%4)); i++ ) {
-      ((uint8_t*)block_ptr)[sz+i] = 0;
-    }
-  }
-
-  for( i=0; i<(sz+3)/4; i++ ) {
-    hash = __builtin_ia32_crc32si( block_ptr[i], hash );
-  }
-
-  return hash;
+  return (int32_t) hash_output[0];
 }
 
 struct file_object* file_memoryinit( void* arg, int id ) {
