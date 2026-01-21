@@ -154,7 +154,7 @@ void* file_dummypreserve( int32_t fd, uint32_t mode, uint32_t uid,
 int file_dummytruncate( int fd, int64_t size );
 
 
-int32_t file_hash( void* block, int sz, int seed );
+int32_t file_hash( void* block, int sz );
 
 struct file_stat_type* file_addfile(uint64_t fileno, int fd);
 struct file_stat_type* file_next( int id, struct file_stat_type* );

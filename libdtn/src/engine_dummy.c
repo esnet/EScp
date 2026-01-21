@@ -107,7 +107,7 @@ void* file_dummysubmit( void* arg, int32_t* sz, uint64_t* offset ) {
     sz_ret = 0;
   else {
       if (fob->do_hash && !(fob->io_flags & O_WRONLY) && sz_ret)
-        op->hash = file_hash( op->buf, sz_ret, *offset/fob->blk_sz );
+        op->hash = file_hash( op->buf, sz_ret );
   }
 
   sz[0] = sz_ret;
