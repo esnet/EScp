@@ -38,7 +38,7 @@ void* file_shmemsubmit( void* arg, int32_t* sz, uint64_t* offset ) {
       if (*sz > 0) {
 
         if (fob->do_hash)
-          op->hash = file_hash(op->buf, *sz);
+          op->hash = file_hash(op->buf, *sz)[0];
 
         if (fob->compression) {
 

@@ -408,15 +408,15 @@ int file_get_activeport( void* args_raw ) {
 }
 
 
-int32_t file_hash( void* block, int sz ) {
-  uint64_t hash_output[4];
+int32_t* file_hash( void* block, int sz ) {
+  static uint64_t hash_output[4];
 
   blake3_hasher hasher;
   blake3_hasher_init(&hasher);
   blake3_hasher_update(&hasher, block, sz);
   blake3_hasher_finalize(&hasher, (void*) hash_output, BLAKE3_OUT_LEN);
 
-  return (int32_t) hash_output[0];
+  return (int32_t*) hash_output;
 }
 
 struct file_object* file_memoryinit( void* arg, int id ) {

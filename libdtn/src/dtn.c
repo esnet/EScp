@@ -902,7 +902,9 @@ void* rx_worker( void* arg ) {
 
       if (dtn->do_hash) {
         uint8_t* buf = fob->get( knob->token, FOB_BUF );
-        atomic_fetch_xor( &fs_ptr->crc, file_hash(buf, orig_sz) );
+        atomic_fetch_xor( &fs_ptr->crc, file_hash(buf, orig_sz)[0] );
+        if (dtn->do_hash & 2) {
+        }
       }
 
       DBV("[%2d] Do FIHDR_SHORT crc=%08x fn=%ld offset=%zX sz=%d",
