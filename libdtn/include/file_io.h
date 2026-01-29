@@ -20,7 +20,7 @@ struct cksum_t {
 
 CK_RING_PROTOTYPE( cksum, cksum_t ) ;
 
-#define CKSUM_SIZE 4096 
+#define CKSUM_SIZE 16384
 
 #define FIHDR_SHORT 16
 #define FIHDR_CINIT 1
@@ -139,7 +139,7 @@ struct file_stat_type {
   uint64_t bytes_total;
   int32_t  fd;
   uint32_t position;     // Self referential
-  uint32_t poison;
+  uint32_t read_limit;
   uint32_t crc;          // 64
 
 } __attribute__ ((packed, aligned(64)));
@@ -171,7 +171,7 @@ int file_dummytruncate( int fd, int64_t size );
 
 void file_hash( void* block, int sz, uint8_t* checksum );
 
-struct file_stat_type* file_addfile(uint64_t fileno, int fd);
+struct file_stat_type* file_addfile(uint64_t fileno, int fd, uint64_t offset, uint32_t read_limit);
 struct file_stat_type* file_next( int id, struct file_stat_type* );
 struct file_stat_type* file_wait( uint64_t fileno, struct file_stat_type*, int id);
 uint64_t file_iow_remove( struct file_stat_type* fs, int id );

@@ -1049,7 +1049,7 @@ pub fn iterate_file_worker(
       let mut res;
       let mut timeout = 160.3;
       loop {
-        res = file_addfile( fino, fd );
+        res = file_addfile( fino, fd, 0, 0 );
         if !res.is_null() {
           break;
         }

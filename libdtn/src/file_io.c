@@ -192,7 +192,7 @@ void file_completetransfer() {
     atomic_fetch_add( &transfer_complete, 1 );
 }
 
-struct file_stat_type* file_addfile( uint64_t fileno, int fd ) {
+struct file_stat_type* file_addfile( uint64_t fileno, int fd, uint64_t offset, uint32_t read_limit ) {
 
   struct file_stat_type fs __attribute__ ((aligned(64))) = {0};
   uint64_t zero, slot, hash=fileno;
@@ -213,7 +213,8 @@ struct file_stat_type* file_addfile( uint64_t fileno, int fd ) {
   fs.fd = fd;
   fs.file_no = fileno;
   fs.position = slot;
-  fs.poison = 0xC0DAB1E;
+  fs.offset = offset
+  fs.read_limit = read_limit;
 
   memcpy_avx( &file_stat[slot], &fs );
   atomic_fetch_add( &file_claim, 1 );

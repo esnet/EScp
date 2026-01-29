@@ -1242,7 +1242,12 @@ unsafe extern "C" {
     pub fn file_dummyinit(fob: *mut file_object) -> ::core::ffi::c_int;
 }
 unsafe extern "C" {
-    pub fn file_addfile(fileno: u64, fd: ::core::ffi::c_int) -> *mut file_stat_type;
+    pub fn file_addfile(
+        fileno: u64,
+        fd: ::core::ffi::c_int,
+        offset: u64,
+        read_limit: u32,
+    ) -> *mut file_stat_type;
 }
 unsafe extern "C" {
     pub fn file_getstats(fileno: u64) -> *mut file_stat_type;
@@ -1262,7 +1267,6 @@ pub struct file_stat_type {
     pub bytes_total: u64,
     pub fd: i32,
     pub position: u32,
-    pub poison: u32,
     pub crc: u32,
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
@@ -1284,10 +1288,8 @@ const _: () = {
     ["Offset of field: file_stat_type::fd"][::core::mem::offset_of!(file_stat_type, fd) - 48usize];
     ["Offset of field: file_stat_type::position"]
         [::core::mem::offset_of!(file_stat_type, position) - 52usize];
-    ["Offset of field: file_stat_type::poison"]
-        [::core::mem::offset_of!(file_stat_type, poison) - 56usize];
     ["Offset of field: file_stat_type::crc"]
-        [::core::mem::offset_of!(file_stat_type, crc) - 60usize];
+        [::core::mem::offset_of!(file_stat_type, crc) - 56usize];
 };
 unsafe extern "C" {
     pub fn memset_avx(src: *mut ::core::ffi::c_void);

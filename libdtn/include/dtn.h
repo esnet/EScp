@@ -113,7 +113,7 @@ int file_uringinit( struct file_object* fob );
 int file_dummyinit( struct file_object* fob );
 // int shmem_init( struct file_object* fob );
 
-struct file_stat_type* file_addfile(uint64_t fileno, int fd);
+struct file_stat_type* file_addfile(uint64_t fileno, int fd, uint64_t offset, uint32_t read_limit);
 struct file_stat_type* file_getstats( uint64_t fileno );
 int file_get_activeport( void* args );
 
@@ -129,7 +129,6 @@ struct file_stat_type {
   uint64_t bytes_total;
   int32_t  fd;
   uint32_t position;     // Self referential
-  uint32_t poison;
   uint32_t crc;          // 64
 
 } __attribute__ ((aligned(64)));

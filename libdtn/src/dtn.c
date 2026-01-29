@@ -142,6 +142,28 @@ void dtn_init( struct dtn_args* args ) {
   if (args->do_hash & 2) {
     args->cksum_ring_buffer= aligned_alloc(64, sizeof(struct cksum_t) * CKSUM_SIZE);
     ck_ring_init(&args->cksum_ring, CKSUM_SIZE);
+
+    // start pthread on ring consumer (needs to increment thread count and confirm exit count isn't affected)
+
+    // In function:
+      // create directory structure .escp/<session_id>
+      // For each file_no, create file then write checksums for each block
+      // Always write to current file or throw onto backlog queue
+      // close file when either complete or backlog_queue is large
+
+    // To Do:
+      // update add_file to allow start from file_offset
+      // checksum writer code should start from offset
+        {
+          file_no:
+          start:
+          current:
+          in_queue:
+        }
+
+      // Check abort code. Ideally we should write out everything
+      // in queue and then exit
+
   }
 }
 
@@ -1007,7 +1029,7 @@ int submit_work(
 
 
       if (wipe) {
-        DBG("[%2d] Wiping fn=%ld slot=%d %08X", fob->id, fs_lcl->file_no, fs_lcl->position, fs_lcl->poison );
+        DBG("[%2d] Wiping fn=%ld slot=%d", fob->id, fs_lcl->file_no, fs_lcl->position );
         memset_avx((void*) *fs);
       }
 
