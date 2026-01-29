@@ -124,7 +124,7 @@ struct fc_info_struct* fc_pop() {
   return &fc;
 }
 
-void dtn_init() {
+void dtn_init( struct dtn_args* args ) {
   char* a = aligned_alloc( 4096, (fc_info_cnt*64)+8192 );
   VRFY( a, "bad alloc" );
 
@@ -138,6 +138,11 @@ void dtn_init() {
 
   VRFY( sizeof(struct file_stat_type) == 64, "ASSERT struct file_stat_type" );
   VRFY( sizeof(struct fc_info_struct) == 64, "ASSERT struct fc_info_struct" );
+
+  if (args->do_hash & 2) {
+    args->cksum_ring_buffer= aligned_alloc(64, sizeof(struct cksum_t) * CKSUM_SIZE);
+    ck_ring_init(&args->cksum_ring, CKSUM_SIZE);
+  }
 }
 
 pthread_t DTN_THREAD[THREAD_COUNT];
@@ -901,9 +906,25 @@ void* rx_worker( void* arg ) {
       fob->flush( fob, knob->token );
 
       if (dtn->do_hash) {
+        struct cksum_t cksum;
         uint8_t* buf = fob->get( knob->token, FOB_BUF );
-        atomic_fetch_xor( &fs_ptr->crc, file_hash(buf, orig_sz)[0] );
+        file_hash(buf, orig_sz, cksum.checksum);
+        atomic_fetch_xor( &fs_ptr->crc, ((uint32_t*)cksum.checksum)[0] );
         if (dtn->do_hash & 2) {
+          cksum.type=0;
+
+          cksum.fino= file_no;
+          cksum.offset= offset;
+          int log_message=0;
+
+          while ( false==
+            ck_ring_enqueue_mpsc_cksum( &dtn->cksum_ring, dtn->cksum_ring_buffer, &cksum ))
+          {
+            ck_pr_stall();
+            if (log_message++==0) {
+              DBG("[%2d] FIHDR_SHORT: ck_ring_enqueue_mpsc_cksum queue is full", id);
+            }
+          }
         }
       }
 
@@ -1258,7 +1279,7 @@ int rx_start( void* fn_arg ) {
   //      interfaces was never added back.
 
   DBG("Start: rx_start");
-  dtn_init();
+  dtn_init( args );
 
   port = ntohs(saddr->sin_port);
   if ( saddr->sin_family == AF_INET )
@@ -1412,7 +1433,7 @@ uint64_t get_threads_finished() {
 }
 
 void tx_init( struct dtn_args* args ) {
-  dtn_init();
+  dtn_init( args );
 
   if (args->do_crypto) {
     int res = getrandom(args->crypto_key, 16, GRND_RANDOM);

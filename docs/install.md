@@ -47,7 +47,7 @@ dnf install target/release/rpmbuild/RPMS/x86_64/escp-0.8.0*.rpm # Redhat Family
 
 # For development
 cargo install bindgen-cli --version 0.71.1
-bindgen libdtn/include/dtn.h -o src/escp/bindings.rs --use-core  --generate-cstr --rust-target 1.78.0
+bindgen libdtn/include/dtn.h -o src/escp/bindings.rs --use-core --rust-target 1.91.0 -- -I./target/dtn/ck/include/
 
 # flatc version 23.5.26
 # You will need to grab the tagged version in GIT and compile it.

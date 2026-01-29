@@ -3,9 +3,24 @@
 #include <sys/uio.h>
 #include <dirent.h>
 
+#include <ck_barrier.h>
+#include <ck_ring.h>
+#include <ck_pr.h>
 
 #ifndef __FILE_IO_DOT_H__
 #define __FILE_IO_DOT_H__
+
+struct cksum_t {
+  uint64_t    type;
+  uint64_t    fino;
+  uint64_t    offset;
+  uint64_t    padding;
+  uint8_t     checksum[32];
+} __attribute__((aligned(64)));
+
+CK_RING_PROTOTYPE( cksum, cksum_t ) ;
+
+#define CKSUM_SIZE 4096 
 
 #define FIHDR_SHORT 16
 #define FIHDR_CINIT 1
@@ -154,7 +169,7 @@ void* file_dummypreserve( int32_t fd, uint32_t mode, uint32_t uid,
 int file_dummytruncate( int fd, int64_t size );
 
 
-int32_t* file_hash( void* block, int sz );
+void file_hash( void* block, int sz, uint8_t* checksum );
 
 struct file_stat_type* file_addfile(uint64_t fileno, int fd);
 struct file_stat_type* file_next( int id, struct file_stat_type* );

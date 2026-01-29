@@ -14,6 +14,7 @@
 #include <sys/stat.h>
 
 #include <dirent.h>
+#include <ck_ring.h>
 
 struct sockaddr_storage {
   char byte[128];
@@ -139,7 +140,7 @@ struct dtn_args {
   bool do_server;
   bool do_ssh;
   bool do_crypto;
-  bool do_hash;
+  uint8_t do_hash;
   bool do_preserve;
   bool nodirect;
   bool recursive;
@@ -169,6 +170,9 @@ struct dtn_args {
   int cpumask_len;
   uint8_t cpumask_bytes[32];
   uint64_t nodemask;
+
+  ck_ring_t cksum_ring;
+  void* cksum_ring_buffer;
 
   int sock_store_count;
   struct sockaddr_storage sock_store[THREAD_COUNT] __attribute__ ((aligned(64)));

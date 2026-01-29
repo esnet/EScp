@@ -8,6 +8,7 @@
 #include <errno.h>
 #include <netinet/in.h>
 #include <pthread.h>
+#include <ck_ring.h>
 
 #include <stdio.h>
 #include <sys/time.h>
@@ -77,7 +78,7 @@ struct dtn_args {
   bool do_server;
   bool do_ssh;
   bool do_crypto;
-  bool do_hash;
+  uint8_t do_hash;
   bool do_preserve;
   bool nodirect;
   bool recursive;
@@ -108,6 +109,9 @@ struct dtn_args {
   uint8_t cpumask_bytes[32];
   uint64_t nodemask;
 
+  struct ck_ring cksum_ring;
+  void* cksum_ring_buffer;
+
   int sock_store_count;
   struct sockaddr_storage sock_store[THREAD_COUNT] __attribute__ ((aligned(64)));
 
@@ -115,7 +119,6 @@ struct dtn_args {
   int thread_id __attribute__ ((aligned(64)));
   int thread_count __attribute__ ((aligned(64)));
   uint16_t active_port __attribute__ ((aligned(64)));
-
 
   uint64_t debug_claim __attribute__ ((aligned(64)));
   uint64_t debug_count __attribute__ ((aligned(64)));

@@ -127,7 +127,9 @@ void* file_uringsubmit( void* arg, int32_t* sz, uint64_t* offset ) {
     p->ptr2 = cqe;
 
     if (fob->do_hash) {
-      p->hash = file_hash( p->buf, *sz )[0];
+      uint8_t hash[32];
+      file_hash( p->buf, *sz, hash );
+      p->hash = ((uint32_t*)hash)[0];
     }
 
     return p;

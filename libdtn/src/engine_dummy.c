@@ -106,8 +106,11 @@ void* file_dummysubmit( void* arg, int32_t* sz, uint64_t* offset ) {
   if (file_sz <= op->offset)
     sz_ret = 0;
   else {
-      if (fob->do_hash && !(fob->io_flags & O_WRONLY) && sz_ret)
-        op->hash = file_hash( op->buf, sz_ret )[0];
+      if (fob->do_hash && !(fob->io_flags & O_WRONLY) && sz_ret) {
+        uint8_t hash[32];
+        file_hash(op->buf, sz_ret, hash);
+        op->hash = ((uint32_t*)hash)[0];
+      }
   }
 
   sz[0] = sz_ret;
