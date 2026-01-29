@@ -213,7 +213,7 @@ struct file_stat_type* file_addfile( uint64_t fileno, int fd, uint64_t offset, u
   fs.fd = fd;
   fs.file_no = fileno;
   fs.position = slot;
-  fs.offset = offset
+  fs.block_offset = offset;
   fs.read_limit = read_limit;
 
   memcpy_avx( &file_stat[slot], &fs );
