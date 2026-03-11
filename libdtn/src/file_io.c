@@ -207,7 +207,10 @@ struct file_stat_type* file_addfile( uint64_t fileno, int fd, uint64_t offset, u
     }
   }
 
-  VRFY(i<FILE_STAT_COUNT_CC, "Hash table collision count exceeded. Bug Report Pls!.");
+  if (i >= FILE_STAT_COUNT_CC) {
+    DBG("Hash table collision count exceeded for fileno=%ld", fileno);
+    return NULL;
+  }
 
   fs.state = FS_INIT;
   fs.fd = fd;
