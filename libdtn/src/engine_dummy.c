@@ -14,7 +14,7 @@
 #include "args.h"
 #include "file_io.h"
 
-#define MAX_FDS 1000
+#define MAX_FDS 1200
 
 typedef struct item_t {
     uint64_t size;
@@ -31,24 +31,29 @@ static item_t* items __attribute__ ((aligned(64))) = 0;
 int file_dummyopen( const char* filename, int flags, ... ) {
   // We stat the file on open, because we need to emulate a file of size foo and
   // without stating the file we don't actually know how big the file is.
+  int err;
 
-  DBG("file_dummyopen");
   struct stat sb;
 
   if (flags & O_WRONLY)
     return 1;
 
-  if ( (stat(filename, &sb) != 0) )
+  if ( (err=stat(filename, &sb) != 0) ) {
+    DBG("file_dummyopen: stat error on %.60s, %s", filename, strerror(err));
     return -1;
+  }
 
   ck_stack_entry_t *entry = ck_stack_pop_mpmc(&stack);
   if (!entry) {
+    DBG("file_dummyopen: n0 free FDs");
     return -1;  // No free FDs
   }
 
   item_t *item = item_container(entry);
   memcpy( &item->sb, &sb, sizeof(sb) );
   memcpy( &item->size, &sb.st_size, sizeof(uint64_t) );
+
+  DBG("file_dummyopen: %.60s->%d", filename, item->fd);
 
   return item->fd;
 }
@@ -68,8 +73,19 @@ int file_dummyclose( void* arg ) {
   struct file_object* fob = arg;
   struct posix_op* op = (struct posix_op*) fob->pvdr;
 
-  DBV( "[%2d] dummyclose on fd=%d", fob->id, op->fd );
+  DBG( "[%2d] file_dummyclose on fd=%d", fob->id, op->fd );
   ck_stack_push_mpmc(&stack, &items[op->fd].stack_entry);
+
+  return 0;
+}
+
+int file_dummyclosefd( int arg ) {
+
+  DBG( "[%2d] file_dummyclose on fd=%d", -1, arg );
+
+  ck_stack_push_mpmc(&stack, &items[arg].stack_entry);
+  
+
 
   return 0;
 }
@@ -178,7 +194,7 @@ int file_dummyinit( struct file_object* fob ) {
   fob->fstat    = file_dummystat;
   fob->truncate = file_dummytruncate;
 
-  fob->close_fd = close;
+  fob->close_fd = file_dummyclosefd;
   fob->opendir = opendir;
   fob->closedir = closedir;
   fob->readdir  = readdir;
