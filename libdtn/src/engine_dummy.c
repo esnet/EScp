@@ -84,7 +84,7 @@ int file_dummyclosefd( int arg ) {
   DBG( "[%2d] file_dummyclose on fd=%d", -1, arg );
 
   ck_stack_push_mpmc(&stack, &items[arg].stack_entry);
-  
+
 
 
   return 0;
