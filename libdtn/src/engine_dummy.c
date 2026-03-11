@@ -31,21 +31,20 @@ static item_t* items __attribute__ ((aligned(64))) = 0;
 int file_dummyopen( const char* filename, int flags, ... ) {
   // We stat the file on open, because we need to emulate a file of size foo and
   // without stating the file we don't actually know how big the file is.
-  int err;
-
   struct stat sb;
 
   if (flags & O_WRONLY)
     return 1;
 
-  if ( (err=stat(filename, &sb) != 0) ) {
-    DBG("file_dummyopen: stat error on %.60s, %s", filename, strerror(err));
+  if ( (stat(filename, &sb) != 0) ) {
+    DBG("file_dummyopen: stat error on %.60s, %s", filename, strerror(errno));
     return -1;
   }
 
   ck_stack_entry_t *entry = ck_stack_pop_mpmc(&stack);
   if (!entry) {
     DBG("file_dummyopen: n0 free FDs");
+    errno = EMFILE;
     return -1;  // No free FDs
   }
 
