@@ -1,5 +1,6 @@
 [config]
-scp_binary = ""
+scp_binary = "/usr/bin/scp"
+remote_scp_binary = "/usr/bin/scp"
 dest_host = "localhost"
 fixtures_base = "/tmp/test"
 

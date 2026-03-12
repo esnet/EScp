@@ -1,9 +1,10 @@
 // use scp_test_harness::{save_metrics, TestRunner, TestSuite};
 use anyhow::{anyhow, Result};
+use blake3;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs::{self, File};
+use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant, SystemTime};
@@ -18,7 +19,7 @@ pub struct TestSuite {
 #[derive(Debug, Deserialize)]
 pub struct TestConfig {
     pub scp_binary: PathBuf,
-    pub remote_scp_binary: Option<PathBuf>,
+    pub remote_scp_binary: Option<String>,
     pub dest_host: String,
     pub fixtures_base: PathBuf,
 }
@@ -88,14 +89,12 @@ impl TestRunner {
             p = format!("{:?}", scp_binary.as_os_str());
         }
 
-        println!("--> {:?}", scp_binary);
-
         let mut cmd = Command::new(scp_binary);
 
         if let Some(remote_binary) = &self.config.remote_scp_binary {
-            cmd.arg("-D").arg(remote_binary);
+            cmd.arg("-D").arg(remote_binary.trim().trim_matches('"'));
         } else {
-            cmd.arg("-D").arg(p);
+            cmd.arg("-D").arg(p.trim().trim_matches('"'));
         }
 
         cmd.args(&test.flags);
@@ -107,7 +106,7 @@ impl TestRunner {
 
         cmd.arg(&source).arg(&dest);
 
-        println!("{:?}", cmd);
+        println!("Running Command: {:?}", cmd);
 
         // Execute
         let output = cmd.output()?;
@@ -145,10 +144,10 @@ impl TestRunner {
     }
 
     fn verify_file_match(&self, source: &Path, dest: &Path) -> Result<()> {
-        if !self.files_match(source, dest)? {
-            return Err(anyhow!("File content mismatch"));
+        if let Ok(()) = self.files_match(source, dest) {
+            return Ok(());
         }
-        Ok(())
+        return Err(anyhow!("File content mismatch"));
     }
 
     fn verify_directory_match(
@@ -175,7 +174,8 @@ impl TestRunner {
                 .get(&rel_path)
                 .ok_or_else(|| anyhow!("Missing file: {}", rel_path.display()))?;
 
-            if !self.files_match(&source_info.path, &dest_info.path)? {
+            if let Ok(()) = self.files_match(&source_info.path, &dest_info.path) {
+            } else {
                 return Err(anyhow!("Content mismatch: {}", rel_path.display()));
             }
 
@@ -218,17 +218,17 @@ impl TestRunner {
         Ok(())
     }
 
-    fn files_match(&self, a: &Path, b: &Path) -> Result<bool> {
-        let hash_a = self.hash_file(a)?;
-        let hash_b = self.hash_file(b)?;
-        Ok(hash_a == hash_b)
-    }
-
-    fn hash_file(&self, path: &Path) -> Result<Vec<u8>> {
-        let mut hasher = Sha256::new();
-        let mut file = File::open(path)?;
-        std::io::copy(&mut file, &mut hasher)?;
-        Ok(hasher.finalize().to_vec())
+    fn files_match(&self, a: &Path, b: &Path) -> io::Result<()> {
+        let a_fi = std::fs::read(a)?;
+        let b_fi = std::fs::read(b)?;
+        println!("HASHY MASHY");
+        let a_hs = blake3::hash(&a_fi);
+        let b_hs = blake3::hash(&b_fi);
+        println!("Hash result: {:?}", a_hs);
+        if a_hs == b_hs {
+            return Ok(());
+        }
+        Err(io::Error::new(io::ErrorKind::Other, "Files don't match"))
     }
 
     fn collect_file_tree(&self, base: &Path) -> Result<HashMap<PathBuf, FileInfo>> {

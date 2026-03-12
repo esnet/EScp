@@ -10,7 +10,7 @@ table Session_Init {
   version_minor:   int32;
   session_id:     uint64;
   crypto_key:     [byte];
-  do_hash:          bool;
+  do_hash:         uint8;
   do_crypto:        bool;
   do_verbose:       bool;
   do_compression:   bool;

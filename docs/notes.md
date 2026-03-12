@@ -86,7 +86,6 @@ KNOWNBUGS
     an error message you can't parse, check both the client and server log.
       - /tmp/escp.log.sender
       - /tmp/escp.log.receiver
-  * Dummy engine can only be used with a few files
   * You can't disable encryption
   * Check https://github.com/ESnet/EScp/issues
 

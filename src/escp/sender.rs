@@ -266,6 +266,7 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
 
     unsafe {
       (*args).do_crypto = true;
+      do_hash = (*args).do_hash;
       tx_init(args);
       file_randrd( &mut (*args).session_id as *mut ::std::os::raw::c_ulong as *mut ::std::os::raw::c_void , 8 );
       session_id = (*args).session_id;
@@ -273,7 +274,6 @@ pub fn escp_sender(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) {
       // XXX: io_engine  = (*args).io_engine;
       io_engine  = (*args).io_engine_rx;
       nodirect  = (*args).nodirect;
-      do_hash = (*args).do_hash;
       thread_count = (*args).thread_count;
       block_sz = (*args).block;
       bind_interface = Some(builder.create_string(host.as_str()));
@@ -1049,7 +1049,7 @@ pub fn iterate_file_worker(
       let mut res;
       let mut timeout = 160.3;
       loop {
-        res = file_addfile( fino, fd );
+        res = file_addfile( fino, fd, 0, 0 );
         if !res.is_null() {
           break;
         }

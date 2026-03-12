@@ -264,6 +264,9 @@ pub struct EScp_Args {
    #[arg(long, help="disable checksum")]
    nochecksum: bool,
 
+   #[arg(long, help="write checksum to disk")]
+   writechecksum: bool,
+
    /// Enable SSH Agent Forwarding
    #[arg(short='A', long="agent")]
    agent: bool,
@@ -453,7 +456,10 @@ pub fn start_escp() {
       if flags.quiet     { verbose_logging = 0; }
 
       (*args).nodirect = flags.nodirect;
-      (*args).do_hash  = !flags.nochecksum;
+
+      if flags.writechecksum { (*args).do_hash=2; }
+      if flags.nochecksum { (*args).do_hash = 0; }
+
       if flags.recursive  { (*args).recursive = true; }
 
       (*args).pacing = int_from_human(flags.limit.clone());

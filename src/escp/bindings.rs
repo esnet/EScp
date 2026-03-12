@@ -218,6 +218,41 @@ pub const HOST_NAME_MAX: u32 = 64;
 pub const MQ_PRIO_MAX: u32 = 32768;
 pub const SEM_VALUE_MAX: u32 = 2147483647;
 pub const MAXNAMLEN: u32 = 255;
+pub const CK_MD_CACHELINE: u32 = 64;
+pub const CK_MD_PAGESIZE: u32 = 4096;
+pub const CK_MD_VMA_BITS: u32 = 48;
+pub const CK_VERSION: &[u8; 6] = b"0.7.2\0";
+pub const CK_GIT_SHA: &[u8; 8] = b"5331ebe\0";
+pub const CK_CC_IMM: &[u8; 2] = b"i\0";
+pub const CK_CC_IMM_U32: &[u8; 2] = b"Z\0";
+pub const CK_CC_IMM_S32: &[u8; 2] = b"e\0";
+pub const _LIBC_LIMITS_H_: u32 = 1;
+pub const MB_LEN_MAX: u32 = 16;
+pub const _BITS_POSIX2_LIM_H: u32 = 1;
+pub const _POSIX2_BC_BASE_MAX: u32 = 99;
+pub const _POSIX2_BC_DIM_MAX: u32 = 2048;
+pub const _POSIX2_BC_SCALE_MAX: u32 = 99;
+pub const _POSIX2_BC_STRING_MAX: u32 = 1000;
+pub const _POSIX2_COLL_WEIGHTS_MAX: u32 = 2;
+pub const _POSIX2_EXPR_NEST_MAX: u32 = 32;
+pub const _POSIX2_LINE_MAX: u32 = 2048;
+pub const _POSIX2_RE_DUP_MAX: u32 = 255;
+pub const _POSIX2_CHARCLASS_NAME_MAX: u32 = 14;
+pub const BC_BASE_MAX: u32 = 99;
+pub const BC_DIM_MAX: u32 = 2048;
+pub const BC_SCALE_MAX: u32 = 99;
+pub const BC_STRING_MAX: u32 = 1000;
+pub const COLL_WEIGHTS_MAX: u32 = 255;
+pub const EXPR_NEST_MAX: u32 = 32;
+pub const LINE_MAX: u32 = 2048;
+pub const CHARCLASS_NAME_MAX: u32 = 2048;
+pub const RE_DUP_MAX: u32 = 32767;
+pub const CK_USE_CC_BUILTINS: u32 = 0;
+pub const CK_PR_LOCK_PREFIX: &[u8; 6] = b"lock \0";
+pub const _STRING_H: u32 = 1;
+pub const _BITS_TYPES_LOCALE_T_H: u32 = 1;
+pub const _BITS_TYPES___LOCALE_T_H: u32 = 1;
+pub const _STRINGS_H: u32 = 1;
 pub const THREAD_COUNT: u32 = 32;
 pub const ESCP_MSG_COUNT: u32 = 16384;
 pub const ESCP_MSG_SZ: u32 = 128;
@@ -373,13 +408,13 @@ const _: () = {
     ["Offset of field: stat::__glibc_reserved"]
         [::core::mem::offset_of!(stat, __glibc_reserved) - 120usize];
 };
-extern "C" {
+unsafe extern "C" {
     pub fn stat(__file: *const ::core::ffi::c_char, __buf: *mut stat) -> ::core::ffi::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn fstat(__fd: ::core::ffi::c_int, __buf: *mut stat) -> ::core::ffi::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn fstatat(
         __fd: ::core::ffi::c_int,
         __file: *const ::core::ffi::c_char,
@@ -387,19 +422,19 @@ extern "C" {
         __flag: ::core::ffi::c_int,
     ) -> ::core::ffi::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn lstat(__file: *const ::core::ffi::c_char, __buf: *mut stat) -> ::core::ffi::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn chmod(__file: *const ::core::ffi::c_char, __mode: __mode_t) -> ::core::ffi::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn lchmod(__file: *const ::core::ffi::c_char, __mode: __mode_t) -> ::core::ffi::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn fchmod(__fd: ::core::ffi::c_int, __mode: __mode_t) -> ::core::ffi::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn fchmodat(
         __fd: ::core::ffi::c_int,
         __file: *const ::core::ffi::c_char,
@@ -407,27 +442,27 @@ extern "C" {
         __flag: ::core::ffi::c_int,
     ) -> ::core::ffi::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn umask(__mask: __mode_t) -> __mode_t;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn mkdir(__path: *const ::core::ffi::c_char, __mode: __mode_t) -> ::core::ffi::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn mkdirat(
         __fd: ::core::ffi::c_int,
         __path: *const ::core::ffi::c_char,
         __mode: __mode_t,
     ) -> ::core::ffi::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn mknod(
         __path: *const ::core::ffi::c_char,
         __mode: __mode_t,
         __dev: __dev_t,
     ) -> ::core::ffi::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn mknodat(
         __fd: ::core::ffi::c_int,
         __path: *const ::core::ffi::c_char,
@@ -435,17 +470,17 @@ extern "C" {
         __dev: __dev_t,
     ) -> ::core::ffi::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn mkfifo(__path: *const ::core::ffi::c_char, __mode: __mode_t) -> ::core::ffi::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn mkfifoat(
         __fd: ::core::ffi::c_int,
         __path: *const ::core::ffi::c_char,
         __mode: __mode_t,
     ) -> ::core::ffi::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn utimensat(
         __fd: ::core::ffi::c_int,
         __path: *const ::core::ffi::c_char,
@@ -453,7 +488,7 @@ extern "C" {
         __flags: ::core::ffi::c_int,
     ) -> ::core::ffi::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn futimens(__fd: ::core::ffi::c_int, __times: *const timespec) -> ::core::ffi::c_int;
 }
 #[repr(C)]
@@ -491,38 +526,38 @@ pub struct __dirstream {
     _unused: [u8; 0],
 }
 pub type DIR = __dirstream;
-extern "C" {
+unsafe extern "C" {
     pub fn closedir(__dirp: *mut DIR) -> ::core::ffi::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn opendir(__name: *const ::core::ffi::c_char) -> *mut DIR;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn fdopendir(__fd: ::core::ffi::c_int) -> *mut DIR;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn readdir(__dirp: *mut DIR) -> *mut dirent;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn readdir_r(
         __dirp: *mut DIR,
         __entry: *mut dirent,
         __result: *mut *mut dirent,
     ) -> ::core::ffi::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn rewinddir(__dirp: *mut DIR);
 }
-extern "C" {
+unsafe extern "C" {
     pub fn seekdir(__dirp: *mut DIR, __pos: ::core::ffi::c_long);
 }
-extern "C" {
+unsafe extern "C" {
     pub fn telldir(__dirp: *mut DIR) -> ::core::ffi::c_long;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn dirfd(__dirp: *mut DIR) -> ::core::ffi::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn scandir(
         __dir: *const ::core::ffi::c_char,
         __namelist: *mut *mut *mut dirent,
@@ -537,10 +572,10 @@ extern "C" {
         >,
     ) -> ::core::ffi::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn alphasort(__e1: *mut *const dirent, __e2: *mut *const dirent) -> ::core::ffi::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn getdirentries(
         __fd: ::core::ffi::c_int,
         __buf: *mut ::core::ffi::c_char,
@@ -548,6 +583,423 @@ extern "C" {
         __basep: *mut __off_t,
     ) -> __ssize_t;
 }
+unsafe extern "C" {
+    pub fn memcpy(
+        __dest: *mut ::core::ffi::c_void,
+        __src: *const ::core::ffi::c_void,
+        __n: ::core::ffi::c_ulong,
+    ) -> *mut ::core::ffi::c_void;
+}
+unsafe extern "C" {
+    pub fn memmove(
+        __dest: *mut ::core::ffi::c_void,
+        __src: *const ::core::ffi::c_void,
+        __n: ::core::ffi::c_ulong,
+    ) -> *mut ::core::ffi::c_void;
+}
+unsafe extern "C" {
+    pub fn memccpy(
+        __dest: *mut ::core::ffi::c_void,
+        __src: *const ::core::ffi::c_void,
+        __c: ::core::ffi::c_int,
+        __n: ::core::ffi::c_ulong,
+    ) -> *mut ::core::ffi::c_void;
+}
+unsafe extern "C" {
+    pub fn memset(
+        __s: *mut ::core::ffi::c_void,
+        __c: ::core::ffi::c_int,
+        __n: ::core::ffi::c_ulong,
+    ) -> *mut ::core::ffi::c_void;
+}
+unsafe extern "C" {
+    pub fn memcmp(
+        __s1: *const ::core::ffi::c_void,
+        __s2: *const ::core::ffi::c_void,
+        __n: ::core::ffi::c_ulong,
+    ) -> ::core::ffi::c_int;
+}
+unsafe extern "C" {
+    pub fn __memcmpeq(
+        __s1: *const ::core::ffi::c_void,
+        __s2: *const ::core::ffi::c_void,
+        __n: usize,
+    ) -> ::core::ffi::c_int;
+}
+unsafe extern "C" {
+    pub fn memchr(
+        __s: *const ::core::ffi::c_void,
+        __c: ::core::ffi::c_int,
+        __n: ::core::ffi::c_ulong,
+    ) -> *mut ::core::ffi::c_void;
+}
+unsafe extern "C" {
+    pub fn strcpy(
+        __dest: *mut ::core::ffi::c_char,
+        __src: *const ::core::ffi::c_char,
+    ) -> *mut ::core::ffi::c_char;
+}
+unsafe extern "C" {
+    pub fn strncpy(
+        __dest: *mut ::core::ffi::c_char,
+        __src: *const ::core::ffi::c_char,
+        __n: ::core::ffi::c_ulong,
+    ) -> *mut ::core::ffi::c_char;
+}
+unsafe extern "C" {
+    pub fn strcat(
+        __dest: *mut ::core::ffi::c_char,
+        __src: *const ::core::ffi::c_char,
+    ) -> *mut ::core::ffi::c_char;
+}
+unsafe extern "C" {
+    pub fn strncat(
+        __dest: *mut ::core::ffi::c_char,
+        __src: *const ::core::ffi::c_char,
+        __n: ::core::ffi::c_ulong,
+    ) -> *mut ::core::ffi::c_char;
+}
+unsafe extern "C" {
+    pub fn strcmp(
+        __s1: *const ::core::ffi::c_char,
+        __s2: *const ::core::ffi::c_char,
+    ) -> ::core::ffi::c_int;
+}
+unsafe extern "C" {
+    pub fn strncmp(
+        __s1: *const ::core::ffi::c_char,
+        __s2: *const ::core::ffi::c_char,
+        __n: ::core::ffi::c_ulong,
+    ) -> ::core::ffi::c_int;
+}
+unsafe extern "C" {
+    pub fn strcoll(
+        __s1: *const ::core::ffi::c_char,
+        __s2: *const ::core::ffi::c_char,
+    ) -> ::core::ffi::c_int;
+}
+unsafe extern "C" {
+    pub fn strxfrm(
+        __dest: *mut ::core::ffi::c_char,
+        __src: *const ::core::ffi::c_char,
+        __n: ::core::ffi::c_ulong,
+    ) -> ::core::ffi::c_ulong;
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct __locale_struct {
+    pub __locales: [*mut __locale_data; 13usize],
+    pub __ctype_b: *const ::core::ffi::c_ushort,
+    pub __ctype_tolower: *const ::core::ffi::c_int,
+    pub __ctype_toupper: *const ::core::ffi::c_int,
+    pub __names: [*const ::core::ffi::c_char; 13usize],
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of __locale_struct"][::core::mem::size_of::<__locale_struct>() - 232usize];
+    ["Alignment of __locale_struct"][::core::mem::align_of::<__locale_struct>() - 8usize];
+    ["Offset of field: __locale_struct::__locales"]
+        [::core::mem::offset_of!(__locale_struct, __locales) - 0usize];
+    ["Offset of field: __locale_struct::__ctype_b"]
+        [::core::mem::offset_of!(__locale_struct, __ctype_b) - 104usize];
+    ["Offset of field: __locale_struct::__ctype_tolower"]
+        [::core::mem::offset_of!(__locale_struct, __ctype_tolower) - 112usize];
+    ["Offset of field: __locale_struct::__ctype_toupper"]
+        [::core::mem::offset_of!(__locale_struct, __ctype_toupper) - 120usize];
+    ["Offset of field: __locale_struct::__names"]
+        [::core::mem::offset_of!(__locale_struct, __names) - 128usize];
+};
+pub type __locale_t = *mut __locale_struct;
+pub type locale_t = __locale_t;
+unsafe extern "C" {
+    pub fn strcoll_l(
+        __s1: *const ::core::ffi::c_char,
+        __s2: *const ::core::ffi::c_char,
+        __l: locale_t,
+    ) -> ::core::ffi::c_int;
+}
+unsafe extern "C" {
+    pub fn strxfrm_l(
+        __dest: *mut ::core::ffi::c_char,
+        __src: *const ::core::ffi::c_char,
+        __n: usize,
+        __l: locale_t,
+    ) -> usize;
+}
+unsafe extern "C" {
+    pub fn strdup(__s: *const ::core::ffi::c_char) -> *mut ::core::ffi::c_char;
+}
+unsafe extern "C" {
+    pub fn strndup(
+        __string: *const ::core::ffi::c_char,
+        __n: ::core::ffi::c_ulong,
+    ) -> *mut ::core::ffi::c_char;
+}
+unsafe extern "C" {
+    pub fn strchr(
+        __s: *const ::core::ffi::c_char,
+        __c: ::core::ffi::c_int,
+    ) -> *mut ::core::ffi::c_char;
+}
+unsafe extern "C" {
+    pub fn strrchr(
+        __s: *const ::core::ffi::c_char,
+        __c: ::core::ffi::c_int,
+    ) -> *mut ::core::ffi::c_char;
+}
+unsafe extern "C" {
+    pub fn strchrnul(
+        __s: *const ::core::ffi::c_char,
+        __c: ::core::ffi::c_int,
+    ) -> *mut ::core::ffi::c_char;
+}
+unsafe extern "C" {
+    pub fn strcspn(
+        __s: *const ::core::ffi::c_char,
+        __reject: *const ::core::ffi::c_char,
+    ) -> ::core::ffi::c_ulong;
+}
+unsafe extern "C" {
+    pub fn strspn(
+        __s: *const ::core::ffi::c_char,
+        __accept: *const ::core::ffi::c_char,
+    ) -> ::core::ffi::c_ulong;
+}
+unsafe extern "C" {
+    pub fn strpbrk(
+        __s: *const ::core::ffi::c_char,
+        __accept: *const ::core::ffi::c_char,
+    ) -> *mut ::core::ffi::c_char;
+}
+unsafe extern "C" {
+    pub fn strstr(
+        __haystack: *const ::core::ffi::c_char,
+        __needle: *const ::core::ffi::c_char,
+    ) -> *mut ::core::ffi::c_char;
+}
+unsafe extern "C" {
+    pub fn strtok(
+        __s: *mut ::core::ffi::c_char,
+        __delim: *const ::core::ffi::c_char,
+    ) -> *mut ::core::ffi::c_char;
+}
+unsafe extern "C" {
+    pub fn __strtok_r(
+        __s: *mut ::core::ffi::c_char,
+        __delim: *const ::core::ffi::c_char,
+        __save_ptr: *mut *mut ::core::ffi::c_char,
+    ) -> *mut ::core::ffi::c_char;
+}
+unsafe extern "C" {
+    pub fn strtok_r(
+        __s: *mut ::core::ffi::c_char,
+        __delim: *const ::core::ffi::c_char,
+        __save_ptr: *mut *mut ::core::ffi::c_char,
+    ) -> *mut ::core::ffi::c_char;
+}
+unsafe extern "C" {
+    pub fn strcasestr(
+        __haystack: *const ::core::ffi::c_char,
+        __needle: *const ::core::ffi::c_char,
+    ) -> *mut ::core::ffi::c_char;
+}
+unsafe extern "C" {
+    pub fn memmem(
+        __haystack: *const ::core::ffi::c_void,
+        __haystacklen: usize,
+        __needle: *const ::core::ffi::c_void,
+        __needlelen: usize,
+    ) -> *mut ::core::ffi::c_void;
+}
+unsafe extern "C" {
+    pub fn __mempcpy(
+        __dest: *mut ::core::ffi::c_void,
+        __src: *const ::core::ffi::c_void,
+        __n: usize,
+    ) -> *mut ::core::ffi::c_void;
+}
+unsafe extern "C" {
+    pub fn mempcpy(
+        __dest: *mut ::core::ffi::c_void,
+        __src: *const ::core::ffi::c_void,
+        __n: ::core::ffi::c_ulong,
+    ) -> *mut ::core::ffi::c_void;
+}
+unsafe extern "C" {
+    pub fn strlen(__s: *const ::core::ffi::c_char) -> ::core::ffi::c_ulong;
+}
+unsafe extern "C" {
+    pub fn strnlen(__string: *const ::core::ffi::c_char, __maxlen: usize) -> usize;
+}
+unsafe extern "C" {
+    pub fn strerror(__errnum: ::core::ffi::c_int) -> *mut ::core::ffi::c_char;
+}
+unsafe extern "C" {
+    #[link_name = "\u{1}__xpg_strerror_r"]
+    pub fn strerror_r(
+        __errnum: ::core::ffi::c_int,
+        __buf: *mut ::core::ffi::c_char,
+        __buflen: usize,
+    ) -> ::core::ffi::c_int;
+}
+unsafe extern "C" {
+    pub fn strerror_l(__errnum: ::core::ffi::c_int, __l: locale_t) -> *mut ::core::ffi::c_char;
+}
+unsafe extern "C" {
+    pub fn bcmp(
+        __s1: *const ::core::ffi::c_void,
+        __s2: *const ::core::ffi::c_void,
+        __n: ::core::ffi::c_ulong,
+    ) -> ::core::ffi::c_int;
+}
+unsafe extern "C" {
+    pub fn bcopy(
+        __src: *const ::core::ffi::c_void,
+        __dest: *mut ::core::ffi::c_void,
+        __n: ::core::ffi::c_ulong,
+    );
+}
+unsafe extern "C" {
+    pub fn bzero(__s: *mut ::core::ffi::c_void, __n: ::core::ffi::c_ulong);
+}
+unsafe extern "C" {
+    pub fn index(
+        __s: *const ::core::ffi::c_char,
+        __c: ::core::ffi::c_int,
+    ) -> *mut ::core::ffi::c_char;
+}
+unsafe extern "C" {
+    pub fn rindex(
+        __s: *const ::core::ffi::c_char,
+        __c: ::core::ffi::c_int,
+    ) -> *mut ::core::ffi::c_char;
+}
+unsafe extern "C" {
+    pub fn ffs(__i: ::core::ffi::c_int) -> ::core::ffi::c_int;
+}
+unsafe extern "C" {
+    pub fn ffsl(__l: ::core::ffi::c_long) -> ::core::ffi::c_int;
+}
+unsafe extern "C" {
+    pub fn ffsll(__ll: ::core::ffi::c_longlong) -> ::core::ffi::c_int;
+}
+unsafe extern "C" {
+    pub fn strcasecmp(
+        __s1: *const ::core::ffi::c_char,
+        __s2: *const ::core::ffi::c_char,
+    ) -> ::core::ffi::c_int;
+}
+unsafe extern "C" {
+    pub fn strncasecmp(
+        __s1: *const ::core::ffi::c_char,
+        __s2: *const ::core::ffi::c_char,
+        __n: ::core::ffi::c_ulong,
+    ) -> ::core::ffi::c_int;
+}
+unsafe extern "C" {
+    pub fn strcasecmp_l(
+        __s1: *const ::core::ffi::c_char,
+        __s2: *const ::core::ffi::c_char,
+        __loc: locale_t,
+    ) -> ::core::ffi::c_int;
+}
+unsafe extern "C" {
+    pub fn strncasecmp_l(
+        __s1: *const ::core::ffi::c_char,
+        __s2: *const ::core::ffi::c_char,
+        __n: usize,
+        __loc: locale_t,
+    ) -> ::core::ffi::c_int;
+}
+unsafe extern "C" {
+    pub fn explicit_bzero(__s: *mut ::core::ffi::c_void, __n: usize);
+}
+unsafe extern "C" {
+    pub fn strsep(
+        __stringp: *mut *mut ::core::ffi::c_char,
+        __delim: *const ::core::ffi::c_char,
+    ) -> *mut ::core::ffi::c_char;
+}
+unsafe extern "C" {
+    pub fn strsignal(__sig: ::core::ffi::c_int) -> *mut ::core::ffi::c_char;
+}
+unsafe extern "C" {
+    pub fn __stpcpy(
+        __dest: *mut ::core::ffi::c_char,
+        __src: *const ::core::ffi::c_char,
+    ) -> *mut ::core::ffi::c_char;
+}
+unsafe extern "C" {
+    pub fn stpcpy(
+        __dest: *mut ::core::ffi::c_char,
+        __src: *const ::core::ffi::c_char,
+    ) -> *mut ::core::ffi::c_char;
+}
+unsafe extern "C" {
+    pub fn __stpncpy(
+        __dest: *mut ::core::ffi::c_char,
+        __src: *const ::core::ffi::c_char,
+        __n: usize,
+    ) -> *mut ::core::ffi::c_char;
+}
+unsafe extern "C" {
+    pub fn stpncpy(
+        __dest: *mut ::core::ffi::c_char,
+        __src: *const ::core::ffi::c_char,
+        __n: ::core::ffi::c_ulong,
+    ) -> *mut ::core::ffi::c_char;
+}
+unsafe extern "C" {
+    pub fn strlcpy(
+        __dest: *mut ::core::ffi::c_char,
+        __src: *const ::core::ffi::c_char,
+        __n: usize,
+    ) -> usize;
+}
+unsafe extern "C" {
+    pub fn strlcat(
+        __dest: *mut ::core::ffi::c_char,
+        __src: *const ::core::ffi::c_char,
+        __n: usize,
+    ) -> usize;
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ck_ring {
+    pub c_head: ::core::ffi::c_uint,
+    pub pad: [::core::ffi::c_char; 60usize],
+    pub p_tail: ::core::ffi::c_uint,
+    pub p_head: ::core::ffi::c_uint,
+    pub _pad: [::core::ffi::c_char; 56usize],
+    pub size: ::core::ffi::c_uint,
+    pub mask: ::core::ffi::c_uint,
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of ck_ring"][::core::mem::size_of::<ck_ring>() - 136usize];
+    ["Alignment of ck_ring"][::core::mem::align_of::<ck_ring>() - 4usize];
+    ["Offset of field: ck_ring::c_head"][::core::mem::offset_of!(ck_ring, c_head) - 0usize];
+    ["Offset of field: ck_ring::pad"][::core::mem::offset_of!(ck_ring, pad) - 4usize];
+    ["Offset of field: ck_ring::p_tail"][::core::mem::offset_of!(ck_ring, p_tail) - 64usize];
+    ["Offset of field: ck_ring::p_head"][::core::mem::offset_of!(ck_ring, p_head) - 68usize];
+    ["Offset of field: ck_ring::_pad"][::core::mem::offset_of!(ck_ring, _pad) - 72usize];
+    ["Offset of field: ck_ring::size"][::core::mem::offset_of!(ck_ring, size) - 128usize];
+    ["Offset of field: ck_ring::mask"][::core::mem::offset_of!(ck_ring, mask) - 132usize];
+};
+pub type ck_ring_t = ck_ring;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct ck_ring_buffer {
+    pub value: *mut ::core::ffi::c_void,
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of ck_ring_buffer"][::core::mem::size_of::<ck_ring_buffer>() - 8usize];
+    ["Alignment of ck_ring_buffer"][::core::mem::align_of::<ck_ring_buffer>() - 8usize];
+    ["Offset of field: ck_ring_buffer::value"]
+        [::core::mem::offset_of!(ck_ring_buffer, value) - 0usize];
+};
+pub type ck_ring_buffer_t = ck_ring_buffer;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct sockaddr_storage {
@@ -560,7 +1012,7 @@ const _: () = {
     ["Offset of field: sockaddr_storage::byte"]
         [::core::mem::offset_of!(sockaddr_storage, byte) - 0usize];
 };
-extern "C" {
+unsafe extern "C" {
     pub static mut verbose_logging: u64;
 }
 #[repr(C)]
@@ -576,29 +1028,29 @@ const _: () = {
     ["Offset of field: iovec::iov_base"][::core::mem::offset_of!(iovec, iov_base) - 0usize];
     ["Offset of field: iovec::iov_len"][::core::mem::offset_of!(iovec, iov_len) - 8usize];
 };
-extern "C" {
+unsafe extern "C" {
     pub static mut ESCP_DTN_ARGS: *mut dtn_args;
 }
-extern "C" {
+unsafe extern "C" {
     pub static mut ESCP_DROPPED_MSG: u64;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn args_new() -> *mut dtn_args;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn affinity_set(args: *mut dtn_args);
 }
-extern "C" {
+unsafe extern "C" {
     pub fn dns_lookup(
         arg1: *mut dtn_args,
         a: *mut ::core::ffi::c_char,
         b: *mut ::core::ffi::c_char,
     ) -> sockaddr_storage;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn dtn_log_getnext() -> *mut ::core::ffi::c_char;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn dtn_err_getnext() -> *mut ::core::ffi::c_char;
 }
 #[repr(C)]
@@ -749,53 +1201,58 @@ const _: () = {
     ["Offset of field: file_object::cleanup"]
         [::core::mem::offset_of!(file_object, cleanup) - 200usize];
 };
-extern "C" {
+unsafe extern "C" {
     pub fn file_completetransfer();
 }
-extern "C" {
+unsafe extern "C" {
     pub fn file_randrd(buf: *mut ::core::ffi::c_void, count: ::core::ffi::c_int);
 }
-extern "C" {
+unsafe extern "C" {
     pub fn file_prng(buf: *mut ::core::ffi::c_void, sz: ::core::ffi::c_int);
 }
-extern "C" {
+unsafe extern "C" {
     pub fn file_memoryinit(
         arg1: *mut ::core::ffi::c_void,
         arg2: ::core::ffi::c_int,
     ) -> *mut file_object;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn file_posixget(arg: *mut ::core::ffi::c_void, key: i32) -> *mut ::core::ffi::c_void;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn file_posixset(
         arg: *mut ::core::ffi::c_void,
         key: i32,
         value: u64,
     ) -> *mut ::core::ffi::c_void;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn file_posixinit(fob: *mut file_object) -> ::core::ffi::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn file_posixfetch(arg: *mut ::core::ffi::c_void) -> *mut ::core::ffi::c_void;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn file_posixflush(arg: *mut ::core::ffi::c_void);
 }
-extern "C" {
+unsafe extern "C" {
     pub fn file_uringinit(fob: *mut file_object) -> ::core::ffi::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn file_dummyinit(fob: *mut file_object) -> ::core::ffi::c_int;
 }
-extern "C" {
-    pub fn file_addfile(fileno: u64, fd: ::core::ffi::c_int) -> *mut file_stat_type;
+unsafe extern "C" {
+    pub fn file_addfile(
+        fileno: u64,
+        fd: ::core::ffi::c_int,
+        offset: u64,
+        read_limit: u32,
+    ) -> *mut file_stat_type;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn file_getstats(fileno: u64) -> *mut file_stat_type;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn file_get_activeport(args: *mut ::core::ffi::c_void) -> ::core::ffi::c_int;
 }
 #[repr(C)]
@@ -810,7 +1267,6 @@ pub struct file_stat_type {
     pub bytes_total: u64,
     pub fd: i32,
     pub position: u32,
-    pub poison: u32,
     pub crc: u32,
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
@@ -832,12 +1288,10 @@ const _: () = {
     ["Offset of field: file_stat_type::fd"][::core::mem::offset_of!(file_stat_type, fd) - 48usize];
     ["Offset of field: file_stat_type::position"]
         [::core::mem::offset_of!(file_stat_type, position) - 52usize];
-    ["Offset of field: file_stat_type::poison"]
-        [::core::mem::offset_of!(file_stat_type, poison) - 56usize];
     ["Offset of field: file_stat_type::crc"]
-        [::core::mem::offset_of!(file_stat_type, crc) - 60usize];
+        [::core::mem::offset_of!(file_stat_type, crc) - 56usize];
 };
-extern "C" {
+unsafe extern "C" {
     pub fn memset_avx(src: *mut ::core::ffi::c_void);
 }
 #[repr(C)]
@@ -847,7 +1301,7 @@ pub struct dtn_args {
     pub do_server: bool,
     pub do_ssh: bool,
     pub do_crypto: bool,
-    pub do_hash: bool,
+    pub do_hash: u8,
     pub do_preserve: bool,
     pub nodirect: bool,
     pub recursive: bool,
@@ -871,8 +1325,10 @@ pub struct dtn_args {
     pub cpumask_len: ::core::ffi::c_int,
     pub cpumask_bytes: [u8; 32usize],
     pub nodemask: u64,
+    pub cksum_ring: ck_ring_t,
+    pub cksum_ring_buffer: *mut ::core::ffi::c_void,
     pub sock_store_count: ::core::ffi::c_int,
-    pub __bindgen_padding_0: [u8; 36usize],
+    pub __bindgen_padding_0: [u8; 20usize],
     pub sock_store: [sockaddr_storage; 32usize],
     pub fob: *mut file_object,
     pub __bindgen_padding_1: [u32; 14usize],
@@ -902,7 +1358,7 @@ pub struct dtn_args {
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
-    ["Size of dtn_args"][::core::mem::size_of::<dtn_args>() - 4199296usize];
+    ["Size of dtn_args"][::core::mem::size_of::<dtn_args>() - 4199424usize];
     ["Alignment of dtn_args"][::core::mem::align_of::<dtn_args>() - 64usize];
     ["Offset of field: dtn_args::do_server"][::core::mem::offset_of!(dtn_args, do_server) - 0usize];
     ["Offset of field: dtn_args::do_ssh"][::core::mem::offset_of!(dtn_args, do_ssh) - 1usize];
@@ -943,69 +1399,73 @@ const _: () = {
     ["Offset of field: dtn_args::cpumask_bytes"]
         [::core::mem::offset_of!(dtn_args, cpumask_bytes) - 112usize];
     ["Offset of field: dtn_args::nodemask"][::core::mem::offset_of!(dtn_args, nodemask) - 144usize];
+    ["Offset of field: dtn_args::cksum_ring"]
+        [::core::mem::offset_of!(dtn_args, cksum_ring) - 152usize];
+    ["Offset of field: dtn_args::cksum_ring_buffer"]
+        [::core::mem::offset_of!(dtn_args, cksum_ring_buffer) - 288usize];
     ["Offset of field: dtn_args::sock_store_count"]
-        [::core::mem::offset_of!(dtn_args, sock_store_count) - 152usize];
+        [::core::mem::offset_of!(dtn_args, sock_store_count) - 296usize];
     ["Offset of field: dtn_args::sock_store"]
-        [::core::mem::offset_of!(dtn_args, sock_store) - 192usize];
-    ["Offset of field: dtn_args::fob"][::core::mem::offset_of!(dtn_args, fob) - 4288usize];
+        [::core::mem::offset_of!(dtn_args, sock_store) - 320usize];
+    ["Offset of field: dtn_args::fob"][::core::mem::offset_of!(dtn_args, fob) - 4416usize];
     ["Offset of field: dtn_args::thread_id"]
-        [::core::mem::offset_of!(dtn_args, thread_id) - 4352usize];
+        [::core::mem::offset_of!(dtn_args, thread_id) - 4480usize];
     ["Offset of field: dtn_args::thread_count"]
-        [::core::mem::offset_of!(dtn_args, thread_count) - 4416usize];
+        [::core::mem::offset_of!(dtn_args, thread_count) - 4544usize];
     ["Offset of field: dtn_args::active_port"]
-        [::core::mem::offset_of!(dtn_args, active_port) - 4480usize];
+        [::core::mem::offset_of!(dtn_args, active_port) - 4608usize];
     ["Offset of field: dtn_args::debug_claim"]
-        [::core::mem::offset_of!(dtn_args, debug_claim) - 4544usize];
+        [::core::mem::offset_of!(dtn_args, debug_claim) - 4672usize];
     ["Offset of field: dtn_args::debug_count"]
-        [::core::mem::offset_of!(dtn_args, debug_count) - 4608usize];
+        [::core::mem::offset_of!(dtn_args, debug_count) - 4736usize];
     ["Offset of field: dtn_args::debug_buf"]
-        [::core::mem::offset_of!(dtn_args, debug_buf) - 4616usize];
+        [::core::mem::offset_of!(dtn_args, debug_buf) - 4744usize];
     ["Offset of field: dtn_args::debug_poison"]
-        [::core::mem::offset_of!(dtn_args, debug_poison) - 2101768usize];
+        [::core::mem::offset_of!(dtn_args, debug_poison) - 2101896usize];
     ["Offset of field: dtn_args::msg_claim"]
-        [::core::mem::offset_of!(dtn_args, msg_claim) - 2101824usize];
+        [::core::mem::offset_of!(dtn_args, msg_claim) - 2101952usize];
     ["Offset of field: dtn_args::msg_count"]
-        [::core::mem::offset_of!(dtn_args, msg_count) - 2101888usize];
+        [::core::mem::offset_of!(dtn_args, msg_count) - 2102016usize];
     ["Offset of field: dtn_args::msg_buf"]
-        [::core::mem::offset_of!(dtn_args, msg_buf) - 2101896usize];
+        [::core::mem::offset_of!(dtn_args, msg_buf) - 2102024usize];
     ["Offset of field: dtn_args::msg_poison"]
-        [::core::mem::offset_of!(dtn_args, msg_poison) - 4199048usize];
+        [::core::mem::offset_of!(dtn_args, msg_poison) - 4199176usize];
     ["Offset of field: dtn_args::bytes_io"]
-        [::core::mem::offset_of!(dtn_args, bytes_io) - 4199104usize];
+        [::core::mem::offset_of!(dtn_args, bytes_io) - 4199232usize];
     ["Offset of field: dtn_args::files_closed"]
-        [::core::mem::offset_of!(dtn_args, files_closed) - 4199168usize];
+        [::core::mem::offset_of!(dtn_args, files_closed) - 4199296usize];
     ["Offset of field: dtn_args::files_open"]
-        [::core::mem::offset_of!(dtn_args, files_open) - 4199232usize];
+        [::core::mem::offset_of!(dtn_args, files_open) - 4199360usize];
 };
-extern "C" {
+unsafe extern "C" {
     pub fn meta_send(
         buf: *mut ::core::ffi::c_char,
         hdr: *mut ::core::ffi::c_char,
         len: ::core::ffi::c_int,
     );
 }
-extern "C" {
+unsafe extern "C" {
     pub fn tx_start(args: *mut dtn_args);
 }
-extern "C" {
+unsafe extern "C" {
     pub fn rx_start(args: *mut dtn_args) -> ::core::ffi::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn finish_transfer(args: *mut dtn_args);
 }
-extern "C" {
+unsafe extern "C" {
     pub fn dtn_waituntilready(arg: *mut ::core::ffi::c_void);
 }
-extern "C" {
+unsafe extern "C" {
     pub fn tx_init(args: *mut dtn_args);
 }
-extern "C" {
+unsafe extern "C" {
     pub fn get_bytes_io(dtn: *mut dtn_args) -> i64;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn human_write(number: u64, is_bytes: bool) -> *mut ::core::ffi::c_char;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn get_threads_finished() -> u64;
 }
 #[repr(C)]
@@ -1038,21 +1498,26 @@ const _: () = {
     ["Offset of field: fc_info_struct::pad2"]
         [::core::mem::offset_of!(fc_info_struct, pad2) - 40usize];
 };
-extern "C" {
+unsafe extern "C" {
     pub fn xorshift64r(x: u64) -> u64;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn fc_pop() -> *mut fc_info_struct;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn meta_recv() -> *mut u8;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn meta_complete();
 }
-extern "C" {
+unsafe extern "C" {
     pub fn file_incrementtail();
 }
-extern "C" {
+unsafe extern "C" {
     pub fn file_iow_remove(fs: *mut file_stat_type, id: ::core::ffi::c_int) -> u64;
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct __locale_data {
+    pub _address: u8,
 }

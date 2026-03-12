@@ -111,11 +111,11 @@ impl<'a> Session_Init<'a> {
     unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'a, i8>>>(Session_Init::VT_CRYPTO_KEY, None)}
   }
   #[inline]
-  pub fn do_hash(&self) -> bool {
+  pub fn do_hash(&self) -> u8 {
     // Safety:
     // Created from valid Table for this object
     // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(Session_Init::VT_DO_HASH, Some(false)).unwrap()}
+    unsafe { self._tab.get::<u8>(Session_Init::VT_DO_HASH, Some(0)).unwrap()}
   }
   #[inline]
   pub fn do_crypto(&self) -> bool {
@@ -242,7 +242,7 @@ impl flatbuffers::Verifiable for Session_Init<'_> {
      .visit_field::<i32>("version_minor", Self::VT_VERSION_MINOR, false)?
      .visit_field::<u64>("session_id", Self::VT_SESSION_ID, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, i8>>>("crypto_key", Self::VT_CRYPTO_KEY, false)?
-     .visit_field::<bool>("do_hash", Self::VT_DO_HASH, false)?
+     .visit_field::<u8>("do_hash", Self::VT_DO_HASH, false)?
      .visit_field::<bool>("do_crypto", Self::VT_DO_CRYPTO, false)?
      .visit_field::<bool>("do_verbose", Self::VT_DO_VERBOSE, false)?
      .visit_field::<bool>("do_compression", Self::VT_DO_COMPRESSION, false)?
@@ -268,7 +268,7 @@ pub struct Session_InitArgs<'a> {
     pub version_minor: i32,
     pub session_id: u64,
     pub crypto_key: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, i8>>>,
-    pub do_hash: bool,
+    pub do_hash: u8,
     pub do_crypto: bool,
     pub do_verbose: bool,
     pub do_compression: bool,
@@ -294,7 +294,7 @@ impl<'a> Default for Session_InitArgs<'a> {
       version_minor: 0,
       session_id: 0,
       crypto_key: None,
-      do_hash: false,
+      do_hash: 0,
       do_crypto: false,
       do_verbose: false,
       do_compression: false,
@@ -337,8 +337,8 @@ impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> Session_InitBuilder<'a, 'b, A> 
     self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(Session_Init::VT_CRYPTO_KEY, crypto_key);
   }
   #[inline]
-  pub fn add_do_hash(&mut self, do_hash: bool) {
-    self.fbb_.push_slot::<bool>(Session_Init::VT_DO_HASH, do_hash, false);
+  pub fn add_do_hash(&mut self, do_hash: u8) {
+    self.fbb_.push_slot::<u8>(Session_Init::VT_DO_HASH, do_hash, 0);
   }
   #[inline]
   pub fn add_do_crypto(&mut self, do_crypto: bool) {

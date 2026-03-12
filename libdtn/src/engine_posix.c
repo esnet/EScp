@@ -109,8 +109,11 @@ void* file_posixsubmit( void* arg, int32_t* sz, uint64_t* offset ) {
       *sz = pread( op->fd, op->buf, fob->blk_sz, op->offset );
       if (*sz > 0) {
 
-        if (fob->do_hash)
-          op->hash = file_hash(op->buf, *sz, op->offset/fob->blk_sz);
+        if (fob->do_hash) {
+          uint8_t hash[32];
+          file_hash(op->buf, *sz, hash);
+          op->hash = ((uint32_t*)hash)[0];
+        }
 
         if (fob->compression) {
 

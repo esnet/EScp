@@ -31,8 +31,13 @@ EScp is currently only available for x86-64 on Linux. If you would like to see
 RELEASE NOTES
 =============
 
+<<<<<<< HEAD
 **EScp is in active development**. You should be using the main branch until
 the 0.9.0 release is tagged.
+=======
+**EScp is in active development**. At the moment, you should use the latest
+version in the main branch.
+>>>>>>> wip
 
 At this point, most scp flags are supported although not necessarily 1:1, nor
 do they necessarily work the same way. Additionally, EScp adds additional flags

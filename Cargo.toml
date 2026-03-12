@@ -2,9 +2,7 @@
 name = "escp"
 version = "0.9.0"
 edition = "2021"
-author = "Charles Shiflett <cshiflett@ESnet>"
 authors = [ "Charles Shiflett" ]
-about = "Energy Sciences Network transfer tool (EScp)"
 description = "Energy Sciences Network transfer tool (EScp)"
 license = "BSD-3-Clause"
 homepage = "https://github.com/esnet/escp"
@@ -36,13 +34,14 @@ zstd-safe = "7.*"
 chrono = "0.*"
 
 [dev-dependencies]
-ntest = "0.9.3"
-serde = { version = "1.0", features = ["derive"] }
-toml = "0.8"
-serde_json = "1.0"
-anyhow = "1.0"
-sha2 = "0.10"
-walkdir = "2.4"
+ntest = "0.9.*"
+serde = { version = "1.*", features = ["derive"] }
+toml = "0.8.*"
+serde_json = "1.*"
+anyhow = "1.*"
+blake3 = "1.*"
+walkdir = "2.*"
+
 
 [profile.release]
 opt-level = 'z'     # Optimize for size

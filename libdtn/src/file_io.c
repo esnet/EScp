@@ -16,6 +16,7 @@
 
 #include <immintrin.h>
 #include <stdatomic.h>
+#include <blake3.h>
 
 #include "file_io.h"
 #include "args.h"
@@ -191,7 +192,7 @@ void file_completetransfer() {
     atomic_fetch_add( &transfer_complete, 1 );
 }
 
-struct file_stat_type* file_addfile( uint64_t fileno, int fd ) {
+struct file_stat_type* file_addfile( uint64_t fileno, int fd, uint64_t offset, uint32_t read_limit ) {
 
   struct file_stat_type fs __attribute__ ((aligned(64))) = {0};
   uint64_t zero, slot, hash=fileno;
@@ -206,13 +207,17 @@ struct file_stat_type* file_addfile( uint64_t fileno, int fd ) {
     }
   }
 
-  VRFY(i<FILE_STAT_COUNT_CC, "Hash table collision count exceeded. Bug Report Pls!.");
+  if (i >= FILE_STAT_COUNT_CC) {
+    DBG("Hash table collision count exceeded for fileno=%ld", fileno);
+    return NULL;
+  }
 
   fs.state = FS_INIT;
   fs.fd = fd;
   fs.file_no = fileno;
   fs.position = slot;
-  fs.poison = 0xC0DAB1E;
+  fs.block_offset = offset;
+  fs.read_limit = read_limit;
 
   memcpy_avx( &file_stat[slot], &fs );
   atomic_fetch_add( &file_claim, 1 );
@@ -407,28 +412,11 @@ int file_get_activeport( void* args_raw ) {
 }
 
 
-int32_t file_hash( void* block, int sz, int seed ) {
-  uint32_t *block_ptr = (uint32_t*) block;
-  uint64_t hash = seed;
-  hash = xorshift64s(&hash);
-  int i=0;
-
-  /*
-  DBG("file_hash block=%016zX, sz=%d, seed=%08X",
-      (uint64_t) block, sz, seed );
-  */
-
-  if (sz%4) {
-    for ( i=0; i < (4-(sz%4)); i++ ) {
-      ((uint8_t*)block_ptr)[sz+i] = 0;
-    }
-  }
-
-  for( i=0; i<(sz+3)/4; i++ ) {
-    hash = __builtin_ia32_crc32si( block_ptr[i], hash );
-  }
-
-  return hash;
+void file_hash( void* block, int sz, uint8_t* out ) {
+  blake3_hasher hasher;
+  blake3_hasher_init(&hasher);
+  blake3_hasher_update(&hasher, block, sz);
+  blake3_hasher_finalize(&hasher, out, BLAKE3_OUT_LEN);
 }
 
 struct file_object* file_memoryinit( void* arg, int id ) {

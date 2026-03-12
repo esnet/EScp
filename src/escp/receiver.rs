@@ -354,7 +354,7 @@ fn add_file( files_hash: &mut HashMap<u64, FileInformation>, files_add: &mut Vec
         debug!("Add file {}:{fino} with sz={} fd={fd}",
                i.path, i.sz, fino=i.fino );
 
-        let res = file_addfile( i.fino, fd );
+        let res = file_addfile( i.fino, fd, 0, 0 );
 
         if res.is_null() {
           let tf = get_threads_finished();
