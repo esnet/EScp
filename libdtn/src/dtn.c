@@ -124,6 +124,50 @@ struct fc_info_struct* fc_pop() {
   return &fc;
 }
 
+
+void* cksum_worker(void* arg) {
+  struct dtn_args* dtn = arg;
+  struct cksum_t cksum;
+  char path[1024];
+  int fd = -1;
+  uint64_t current_fino = 0;
+  bool do_finish=false;
+  float delay = 10;
+
+  snprintf(path, 1023, ".escp/%016lX", dtn->session_id);
+  mkdir(".escp", 0755);
+  mkdir(path, 0755);
+
+  while (1) {
+    if (ck_ring_dequeue_mpsc_cksum(&dtn->cksum_ring, dtn->cksum_ring_buffer, &cksum)) {
+      delay=10;
+      if (cksum.fino != current_fino) {
+        if (fd != -1) close(fd);
+        snprintf(path, 1023, ".escp/%016lX/%ld", dtn->session_id, cksum.fino);
+        fd = open(path, O_WRONLY | O_CREAT | O_APPEND, 0644);
+        current_fino = cksum.fino;
+        DBG("cksum_worker: opened %s fd=%d", path, fd);
+      }
+      if (fd != -1) {
+        if (write(fd, &cksum, sizeof(struct cksum_t)) != sizeof(struct cksum_t)) {
+            DBG("cksum_worker: write error %s", strerror(errno));
+        }
+      }
+      if (do_finish)
+        break;
+    } else {
+      if (atomic_load(&threads_finished) >= (dtn->thread_count + 1)) {
+        do_finish=true;
+        continue;
+      }
+      ESCP_DELAY(((int)delay));
+      delay *= 1.08;
+    }
+  }
+  if (fd != -1) close(fd);
+  return NULL;
+}
+
 void dtn_init( struct dtn_args* args ) {
   char* a = aligned_alloc( 4096, (fc_info_cnt*64)+8192 );
   VRFY( a, "bad alloc" );
@@ -153,7 +197,7 @@ void dtn_init( struct dtn_args* args ) {
 
     // To Do:
       // update add_file to allow start from file_offset
-      // checksum writer code should start from offset
+      /* checksum writer code should start from offset
         {
           file_no:
           start:
@@ -161,6 +205,7 @@ void dtn_init( struct dtn_args* args ) {
           in_queue:
         }
 
+      */
       // Check abort code. Ideally we should write out everything
       // in queue and then exit
 
