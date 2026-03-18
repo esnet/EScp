@@ -228,3 +228,13 @@ uint8_t* meta_recv();
 void meta_complete();
 void file_incrementtail();
 uint64_t  file_iow_remove( struct file_stat_type* fs, int id );
+
+struct cksum_t {
+  uint64_t    type;
+  uint64_t    fino;
+  uint64_t    offset;
+  uint64_t    padding;
+  uint8_t     checksum[32];
+} __attribute__((aligned(64)));
+
+int dtn_cksum_dequeue(struct dtn_args* dtn, struct cksum_t* cksum);

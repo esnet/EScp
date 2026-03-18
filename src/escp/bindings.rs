@@ -222,7 +222,7 @@ pub const CK_MD_CACHELINE: u32 = 64;
 pub const CK_MD_PAGESIZE: u32 = 4096;
 pub const CK_MD_VMA_BITS: u32 = 48;
 pub const CK_VERSION: &[u8; 6] = b"0.7.2\0";
-pub const CK_GIT_SHA: &[u8; 8] = b"5331ebe\0";
+pub const CK_GIT_SHA: &[u8; 8] = b"2a9f627\0";
 pub const CK_CC_IMM: &[u8; 2] = b"i\0";
 pub const CK_CC_IMM_U32: &[u8; 2] = b"Z\0";
 pub const CK_CC_IMM_S32: &[u8; 2] = b"e\0";
@@ -1515,6 +1515,29 @@ unsafe extern "C" {
 }
 unsafe extern "C" {
     pub fn file_iow_remove(fs: *mut file_stat_type, id: ::core::ffi::c_int) -> u64;
+}
+#[repr(C)]
+#[repr(align(64))]
+#[derive(Debug, Copy, Clone)]
+pub struct cksum_t {
+    pub type_: u64,
+    pub fino: u64,
+    pub offset: u64,
+    pub padding: u64,
+    pub checksum: [u8; 32usize],
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of cksum_t"][::core::mem::size_of::<cksum_t>() - 64usize];
+    ["Alignment of cksum_t"][::core::mem::align_of::<cksum_t>() - 64usize];
+    ["Offset of field: cksum_t::type_"][::core::mem::offset_of!(cksum_t, type_) - 0usize];
+    ["Offset of field: cksum_t::fino"][::core::mem::offset_of!(cksum_t, fino) - 8usize];
+    ["Offset of field: cksum_t::offset"][::core::mem::offset_of!(cksum_t, offset) - 16usize];
+    ["Offset of field: cksum_t::padding"][::core::mem::offset_of!(cksum_t, padding) - 24usize];
+    ["Offset of field: cksum_t::checksum"][::core::mem::offset_of!(cksum_t, checksum) - 32usize];
+};
+unsafe extern "C" {
+    pub fn dtn_cksum_dequeue(dtn: *mut dtn_args, cksum: *mut cksum_t) -> ::core::ffi::c_int;
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]

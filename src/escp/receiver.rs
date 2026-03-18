@@ -16,8 +16,56 @@ fn start_receiver( args: logging::dtn_args_wrapper ) {
   debug!("start_receiver complete");
 }
 
-fn read_stdin_or_mgmt( mgmt: String ) -> (Vec<u8>, Option<std::os::unix::net::UnixStream>) {
+fn cksum_worker(safe_args: logging::dtn_args_wrapper) {
+  let args = safe_args.args;
+  let session_id = unsafe { (*args).session_id };
+  let session_dir = format!(".escp/{:016X}", session_id);
+  _ = fs::create_dir_all(&session_dir);
 
+  let mut current_fino = 0;
+  let mut fd: Option<fs::File> = None;
+  let mut delay = 10.0_f64;
+
+  loop {
+    let mut cksum = std::mem::MaybeUninit::<cksum_t>::uninit();
+    let success = unsafe { dtn_cksum_dequeue(args, cksum.as_mut_ptr()) };
+
+    if success != 0 {
+      delay = 10.0;
+      let cksum = unsafe { cksum.assume_init() };
+
+      if cksum.fino != current_fino {
+        let file_path = format!("{}/{}", session_dir, cksum.fino);
+        fd = Some(fs::OpenOptions::new()
+          .create(true)
+          .append(true)
+          .open(&file_path)
+          .unwrap_or_else(|_| panic!("Failed to open {}", file_path)));
+        current_fino = cksum.fino;
+      }
+
+      if let Some(ref mut file) = fd {
+        let bytes = unsafe {
+          std::slice::from_raw_parts(
+            &cksum as *const _ as *const u8,
+            std::mem::size_of::<cksum_t>(),
+          )
+        };
+        _ = file.write_all(bytes);
+      }
+    } else {
+      let threads = unsafe { get_threads_finished() };
+      let expected = unsafe { (*args).thread_count as u64 + 1 };
+      if threads >= expected {
+        break;
+      }
+      thread::sleep(std::time::Duration::from_micros(delay as u64));
+      delay *= 1.08;
+    }
+  }
+}
+
+fn read_stdin_or_mgmt( mgmt: String ) -> (Vec<u8>, Option<std::os::unix::net::UnixStream>) {
   let mut ret: Option<std::os::unix::net::UnixStream> = None;
   let mut buf = vec![ 0u8; 6 ];
   let result;
@@ -140,6 +188,12 @@ fn initialize_receiver(safe_args: logging::dtn_args_wrapper, flags: &EScp_Args) 
   }
 
   debug!("Spawning receiver");
+
+  if unsafe { (*args).do_hash } == 2 {
+    let safe_args_cksum = safe_args;
+    _ = thread::Builder::new().name("cksum".to_string()).spawn(
+          move || cksum_worker( safe_args_cksum ));
+  }
 
   _ = thread::Builder::new().name("rcvr".to_string()).spawn(
         move || start_receiver( safe_args ));
