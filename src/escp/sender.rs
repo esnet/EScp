@@ -698,10 +698,9 @@ fn handle_msg_from_receiver(
     */
 
     if crc != rx_crc {
-      // Should always be able to test CRC because if CRC not enabled
-      // entry should be zero
-      error!("CRC mismatch on {} (computed) {:#010X}!={:#010X} (sent)", rx_fino, crc, rx_crc);
-      eprintln!("\n\rCRC mismatch on {} {:#010X}!={:#010X}\n", rx_fino, crc, rx_crc);
+      // Test always valid because if CRC checksum == disabled then 0 == 0
+      error!("CRC mismatch on {} (computed) {:#010X}!={:#010X} (received)", rx_fino, crc, rx_crc);
+      eprintln!("\n\rCRC mismatch on {} (computed) {:#010X}!={:#010X} (received)", rx_fino, crc, rx_crc);
       return -1i64;
     }
 
